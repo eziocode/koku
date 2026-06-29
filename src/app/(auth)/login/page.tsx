@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 
 import { LoginForm } from "@/components/auth/login-form";
 import { auth } from "@/lib/auth";
@@ -35,7 +36,9 @@ export default async function LoginPage() {
           ))}
         </div>
       </div>
-      <LoginForm localMode={localMode} />
+      <Suspense>
+        <LoginForm localMode={localMode} />
+      </Suspense>
     </div>
   );
 }
