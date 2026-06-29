@@ -8,7 +8,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const session = await auth();
 
   if (!session?.user) {
-    redirect("/login");
+    redirect("/__catalyst/auth/login");
   }
 
   return (

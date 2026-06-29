@@ -2,7 +2,6 @@
 
 import { Bell, LogOut, Menu, MoonStar, Settings, SunMedium, UserCircle2 } from "lucide-react";
 import Link from "next/link";
-import { signOut } from "next-auth/react";
 import { useTheme } from "next-themes";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -94,7 +93,11 @@ export function Topbar({ user, onOpenSidebar }: TopbarProps) {
             </Link>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => signOut({ callbackUrl: "/" })}>
+          <DropdownMenuItem
+            onClick={() => {
+              window.location.href = "/__catalyst/auth/logout?redirectURL=/";
+            }}
+          >
             <LogOut className="h-4 w-4" />
             Sign out
           </DropdownMenuItem>
