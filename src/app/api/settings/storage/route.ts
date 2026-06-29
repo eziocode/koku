@@ -3,12 +3,9 @@ import { z } from "zod";
 
 import { badRequest, requireUserContext, serverError, unauthorized } from "@/lib/api";
 import { db } from "@/lib/db";
-import { decryptValue, encryptValue } from "@/lib/encryption";
 
 const storageSettingsSchema = z.object({
-  provider: z.enum(["google-drive", "onedrive", "dropbox", "s3"]),
   schedule: z.enum(["daily", "weekly"]),
-  credentials: z.string(),
 });
 
 export async function GET() {
@@ -23,21 +20,8 @@ export async function GET() {
         ? (context.workspace.settings as Record<string, unknown>)
         : {};
 
-    // Decrypt credentials before returning so the client can display/use them.
-    const storageSettings = rawSettings.storage as
-      | { provider?: string; schedule?: string; credentials?: string }
-      | undefined;
-
-    const safeSettings = storageSettings
-      ? {
-          ...storageSettings,
-          credentials: storageSettings.credentials
-            ? decryptValue(storageSettings.credentials)
-            : "",
-        }
-      : {};
-
-    return NextResponse.json({ storage: safeSettings });
+    const storageSettings = rawSettings.storage as { schedule?: string } | undefined;
+    return NextResponse.json({ storage: { provider: "catalyst", schedule: storageSettings?.schedule || "weekly" } });
   } catch (error) {
     console.error(error);
     return serverError();
@@ -63,25 +47,17 @@ export async function PUT(request: Request) {
         ? (context.workspace.settings as Record<string, unknown>)
         : {};
 
-    const workspace = await db.workspace.update({
+    await db.workspace.update({
       where: { id: context.workspace.id },
       data: {
         settings: {
           ...currentSettings,
-          storage: {
-            ...parsed.data,
-            // Encrypt credentials at rest; decrypt on read in the GET handler.
-            credentials: parsed.data.credentials
-              ? encryptValue(parsed.data.credentials)
-              : "",
-          },
+          storage: { provider: "catalyst", schedule: parsed.data.schedule },
         },
       },
     });
 
-    // Return the plain-text input (not the stored encrypted form) so the client
-    // can update its local state without needing another GET.
-    return NextResponse.json({ storage: parsed.data });
+    return NextResponse.json({ storage: { provider: "catalyst", ...parsed.data } });
   } catch (error) {
     console.error(error);
     return serverError();
