@@ -1,13 +1,224 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
+datasource db {
+  provider = "postgresql"
+}
 
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
 }
 
-datasource db {
-  provider = "postgresql"
+model User {
+  id               String            @id @default(cuid())
+  email            String            @unique
+  name             String?
+  password         String?
+  image            String?
+  emailVerified    DateTime?
+  preferences      Json?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  accounts         Account[]
+  sessions         Session[]
+  workspaces       Workspace[]
+  timeEntries      TimeEntry[]
+  aiKeys           AiKey[]
+  backups          Backup[]
+  moods            Mood[]
+  pomodoroSessions PomodoroSession[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Workspace {
+  id               String            @id @default(cuid())
+  userId           String
+  name             String
+  settings         Json?
+  createdAt        DateTime          @default(now())
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projects         Project[]
+  categories       Category[]
+  tags             Tag[]
+  timeEntries      TimeEntry[]
+  notes            Note[]
+  pomodoroSessions PomodoroSession[]
+
+  @@index([userId])
+}
+
+model Project {
+  id          String      @id @default(cuid())
+  workspaceId String
+  name        String
+  color       String      @default("#c0392b")
+  hourlyRate  Float?
+  createdAt   DateTime    @default(now())
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  timeEntries TimeEntry[]
+
+  @@index([workspaceId])
+}
+
+model Category {
+  id          String      @id @default(cuid())
+  workspaceId String
+  name        String
+  color       String      @default("#e74c3c")
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  timeEntries TimeEntry[]
+
+  @@index([workspaceId])
+}
+
+model Tag {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  color       String    @default("#c0392b")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+}
+
+model TimeEntry {
+  id               String            @id @default(cuid())
+  userId           String
+  workspaceId      String
+  projectId        String?
+  categoryId       String?
+  title            String
+  startAt          DateTime
+  endAt            DateTime?
+  durationSec      Int?
+  tags             String[]          @default([])
+  notes            String?
+  createdAt        DateTime          @default(now())
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace        Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project          Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  category         Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  pomodoroSessions PomodoroSession[]
+
+  @@index([userId, workspaceId, startAt])
+  @@index([projectId])
+  @@index([categoryId])
+}
+
+model Note {
+  id            String     @id @default(cuid())
+  workspaceId   String
+  title         String
+  content       Json
+  slug          String     @unique
+  tags          String[]   @default([])
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  workspace     Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  outgoingLinks NoteLink[] @relation("NoteLinkSource")
+  incomingLinks NoteLink[] @relation("NoteLinkTarget")
+
+  @@index([workspaceId])
+}
+
+model NoteLink {
+  id           String @id @default(cuid())
+  sourceNoteId String
+  targetNoteId String
+  sourceNote   Note   @relation("NoteLinkSource", fields: [sourceNoteId], references: [id], onDelete: Cascade)
+  targetNote   Note   @relation("NoteLinkTarget", fields: [targetNoteId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceNoteId, targetNoteId])
+  @@index([sourceNoteId])
+  @@index([targetNoteId])
+}
+
+model AiKey {
+  id           String   @id @default(cuid())
+  userId       String
+  provider     String
+  encryptedKey String?  @db.Text
+  oauthToken   String?  @db.Text
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+  @@index([userId])
+}
+
+model Backup {
+  id              String   @id @default(cuid())
+  userId          String
+  storageProvider String
+  path            String
+  size            Int?
+  checksum        String?
+  status          String
+  createdAt       DateTime @default(now())
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model Mood {
+  id     String   @id @default(cuid())
+  userId String
+  date   DateTime
+  value  Int
+  note   String?
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId])
+}
+
+model PomodoroSession {
+  id              String     @id @default(cuid())
+  userId          String
+  workspaceId     String
+  timeEntryId     String?
+  startAt         DateTime
+  endAt           DateTime?
+  completedCycles Int        @default(0)
+  status          String
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace       Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  timeEntry       TimeEntry? @relation(fields: [timeEntryId], references: [id], onDelete: SetNull)
+
+  @@index([userId, workspaceId])
+  @@index([timeEntryId])
 }

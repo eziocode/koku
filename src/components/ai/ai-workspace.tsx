@@ -1,0 +1,248 @@
+"use client";
+
+import { FormEvent, useState } from "react";
+
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import { toast } from "@/components/ui/toast";
+
+type ChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+};
+
+export function AiWorkspace({ providers }: { providers: string[] }) {
+  const [provider, setProvider] = useState(providers[0] || "openai");
+  const [standup, setStandup] = useState("");
+  const [monthlyNarrative, setMonthlyNarrative] = useState("");
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [chatStatus, setChatStatus] = useState<"idle" | "streaming">("idle");
+
+  async function handleStandup() {
+    const response = await fetch("/api/ai/standup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider }),
+    });
+
+    if (!response.ok) {
+      toast.error("Unable to generate standup.");
+      return;
+    }
+
+    const data = await response.json();
+    setStandup(data.text);
+  }
+
+  async function handleMonthlyNarrative() {
+    const response = await fetch("/api/ai/monthly-report", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider }),
+    });
+
+    if (!response.ok) {
+      toast.error("Unable to generate monthly narrative.");
+      return;
+    }
+
+    const data = await response.json();
+    setMonthlyNarrative(data.text);
+  }
+
+  async function handleChatSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    const content = String(formData.get("prompt") || "").trim();
+
+    if (!content) {
+      return;
+    }
+
+    const nextMessages: ChatMessage[] = [
+      ...messages,
+      {
+        id: crypto.randomUUID(),
+        role: "user",
+        content,
+      },
+    ];
+
+    const assistantId = crypto.randomUUID();
+    setMessages([
+      ...nextMessages,
+      {
+        id: assistantId,
+        role: "assistant",
+        content: "",
+      },
+    ]);
+    setChatStatus("streaming");
+    form.reset();
+
+    const response = await fetch("/api/ai/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider,
+        messages: nextMessages.map((message) => ({
+          role: message.role,
+          content: message.content,
+        })),
+      }),
+    });
+
+    if (!response.ok || !response.body) {
+      setChatStatus("idle");
+      toast.error("Unable to stream AI response.");
+      return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let result = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      result += decoder.decode(value, { stream: true });
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === assistantId ? { ...message, content: result } : message,
+        ),
+      );
+    }
+
+    setChatStatus("idle");
+  }
+
+  if (!providers.length) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>No AI providers configured</CardTitle>
+          <CardDescription>
+            Add an encrypted provider key in Settings → AI Keys to unlock chat,
+            standups, and monthly narratives.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
+
+  return (
+    <Tabs defaultValue="chat" className="space-y-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <TabsList>
+          <TabsTrigger value="chat">Chat with Notes</TabsTrigger>
+          <TabsTrigger value="standup">Generate Standup</TabsTrigger>
+          <TabsTrigger value="monthly">Monthly Report Writer</TabsTrigger>
+        </TabsList>
+        <Select value={provider} onValueChange={setProvider}>
+          <SelectTrigger className="max-w-[220px]">
+            <SelectValue placeholder="Provider" />
+          </SelectTrigger>
+          <SelectContent>
+            {providers.map((value) => (
+              <SelectItem key={value} value={value}>
+                {value}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <TabsContent value="chat">
+        <Card>
+          <CardHeader>
+            <CardTitle>Chat with your notes</CardTitle>
+            <CardDescription>
+              Ask grounded questions and stream a response from your selected
+              provider.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="max-h-[420px] space-y-3 overflow-y-auto rounded-3xl border border-border bg-muted/20 p-4">
+              {messages.length ? (
+                messages.map((message) => (
+                  <div
+                    key={message.id}
+                    className="rounded-2xl border border-border bg-card p-4"
+                  >
+                    <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                      {message.role}
+                    </p>
+                    <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">
+                      {message.content || (message.role === "assistant" ? "…" : "")}
+                    </p>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Ask about recent notes, summarize a project, or request a
+                  focused action plan.
+                </p>
+              )}
+            </div>
+            <form className="flex gap-3" onSubmit={handleChatSubmit}>
+              <Input
+                name="prompt"
+                placeholder="Summarize my recent product notes"
+              />
+              <Button type="submit">
+                {chatStatus === "streaming" ? "Streaming…" : "Send"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </TabsContent>
+
+      <TabsContent value="standup">
+        <Card>
+          <CardHeader>
+            <CardTitle>Daily standup</CardTitle>
+            <CardDescription>
+              Generate an update from today’s tracked work.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Button onClick={handleStandup}>Generate standup</Button>
+            <Textarea
+              value={standup}
+              onChange={(event) => setStandup(event.target.value)}
+              className="min-h-64"
+            />
+          </CardContent>
+        </Card>
+      </TabsContent>
+
+      <TabsContent value="monthly">
+        <Card>
+          <CardHeader>
+            <CardTitle>Monthly narrative</CardTitle>
+            <CardDescription>
+              Craft a reflective monthly summary grounded in your data.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Button onClick={handleMonthlyNarrative}>Generate narrative</Button>
+            <Textarea
+              value={monthlyNarrative}
+              onChange={(event) => setMonthlyNarrative(event.target.value)}
+              className="min-h-72"
+            />
+          </CardContent>
+        </Card>
+      </TabsContent>
+    </Tabs>
+  );
+}
