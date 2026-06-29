@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: koku-postgres
+    environment:
+      POSTGRES_USER: koku
+      POSTGRES_PASSWORD: koku_password
+      POSTGRES_DB: koku
+    ports:
+      - "5432:5432"
+    volumes:
+      - koku_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U koku"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  koku_postgres_data:

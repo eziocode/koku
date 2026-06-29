@@ -94,8 +94,14 @@ export function Topbar({ user, onOpenSidebar }: TopbarProps) {
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
-            onClick={() => {
-              window.location.href = "/__catalyst/auth/logout?redirectURL=/";
+            onClick={async () => {
+              const isLocal = process.env.NEXT_PUBLIC_LOCAL_MODE === "true";
+              if (isLocal) {
+                await fetch("/api/auth/local-login", { method: "DELETE" });
+                window.location.href = "/";
+              } else {
+                window.location.href = "/__catalyst/auth/logout?redirectURL=/";
+              }
             }}
           >
             <LogOut className="h-4 w-4" />

@@ -5,10 +5,9 @@ import { auth } from "@/lib/auth";
 
 export default async function LoginPage() {
   const session = await auth();
+  if (session?.user) redirect("/dashboard");
 
-  if (session?.user) {
-    redirect("/dashboard");
-  }
+  const localMode = process.env.NEXT_PUBLIC_LOCAL_MODE === "true";
 
   return (
     <div className="grid w-full max-w-6xl gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
@@ -36,7 +35,7 @@ export default async function LoginPage() {
           ))}
         </div>
       </div>
-      <LoginForm />
+      <LoginForm localMode={localMode} />
     </div>
   );
 }

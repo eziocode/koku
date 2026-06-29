@@ -8,7 +8,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const session = await auth();
 
   if (!session?.user) {
-    redirect("/__catalyst/auth/login");
+    const isLocal = process.env.NEXT_PUBLIC_LOCAL_MODE === "true";
+    redirect(isLocal ? "/login" : "/__catalyst/auth/login");
   }
 
   return (

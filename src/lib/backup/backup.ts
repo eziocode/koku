@@ -1,6 +1,7 @@
 import { createCipheriv, createHash, randomBytes } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createReadStream } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import { ZipArchive } from "archiver";
@@ -84,6 +85,14 @@ async function uploadToCatalystFileStore(filePath: string, fileName: string) {
   return String(result.id);
 }
 
+async function saveToLocalFilesystem(sourcePath: string, fileName: string) {
+  const localDir = path.join(os.homedir(), "koku-backups");
+  await mkdir(localDir, { recursive: true });
+  const dest = path.join(localDir, fileName);
+  await writeFile(dest, await readFile(sourcePath));
+  return dest;
+}
+
 export async function createUserBackup({
   userId,
   backupId,
@@ -102,20 +111,27 @@ export async function createUserBackup({
     const checksum = await encryptArchive(archivePath, encryptedPath);
     const encrypted = await readFile(encryptedPath);
 
-    // Upload encrypted archive to Catalyst File Store; store the returned file ID.
-    const fileId = await uploadToCatalystFileStore(encryptedPath, `${backupId}.enc`);
+    let storedPath: string;
+
+    if (process.env.LOCAL_MODE === "true") {
+      // Local mode: persist encrypted archive in ~/koku-backups/
+      storedPath = await saveToLocalFilesystem(encryptedPath, `${backupId}.enc`);
+    } else {
+      // Cloud mode: upload to Catalyst File Store; store the returned file ID.
+      storedPath = await uploadToCatalystFileStore(encryptedPath, `${backupId}.enc`);
+    }
 
     await db.backup.update({
       where: { id: backupId },
       data: {
         status: "completed",
-        path: fileId,
+        path: storedPath,
         size: encrypted.byteLength,
         checksum,
       },
     });
 
-    return { fileId, size: encrypted.byteLength, checksum };
+    return { storedPath, size: encrypted.byteLength, checksum };
   } catch (error) {
     await db.backup.update({ where: { id: backupId }, data: { status: "failed" } });
     throw error;

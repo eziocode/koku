@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Bot, ChartColumnBig, Clock3, Network, NotebookPen } from "lucide-react";
+import { ArrowRight, Bot, ChartColumnBig, Clock3, Download, Network, NotebookPen } from "lucide-react";
 
 import { Logo } from "@/components/layout/logo";
 import { Badge } from "@/components/ui/badge";
@@ -118,6 +118,67 @@ export default function Home() {
               </div>
             </CardContent>
           </Card>
+        </section>
+
+        <section className="space-y-6">
+          <div className="max-w-2xl space-y-3">
+            <p className="text-sm uppercase tracking-[0.3em] text-primary">Self-host</p>
+            <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+              Run Koku on your own machine.
+            </h2>
+            <p className="text-muted-foreground">
+              Download the setup script for your OS. It installs all dependencies, starts a local database, and has Koku running in minutes — no account required.
+            </p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            {[
+              {
+                label: "macOS",
+                description: "Double-click .command file",
+                file: "setup-mac.command",
+                badge: "Intel & Apple Silicon",
+              },
+              {
+                label: "Linux",
+                description: "Run with bash",
+                file: "setup-linux.sh",
+                badge: "Ubuntu, Fedora, Arch…",
+              },
+              {
+                label: "Windows",
+                description: "Double-click .bat file",
+                file: "setup-windows.bat",
+                badge: "Windows 10 / 11",
+              },
+            ].map((item) => (
+              <Card key={item.label} className="border-border/70 bg-card/80 backdrop-blur">
+                <CardHeader className="pb-3">
+                  <div className="mb-2 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <Download className="h-5 w-5" />
+                  </div>
+                  <CardTitle className="text-lg">{item.label}</CardTitle>
+                  <CardDescription>{item.description}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-xs text-muted-foreground">{item.badge}</p>
+                  <Button asChild size="sm" className="w-full">
+                    <a href={`/downloads/${item.file}`} download>
+                      Download for {item.label}
+                    </a>
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Requires{" "}
+            <a href="https://nodejs.org" target="_blank" rel="noreferrer" className="text-primary hover:underline">Node.js 20+</a>
+            {" "}and{" "}
+            <a href="https://docs.docker.com/get-docker/" target="_blank" rel="noreferrer" className="text-primary hover:underline">Docker</a>.
+            {" "}Also available:{" "}
+            <a href="/downloads/docker-compose.yml" download className="text-primary hover:underline">docker-compose.yml</a>
+            {" "}for the database only.
+          </p>
         </section>
 
         <section className="space-y-6">
