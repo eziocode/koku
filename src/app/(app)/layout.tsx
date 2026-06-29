@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { ReactNode } from "react";
 
+export const dynamic = "force-dynamic";
+
 import { AppShell } from "@/components/layout/app-shell";
 import { auth } from "@/lib/auth";
 
