@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { useNotes } from "@/lib/storage/hooks/use-notes";
 
@@ -71,7 +72,30 @@ export function NoteEditorShell({ noteId }: NoteEditorShellProps) {
   }, [note, noteId, payload, updateNote]);
 
   if (note === undefined) {
-    return <p className="text-sm text-muted-foreground">Loading note…</p>;
+    return (
+      <div className="space-y-8">
+        <div className="space-y-3">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-9 w-64" />
+        </div>
+        <div className="grid gap-6 xl:grid-cols-[1fr_320px]">
+          <div className="space-y-5">
+            <div className="space-y-4 rounded-3xl border border-border bg-card p-6 shadow-sm">
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-12" />
+                <Skeleton className="h-12 w-full" />
+              </div>
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-10" />
+                <Skeleton className="h-9 w-full" />
+              </div>
+            </div>
+            <Skeleton className="h-64 w-full rounded-3xl" />
+          </div>
+          <Skeleton className="h-48 w-full rounded-3xl" />
+        </div>
+      </div>
+    );
   }
 
   if (!note) {

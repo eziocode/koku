@@ -1,13 +1,22 @@
 "use client";
 
 import { Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useRef, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/toast";
 import { useNotes } from "@/lib/storage/hooks/use-notes";
 
@@ -18,29 +27,39 @@ export function NotesBrowser() {
   const { notes, createNote } = useNotes(search);
   const tags = useMemo(() => Array.from(new Set(notes.flatMap((note) => note.tags))).sort(), [notes]);
 
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [creating, setCreating] = useState(false);
+  const titleInputRef = useRef<HTMLInputElement | null>(null);
+
   const filteredNotes = useMemo(
     () => notes.filter((note) => activeTag === "all" || note.tags.includes(activeTag)),
     [activeTag, notes],
   );
 
-  async function handleCreateNote() {
+  function openCreateDialog() {
+    setNewTitle("");
+    setCreateOpen(true);
+    // Focus the title input after dialog opens
+    setTimeout(() => titleInputRef.current?.focus(), 80);
+  }
+
+  async function handleConfirmCreate() {
+    const title = newTitle.trim() || "Untitled note";
+    setCreating(true);
     try {
       const note = await createNote({
-        title: "Untitled note",
+        title,
         tags: [],
-        content: {
-          type: "doc",
-          content: [
-            {
-              type: "paragraph",
-            },
-          ],
-        },
+        content: { type: "doc", content: [{ type: "paragraph" }] },
       });
+      setCreateOpen(false);
       toast.success("Note created.");
       router.push(`/notes/${note.id}`);
     } catch {
       toast.error("Unable to create note.");
+    } finally {
+      setCreating(false);
     }
   }
 
@@ -54,13 +73,42 @@ export function NotesBrowser() {
         </p>
       </div>
 
+      {/* Create note dialog */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New note</DialogTitle>
+            <DialogDescription>Give your note a title to get started. You can change it any time.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label htmlFor="new-note-title">Title</Label>
+            <Input
+              id="new-note-title"
+              ref={titleInputRef}
+              value={newTitle}
+              onChange={(event) => setNewTitle(event.target.value)}
+              placeholder="e.g. Design principles"
+              onKeyDown={(event) => {
+                if (event.key === "Enter") handleConfirmCreate();
+              }}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+            <Button onClick={handleConfirmCreate} disabled={creating}>
+              {creating ? "Creating…" : "Create note"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <div className="space-y-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="relative max-w-md flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search notes by title or tag" className="pl-9" />
           </div>
-          <Button onClick={handleCreateNote}>Create new note</Button>
+          <Button onClick={openCreateDialog}>Create new note</Button>
         </div>
 
         <div className="flex flex-wrap gap-2">
