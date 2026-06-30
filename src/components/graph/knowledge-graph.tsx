@@ -6,6 +6,7 @@ import circular from "graphology-layout/circular";
 import forceAtlas2 from "graphology-layout-forceatlas2";
 import Sigma from "sigma";
 import { useRouter } from "next/navigation";
+import { useTheme } from "next-themes";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Card } from "@/components/ui/card";
@@ -26,10 +27,13 @@ interface GraphEdge {
 
 export function KnowledgeGraph() {
   const router = useRouter();
+  const { resolvedTheme } = useTheme();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const { notes } = useNotes();
   const noteLinks = useLiveQuery(() => kokuDb.noteLinks.toArray(), [], []);
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
+
+  const isDark = resolvedTheme === "dark";
 
   const nodes = useMemo(
     () => notes.map((note) => ({ id: note.id, title: note.title, tags: note.tags })),
@@ -69,10 +73,23 @@ export function KnowledgeGraph() {
     circular.assign(graph);
     forceAtlas2.assign(graph, { iterations: 80, settings: forceAtlas2.inferSettings(graph) });
 
+    const labelColor = isDark ? "#e2e8f0" : "#1e293b";
+
     const sigma = new Sigma(graph, containerRef.current, {
       renderEdgeLabels: false,
       renderLabels: true,
+      labelColor: { color: labelColor },
+      labelSize: 13,
+      labelWeight: "500",
     });
+
+    // Keep canvas background in sync with the dark/light card colour.
+    const canvas = containerRef.current.querySelector("canvas");
+    if (canvas) {
+      canvas.style.background = isDark
+        ? "hsl(var(--card))"
+        : "hsl(var(--card))";
+    }
 
     sigma.on("clickNode", ({ node }) => {
       router.push(`/notes/${node}`);
@@ -89,7 +106,7 @@ export function KnowledgeGraph() {
     return () => {
       sigma.kill();
     };
-  }, [edges, nodes, router]);
+  }, [edges, isDark, nodes, router]);
 
   return (
     <div className="space-y-8">

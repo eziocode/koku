@@ -2,7 +2,7 @@
 
 import { endOfDay, format, parseISO, startOfDay } from "date-fns";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { DailyGrid } from "@/components/time-tracker/daily-grid";
 import { EntryForm } from "@/components/time-tracker/entry-form";
@@ -27,6 +27,11 @@ export function LogClient() {
     from: startOfDay(selectedDate).toISOString(),
     to: endOfDay(selectedDate).toISOString(),
   });
+
+  // Controls the "New manual entry" dialog open state.
+  const [newEntryOpen, setNewEntryOpen] = useState(false);
+  // Incrementing this key forces EntryForm to remount (blank form) for "Save & New".
+  const [formKey, setFormKey] = useState(0);
 
   useEffect(() => {
     setDateInput(selectedDateValue);
@@ -58,6 +63,15 @@ export function LogClient() {
     router.push(dateInput ? `/log?date=${dateInput}` : "/log");
   }
 
+  const handleSaveSuccess = useCallback(() => {
+    setNewEntryOpen(false);
+  }, []);
+
+  const handleSaveAndNew = useCallback(() => {
+    // Keep dialog open, remount form with a fresh blank slate.
+    setFormKey((k) => k + 1);
+  }, []);
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -88,7 +102,7 @@ export function LogClient() {
             <CardDescription>Add a session after the fact, cleanly and quickly.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Dialog>
+            <Dialog open={newEntryOpen} onOpenChange={setNewEntryOpen}>
               <DialogTrigger asChild>
                 <Button>New manual entry</Button>
               </DialogTrigger>
@@ -97,7 +111,14 @@ export function LogClient() {
                   <DialogTitle>Create time entry</DialogTitle>
                   <DialogDescription>Record work from earlier today or another time block.</DialogDescription>
                 </DialogHeader>
-                <EntryForm projects={projects} categories={categories} />
+                <EntryForm
+                  key={formKey}
+                  projects={projects}
+                  categories={categories}
+                  showSaveAndNew
+                  onSuccess={handleSaveSuccess}
+                  onSuccessNew={handleSaveAndNew}
+                />
               </DialogContent>
             </Dialog>
           </CardContent>

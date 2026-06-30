@@ -1,7 +1,8 @@
 "use client";
 
-import { ChangeEvent, useRef } from "react";
+import { ChangeEvent, useEffect, useRef, useState } from "react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "@/components/ui/toast";
@@ -21,8 +22,33 @@ interface BackupPayload {
   };
 }
 
+interface StorageCounts {
+  projects: number;
+  categories: number;
+  timeEntries: number;
+  notes: number;
+  noteLinks: number;
+  aiKeys: number;
+}
+
 export function StorageSettingsManager() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [counts, setCounts] = useState<StorageCounts | null>(null);
+
+  useEffect(() => {
+    async function loadCounts() {
+      const [projects, categories, timeEntries, notes, noteLinks, aiKeys] = await Promise.all([
+        kokuDb.projects.count(),
+        kokuDb.categories.count(),
+        kokuDb.timeEntries.count(),
+        kokuDb.notes.count(),
+        kokuDb.noteLinks.count(),
+        kokuDb.aiKeys.count(),
+      ]);
+      setCounts({ projects, categories, timeEntries, notes, noteLinks, aiKeys });
+    }
+    loadCounts();
+  }, []);
 
   async function handleExport() {
     const payload: BackupPayload = {
@@ -113,32 +139,70 @@ export function StorageSettingsManager() {
     }
   }
 
-  function handleGoogleDriveConnect() {
-    window.open("https://accounts.google.com/o/oauth2/v2/auth", "_blank", "noopener,noreferrer");
-    toast.info("Google Drive sync is coming soon.");
-  }
-
   return (
     <div className="space-y-8">
       <div>
         <p className="text-sm uppercase tracking-[0.3em] text-primary">Storage</p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">Export, import, and sync</h1>
         <p className="mt-2 max-w-2xl text-muted-foreground">
-          Your data lives locally by default. Export a snapshot, import a backup, or prepare for future cloud drive sync.
+          Your data lives entirely in this browser. Export a snapshot any time, import it on another
+          device, or wait for cloud drive sync when it ships.
         </p>
       </div>
 
+      {/* Local storage info */}
+      <Card className="border-primary/15 bg-primary/5">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-3">
+            Where your data lives
+            <Badge className="rounded-full text-xs">IndexedDB</Badge>
+          </CardTitle>
+          <CardDescription>
+            All records are stored in your browser&apos;s IndexedDB under the origin{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs font-mono">
+              {typeof window !== "undefined" ? window.location.origin : "…"}
+            </code>
+            , database{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs font-mono">koku-local</code>.
+            Nothing is sent to any server.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {counts ? (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+              {(
+                [
+                  ["Projects", counts.projects],
+                  ["Categories", counts.categories],
+                  ["Time entries", counts.timeEntries],
+                  ["Notes", counts.notes],
+                  ["Note links", counts.noteLinks],
+                  ["AI keys", counts.aiKeys],
+                ] as [string, number][]
+              ).map(([label, count]) => (
+                <div key={label} className="rounded-2xl border border-border bg-card p-3 text-center">
+                  <p className="text-2xl font-semibold text-foreground">{count}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{label}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Loading counts…</p>
+          )}
+        </CardContent>
+      </Card>
+
       <input ref={fileInputRef} type="file" accept="application/json" className="hidden" onChange={handleImport} />
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_1fr_0.9fr]">
+      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardHeader>
             <CardTitle>Export all data</CardTitle>
-            <CardDescription>Download every Dexie table as a single JSON file.</CardDescription>
+            <CardDescription>Download every table as a single JSON file.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Includes projects, categories, notes, note links, time entries, AI keys, and app settings.
+              Includes projects, categories, notes, note links, time entries, AI keys, and settings.
             </p>
             <Button onClick={handleExport}>Export all data</Button>
           </CardContent>
@@ -159,16 +223,35 @@ export function StorageSettingsManager() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="opacity-70">
           <CardHeader>
-            <CardTitle>Connect Google Drive</CardTitle>
-            <CardDescription>Placeholder for optional future cloud sync.</CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              Google Drive
+              <Badge variant="secondary" className="rounded-full text-xs">Coming soon</Badge>
+            </CardTitle>
+            <CardDescription>Automatic backups to your Google Drive.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              OAuth flow opens in a new tab for now. Actual sync support is coming soon.
+              OAuth-based sync will let you keep an automatic off-device copy without sharing your data with any service.
             </p>
-            <Button variant="secondary" onClick={handleGoogleDriveConnect}>Connect Google Drive</Button>
+            <Button variant="secondary" disabled>Connect Google Drive</Button>
+          </CardContent>
+        </Card>
+
+        <Card className="opacity-70">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              Zoho WorkDrive
+              <Badge variant="secondary" className="rounded-full text-xs">Coming soon</Badge>
+            </CardTitle>
+            <CardDescription>Backup to your Zoho WorkDrive folder.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Direct integration with Zoho WorkDrive for seamless backup within the Zoho ecosystem.
+            </p>
+            <Button variant="secondary" disabled>Connect WorkDrive</Button>
           </CardContent>
         </Card>
       </div>
