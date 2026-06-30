@@ -1,5 +1,5 @@
-import { KnowledgeGraph } from "@/components/graph/knowledge-graph";
+import { GraphClient } from "@/components/graph/graph-client";
 
 export default function GraphPage() {
-  return <KnowledgeGraph />;
+  return <GraphClient />;
 }
