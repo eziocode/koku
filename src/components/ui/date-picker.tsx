@@ -35,7 +35,7 @@ export function DatePicker({
 
   function handleSelect(day: Date | undefined) {
     onChange(day ? format(day, "yyyy-MM-dd") : "");
-    setOpen(false);
+    if (day) setOpen(false);
   }
 
   return (
