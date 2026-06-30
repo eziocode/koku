@@ -2,7 +2,7 @@
 
 import { format, parseISO } from "date-fns";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useMemo } from "react";
 
 import { DailyBarChart } from "@/components/charts/daily-bar-chart";
 import { ProjectPieChart } from "@/components/charts/project-pie-chart";
@@ -10,29 +10,30 @@ import { TrendLineChart } from "@/components/charts/trend-line-chart";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { exportToCSV, exportToJSON, exportToPDF, exportToXLSX } from "@/lib/export";
+import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
-import { exportToCSV, exportToJSON, exportToPDF } from "@/lib/export";
 
 export function ReportsDashboard() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const selectedMonth = searchParams.get("month") || format(new Date(), "yyyy-MM");
   const monthDate = parseISO(`${selectedMonth}-01`);
-  const [monthInput, setMonthInput] = useState(selectedMonth);
   const { projects } = useProjects();
+  const { categories } = useCategories();
   const { entries } = useTimeEntries({
     from: new Date(monthDate.getFullYear(), monthDate.getMonth(), 1).toISOString(),
     to: new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0, 23, 59, 59, 999).toISOString(),
   });
 
-  useEffect(() => {
-    setMonthInput(selectedMonth);
-  }, [selectedMonth]);
-
   const projectMap = useMemo(
     () => new Map(projects.map((project) => [project.id, project])),
     [projects],
+  );
+  const categoryMap = useMemo(
+    () => new Map(categories.map((category) => [category.id, category])),
+    [categories],
   );
 
   const summary = useMemo(() => {
@@ -68,8 +69,25 @@ export function ReportsDashboard() {
     };
   }, [entries, projectMap]);
 
+  const xlsxEntries = useMemo(
+    () =>
+      entries.map((entry) => ({
+        title: entry.title,
+        startAt: entry.startAt,
+        endAt: entry.endAt ?? null,
+        durationSec: entry.durationSec ?? null,
+        projectName: entry.projectId ? projectMap.get(entry.projectId)?.name ?? "Unassigned" : "Unassigned",
+        categoryName: entry.categoryId ? categoryMap.get(entry.categoryId)?.name ?? null : null,
+        tags: entry.tags,
+        notes: entry.notes ?? null,
+        createdAt: entry.createdAt,
+      })),
+    [categoryMap, entries, projectMap],
+  );
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const monthInput = String(new FormData(event.currentTarget).get("month") || "");
     router.push(monthInput ? `/reports?month=${monthInput}` : "/reports");
   }
 
@@ -82,7 +100,7 @@ export function ReportsDashboard() {
           <p className="mt-2 max-w-2xl text-muted-foreground">Understand project allocation, daily trends, and exportable summaries for the month.</p>
         </div>
         <form className="flex items-center gap-3" onSubmit={handleSubmit}>
-          <Input type="month" name="month" value={monthInput} onChange={(event) => setMonthInput(event.target.value)} className="w-[180px]" />
+          <Input key={selectedMonth} type="month" name="month" defaultValue={selectedMonth} className="w-[180px]" />
           <Button type="submit" variant="outline">View</Button>
         </form>
       </div>
@@ -105,10 +123,21 @@ export function ReportsDashboard() {
             <CardDescription>Export</CardDescription>
             <CardTitle className="text-xl">Download your report</CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={() => exportToCSV(summary.projectBreakdown, `koku-${selectedMonth}.csv`)}>CSV</Button>
-            <Button variant="outline" onClick={() => exportToJSON({ month: selectedMonth, totalHours: summary.totalHours, projectBreakdown: summary.projectBreakdown, daily: summary.daily }, `koku-${selectedMonth}.json`)}>JSON</Button>
-            <Button variant="outline" onClick={() => exportToPDF(summary.projectBreakdown.map((item) => ({ project: item.name, hours: item.hours, color: item.color })), `koku-${selectedMonth}.pdf`)}>PDF</Button>
+          <CardContent className="space-y-3">
+            <Button
+              className="w-full"
+              onClick={() => exportToXLSX(xlsxEntries, `koku-${selectedMonth}-report.xlsx`)}
+            >
+              Export full report (.xlsx)
+            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={() => exportToCSV(summary.projectBreakdown, `koku-${selectedMonth}.csv`)}>CSV</Button>
+              <Button variant="outline" size="sm" onClick={() => exportToJSON({ month: selectedMonth, totalHours: summary.totalHours, projectBreakdown: summary.projectBreakdown, daily: summary.daily }, `koku-${selectedMonth}.json`)}>JSON</Button>
+              <Button variant="outline" size="sm" onClick={() => exportToPDF(summary.projectBreakdown.map((item) => ({ project: item.name, hours: item.hours, color: item.color })), `koku-${selectedMonth}.pdf`)}>PDF</Button>
+              <Button variant="outline" size="sm" disabled title="Coming soon">
+                Google Sheets
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>

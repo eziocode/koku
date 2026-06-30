@@ -2,7 +2,7 @@
 
 import { useLiveQuery } from "@/lib/storage/use-live-query";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { TiptapEditor } from "@/components/editor/tiptap-editor";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +17,8 @@ interface NoteEditorShellProps {
   noteId: string;
 }
 
+const EMPTY_TAGS: string[] = [];
+
 export function NoteEditorShell({ noteId }: NoteEditorShellProps) {
   const { getNote, updateNote } = useNotes();
   const note = useLiveQuery(() => getNote(noteId), [noteId]);
@@ -25,18 +27,46 @@ export function NoteEditorShell({ noteId }: NoteEditorShellProps) {
   const [tags, setTags] = useState("");
   const [slug, setSlug] = useState("");
   const [status, setStatus] = useState("Saved");
+  const [isHydrated, setIsHydrated] = useState(false);
+  const loadedNoteIdRef = useRef<string | null>(null);
+  const lastSavedPayloadRef = useRef("");
+  const noteIdValue = note?.id;
+  const noteTitle = note?.title ?? "";
+  const noteContent = note?.content ?? null;
+  const noteTags = note?.tags ?? EMPTY_TAGS;
+  const noteSlug = note?.slug ?? "";
 
   useEffect(() => {
-    if (!note) {
+    if (!noteIdValue) {
+      loadedNoteIdRef.current = null;
+      lastSavedPayloadRef.current = "";
+      queueMicrotask(() => {
+        setIsHydrated(false);
+      });
       return;
     }
 
-    setTitle(note.title);
-    setContent(note.content);
-    setTags(note.tags.join(", "));
-    setSlug(note.slug);
-    setStatus("Saved");
-  }, [note]);
+    if (loadedNoteIdRef.current === noteIdValue) {
+      return;
+    }
+
+    const snapshot = JSON.stringify({
+      title: noteTitle,
+      content: noteContent,
+      tags: noteTags,
+    });
+
+    loadedNoteIdRef.current = noteIdValue;
+    lastSavedPayloadRef.current = snapshot;
+    window.setTimeout(() => {
+      setTitle(noteTitle);
+      setContent(noteContent);
+      setTags(noteTags.join(", "));
+      setSlug(noteSlug);
+      setStatus("Saved");
+      setIsHydrated(true);
+    }, 0);
+  }, [noteContent, noteIdValue, noteSlug, noteTags, noteTitle]);
 
   const payload = useMemo(
     () => ({
@@ -51,7 +81,12 @@ export function NoteEditorShell({ noteId }: NoteEditorShellProps) {
   );
 
   useEffect(() => {
-    if (!note) {
+    if (!noteIdValue || !isHydrated) {
+      return;
+    }
+
+    const snapshot = JSON.stringify(payload);
+    if (snapshot === lastSavedPayloadRef.current) {
       return;
     }
 
@@ -65,11 +100,12 @@ export function NoteEditorShell({ noteId }: NoteEditorShellProps) {
       }
 
       setSlug(savedNote.slug);
+      lastSavedPayloadRef.current = snapshot;
       setStatus("Saved");
     }, 800);
 
     return () => window.clearTimeout(timeout);
-  }, [note, noteId, payload, updateNote]);
+  }, [isHydrated, noteId, noteIdValue, payload, updateNote]);
 
   if (note === undefined) {
     return (

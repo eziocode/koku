@@ -1,37 +1,80 @@
 "use client";
 
-import { endOfDay, format, parseISO, startOfDay } from "date-fns";
+import { endOfDay, format, parseISO, startOfDay, subDays } from "date-fns";
+import { Download, GitCompareArrows } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { DailyGrid } from "@/components/time-tracker/daily-grid";
 import { EntryForm } from "@/components/time-tracker/entry-form";
+import { LogCompare } from "@/components/time-tracker/log-compare";
+import { DEFAULT_FILTERS, LogFilterState, LogFilters } from "@/components/time-tracker/log-filters";
 import { Timer } from "@/components/time-tracker/timer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
+import { exportToCSV, exportToXLSX } from "@/lib/export";
 
 export function LogClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
+
+  // Date navigation
   const selectedDateValue = searchParams.get("date") || format(new Date(), "yyyy-MM-dd");
   const selectedDate = parseISO(`${selectedDateValue}T00:00:00`);
   const [dateInput, setDateInput] = useState(selectedDateValue);
+
+  // Compare mode
+  const compareMode = searchParams.get("compare") === "1";
+  const [compareA, setCompareA] = useState(
+    searchParams.get("a") || format(subDays(new Date(), 1), "yyyy-MM-dd"),
+  );
+  const [compareB, setCompareB] = useState(
+    searchParams.get("b") || format(new Date(), "yyyy-MM-dd"),
+  );
+
+  // Smart filters
+  const [filters, setFilters] = useState<LogFilterState>(DEFAULT_FILTERS);
+
+  // Dialog state
+  const [newEntryOpen, setNewEntryOpen] = useState(false);
+  const [formKey, setFormKey] = useState(0);
+
   const { projects } = useProjects();
   const { categories } = useCategories();
-  const { entries } = useTimeEntries({
-    from: startOfDay(selectedDate).toISOString(),
-    to: endOfDay(selectedDate).toISOString(),
-  });
 
-  // Controls the "New manual entry" dialog open state.
-  const [newEntryOpen, setNewEntryOpen] = useState(false);
-  // Incrementing this key forces EntryForm to remount (blank form) for "Save & New".
-  const [formKey, setFormKey] = useState(0);
+  // Build filter for useTimeEntries — merge date filter with smart filters
+  const entryFilters = useMemo(() => {
+    const fromDate = filters.from
+      ? startOfDay(parseISO(`${filters.from}T00:00:00`)).toISOString()
+      : startOfDay(selectedDate).toISOString();
+    const toDate = filters.to
+      ? endOfDay(parseISO(`${filters.to}T00:00:00`)).toISOString()
+      : endOfDay(selectedDate).toISOString();
+
+    return {
+      from: fromDate,
+      to: toDate,
+      projectIds: filters.projectIds.length ? filters.projectIds : undefined,
+      categoryIds: filters.categoryIds.length ? filters.categoryIds : undefined,
+      tags: filters.tags.length ? filters.tags : undefined,
+      minDurationSec: filters.minH > 0 ? filters.minH * 3600 : undefined,
+      maxDurationSec: filters.maxH > 0 ? filters.maxH * 3600 : undefined,
+      search: filters.q || undefined,
+    };
+  }, [filters, selectedDate]);
+
+  const { entries } = useTimeEntries(entryFilters);
 
   useEffect(() => {
     setDateInput(selectedDateValue);
@@ -47,33 +90,67 @@ export function LogClient() {
   );
 
   const joinedEntries = useMemo(
-    () => entries.map((entry) => ({
-      ...entry,
-      durationSec: entry.durationSec ?? null,
-      endAt: entry.endAt ?? null,
-      notes: entry.notes ?? null,
-      project: entry.projectId ? projectMap.get(entry.projectId) || null : null,
-      category: entry.categoryId ? categoryMap.get(entry.categoryId) || null : null,
-    })),
+    () =>
+      entries.map((entry) => ({
+        ...entry,
+        durationSec: entry.durationSec ?? null,
+        endAt: entry.endAt ?? null,
+        notes: entry.notes ?? null,
+        project: entry.projectId ? projectMap.get(entry.projectId) || null : null,
+        category: entry.categoryId ? categoryMap.get(entry.categoryId) || null : null,
+      })),
     [categoryMap, entries, projectMap],
   );
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function handleDateSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     router.push(dateInput ? `/log?date=${dateInput}` : "/log");
   }
 
-  const handleSaveSuccess = useCallback(() => {
-    setNewEntryOpen(false);
-  }, []);
+  function toggleCompare() {
+    if (compareMode) {
+      router.push(selectedDateValue ? `/log?date=${selectedDateValue}` : "/log");
+    } else {
+      router.push(`/log?compare=1&a=${compareA}&b=${compareB}`);
+    }
+  }
 
-  const handleSaveAndNew = useCallback(() => {
-    // Keep dialog open, remount form with a fresh blank slate.
-    setFormKey((k) => k + 1);
-  }, []);
+  const handleSaveSuccess = useCallback(() => setNewEntryOpen(false), []);
+  const handleSaveAndNew = useCallback(() => setFormKey((k) => k + 1), []);
+
+  function handleExportCSV() {
+    const rows = joinedEntries.map((e) => ({
+      Date: new Date(e.startAt).toLocaleDateString(),
+      Start: new Date(e.startAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      End: e.endAt ? new Date(e.endAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "",
+      "Duration (h)": ((e.durationSec ?? 0) / 3600).toFixed(2),
+      Title: e.title,
+      Project: e.project?.name ?? "Unassigned",
+      Category: e.category?.name ?? "",
+      Tags: e.tags.join(", "),
+      Notes: e.notes ?? "",
+    }));
+    exportToCSV(rows, `koku-log-${selectedDateValue}.csv`);
+  }
+
+  function handleExportXLSX() {
+    const xlsxEntries = joinedEntries.map((e) => ({
+      title: e.title,
+      startAt: e.startAt,
+      endAt: e.endAt,
+      durationSec: e.durationSec,
+      projectName: e.project?.name ?? "Unassigned",
+      categoryName: e.category?.name ?? null,
+      tags: e.tags,
+      notes: e.notes,
+      createdAt: e.createdAt,
+    }));
+    exportToXLSX(xlsxEntries, `koku-log-${selectedDateValue}.xlsx`);
+  }
 
   return (
     <div className="space-y-8">
+      {/* Header */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-sm uppercase tracking-[0.3em] text-primary">Time Log</p>
@@ -82,50 +159,106 @@ export function LogClient() {
             Review the day, add manual entries, and keep your timer running with intention.
           </p>
         </div>
-        <form className="flex items-center gap-3" onSubmit={handleSubmit}>
-          <Input
-            type="date"
-            name="date"
-            value={dateInput}
-            onChange={(event) => setDateInput(event.target.value)}
-            className="w-[180px]"
+        <div className="flex flex-wrap items-center gap-3">
+          {!compareMode && (
+            <form className="flex items-center gap-3" onSubmit={handleDateSubmit}>
+              <Input
+                type="date"
+                name="date"
+                value={dateInput}
+                onChange={(event) => setDateInput(event.target.value)}
+                className="w-[180px]"
+              />
+              <Button type="submit" variant="outline">Jump</Button>
+            </form>
+          )}
+          <Button
+            variant={compareMode ? "default" : "outline"}
+            size="sm"
+            onClick={toggleCompare}
+            className="gap-2"
+          >
+            <GitCompareArrows className="h-4 w-4" />
+            {compareMode ? "Exit compare" : "Compare"}
+          </Button>
+        </div>
+      </div>
+
+      {/* Compare mode */}
+      {compareMode ? (
+        <LogCompare
+          dateA={compareA}
+          dateB={compareB}
+          onChangeDateA={(d) => {
+            setCompareA(d);
+            router.replace(`/log?compare=1&a=${d}&b=${compareB}`);
+          }}
+          onChangeDateB={(d) => {
+            setCompareB(d);
+            router.replace(`/log?compare=1&a=${compareA}&b=${d}`);
+          }}
+        />
+      ) : (
+        <>
+          {/* Timer + manual entry */}
+          <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+            <Timer />
+            <Card>
+              <CardHeader>
+                <CardTitle>Manual entry</CardTitle>
+                <CardDescription>Add a session after the fact, cleanly and quickly.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-wrap gap-3">
+                <Button onClick={() => { setFormKey((k) => k + 1); setNewEntryOpen(true); }}>
+                  New manual entry
+                </Button>
+                {joinedEntries.length > 0 && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" className="gap-2">
+                        <Download className="h-4 w-4" />
+                        Export
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={handleExportCSV}>
+                        Download CSV
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleExportXLSX}>
+                        Download XLSX (4 sheets)
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Smart filters */}
+          <LogFilters filters={filters} onChange={setFilters} />
+
+          {/* Daily grid */}
+          <DailyGrid entries={joinedEntries} projects={projects} categories={categories} />
+        </>
+      )}
+
+      {/* New entry dialog */}
+      <Dialog open={newEntryOpen} onOpenChange={setNewEntryOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create time entry</DialogTitle>
+            <DialogDescription>Record work from earlier today or another time block.</DialogDescription>
+          </DialogHeader>
+          <EntryForm
+            key={formKey}
+            projects={projects}
+            categories={categories}
+            showSaveAndNew
+            onSuccess={handleSaveSuccess}
+            onSuccessNew={handleSaveAndNew}
           />
-          <Button type="submit" variant="outline">Jump</Button>
-        </form>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <Timer />
-        <Card>
-          <CardHeader>
-            <CardTitle>Manual entry</CardTitle>
-            <CardDescription>Add a session after the fact, cleanly and quickly.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Dialog open={newEntryOpen} onOpenChange={setNewEntryOpen}>
-              <DialogTrigger asChild>
-                <Button>New manual entry</Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Create time entry</DialogTitle>
-                  <DialogDescription>Record work from earlier today or another time block.</DialogDescription>
-                </DialogHeader>
-                <EntryForm
-                  key={formKey}
-                  projects={projects}
-                  categories={categories}
-                  showSaveAndNew
-                  onSuccess={handleSaveSuccess}
-                  onSuccessNew={handleSaveAndNew}
-                />
-              </DialogContent>
-            </Dialog>
-          </CardContent>
-        </Card>
-      </div>
-
-      <DailyGrid entries={joinedEntries} projects={projects} categories={categories} />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
