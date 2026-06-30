@@ -40,9 +40,9 @@ cpSync(PUBLIC_SRC, PUBLIC_DST, { recursive: true });
 // Remove old zip if present
 if (existsSync(OUT)) rmSync(OUT);
 
-// Zip the standalone directory
+// Zip the standalone directory, excluding local .env files
 console.log("📦  Creating koku-appsail.zip …");
-execSync(`cd "${STANDALONE}" && zip -r "${OUT}" .`, { stdio: "inherit" });
+execSync(`cd "${STANDALONE}" && zip -r "${OUT}" . -x "*.env" -x ".env*"`, { stdio: "inherit" });
 
 const { size } = (await import("fs")).statSync(OUT);
 console.log(`\n✅  Done — koku-appsail.zip  (${(size / 1024 / 1024).toFixed(1)} MB)`);
