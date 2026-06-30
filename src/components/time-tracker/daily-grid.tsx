@@ -2,13 +2,13 @@
 
 import { Pencil, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 
 import { EntryForm } from "@/components/time-tracker/entry-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/toast";
+import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
 import { formatDuration } from "@/lib/utils";
 
 interface SelectOption {
@@ -35,7 +35,7 @@ interface DailyGridProps {
 }
 
 export function DailyGrid({ entries, projects, categories }: DailyGridProps) {
-  const router = useRouter();
+  const { deleteEntry } = useTimeEntries();
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const editingEntry = useMemo(
@@ -44,15 +44,12 @@ export function DailyGrid({ entries, projects, categories }: DailyGridProps) {
   );
 
   async function handleDelete(id: string) {
-    const response = await fetch(`/api/time-entries/${id}`, { method: "DELETE" });
-
-    if (!response.ok) {
+    try {
+      await deleteEntry(id);
+      toast.success("Time entry deleted.");
+    } catch {
       toast.error("Unable to delete this entry.");
-      return;
     }
-
-    toast.success("Time entry deleted.");
-    router.refresh();
   }
 
   if (!entries.length) {
@@ -112,8 +109,7 @@ export function DailyGrid({ entries, projects, categories }: DailyGridProps) {
                     <EntryForm
                       projects={projects}
                       categories={categories}
-                      endpoint={`/api/time-entries/${editingEntry.id}`}
-                      method="PUT"
+                      entryId={editingEntry.id}
                       submitLabel="Update entry"
                       defaultValues={editingEntry}
                       onSuccess={() => setEditingId(null)}

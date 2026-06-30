@@ -1,5 +1,6 @@
 "use client";
 
+import { useLiveQuery } from "@/lib/storage/use-live-query";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
@@ -9,30 +10,32 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/toast";
-
-interface LinkedNote {
-  id: string;
-  title: string;
-  slug: string;
-}
+import { useNotes } from "@/lib/storage/hooks/use-notes";
 
 interface NoteEditorShellProps {
-  note: {
-    id: string;
-    title: string;
-    slug: string;
-    tags: string[];
-    content: unknown;
-    updatedAt: string;
-  };
-  linkedNotes: LinkedNote[];
+  noteId: string;
 }
 
-export function NoteEditorShell({ note, linkedNotes }: NoteEditorShellProps) {
-  const [title, setTitle] = useState(note.title);
-  const [content, setContent] = useState(note.content);
-  const [tags, setTags] = useState(note.tags.join(", "));
+export function NoteEditorShell({ noteId }: NoteEditorShellProps) {
+  const { getNote, updateNote } = useNotes();
+  const note = useLiveQuery(() => getNote(noteId), [noteId]);
+  const [title, setTitle] = useState("");
+  const [content, setContent] = useState<unknown>(null);
+  const [tags, setTags] = useState("");
+  const [slug, setSlug] = useState("");
   const [status, setStatus] = useState("Saved");
+
+  useEffect(() => {
+    if (!note) {
+      return;
+    }
+
+    setTitle(note.title);
+    setContent(note.content);
+    setTags(note.tags.join(", "));
+    setSlug(note.slug);
+    setStatus("Saved");
+  }, [note]);
 
   const payload = useMemo(
     () => ({
@@ -45,84 +48,113 @@ export function NoteEditorShell({ note, linkedNotes }: NoteEditorShellProps) {
     }),
     [content, tags, title],
   );
-  useEffect(() => {
-    const timeout = window.setTimeout(async () => {
-      const response = await fetch(`/api/notes/${note.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
 
-      if (!response.ok) {
+  useEffect(() => {
+    if (!note) {
+      return;
+    }
+
+    const timeout = window.setTimeout(async () => {
+      const savedNote = await updateNote(noteId, payload);
+
+      if (!savedNote) {
         setStatus("Save failed");
         toast.error("Unable to save note changes.");
         return;
       }
 
+      setSlug(savedNote.slug);
       setStatus("Saved");
     }, 800);
 
     return () => window.clearTimeout(timeout);
-  }, [note.id, payload]);
+  }, [note, noteId, payload, updateNote]);
+
+  if (note === undefined) {
+    return <p className="text-sm text-muted-foreground">Loading note…</p>;
+  }
+
+  if (!note) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Note not found</CardTitle>
+          <CardDescription>This note may have been deleted locally.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Link href="/notes" className="text-sm font-medium text-primary hover:underline">
+            Back to notes
+          </Link>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[1fr_320px]">
-      <div className="space-y-5">
-        <div className="space-y-4 rounded-3xl border border-border bg-card p-6 shadow-sm">
-          <div className="space-y-2">
-            <Label htmlFor="note-title">Title</Label>
-            <Input
-              id="note-title"
-              value={title}
-              onChange={(event) => {
-                setStatus("Saving…");
-                setTitle(event.target.value);
-              }}
-              className="h-12 text-lg font-semibold"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="note-tags">Tags</Label>
-            <Input
-              id="note-tags"
-              value={tags}
-              onChange={(event) => {
-                setStatus("Saving…");
-                setTags(event.target.value);
-              }}
-              placeholder="work, research, architecture"
-            />
-          </div>
-          <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <span>/{note.slug}</span>
-            <span>{status}</span>
-          </div>
-        </div>
-        <TiptapEditor
-          content={content}
-          onChange={(value) => {
-            setStatus("Saving…");
-            setContent(value);
-          }}
-        />
+    <div className="space-y-8">
+      <div>
+        <p className="text-sm uppercase tracking-[0.3em] text-primary">Note editor</p>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Write, connect, remember</h1>
       </div>
-      <div className="space-y-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>Linked notes</CardTitle>
-            <CardDescription>Connections surfaced from wiki links in this note.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {linkedNotes.length ? linkedNotes.map((linkedNote) => (
-              <Link key={linkedNote.id} href={`/notes/${linkedNote.id}`} className="block rounded-2xl border border-border bg-muted/30 p-4 transition-colors hover:bg-muted">
-                <p className="font-medium text-foreground">{linkedNote.title}</p>
-                <p className="mt-1 text-sm text-muted-foreground">/{linkedNote.slug}</p>
-              </Link>
-            )) : (
-              <p className="text-sm text-muted-foreground">Create <Badge>[[wiki-links]]</Badge> in the editor to connect notes.</p>
-            )}
-          </CardContent>
-        </Card>
+
+      <div className="grid gap-6 xl:grid-cols-[1fr_320px]">
+        <div className="space-y-5">
+          <div className="space-y-4 rounded-3xl border border-border bg-card p-6 shadow-sm">
+            <div className="space-y-2">
+              <Label htmlFor="note-title">Title</Label>
+              <Input
+                id="note-title"
+                value={title}
+                onChange={(event) => {
+                  setStatus("Saving…");
+                  setTitle(event.target.value);
+                }}
+                className="h-12 text-lg font-semibold"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="note-tags">Tags</Label>
+              <Input
+                id="note-tags"
+                value={tags}
+                onChange={(event) => {
+                  setStatus("Saving…");
+                  setTags(event.target.value);
+                }}
+                placeholder="work, research, architecture"
+              />
+            </div>
+            <div className="flex items-center justify-between text-sm text-muted-foreground">
+              <span>/{slug}</span>
+              <span>{status}</span>
+            </div>
+          </div>
+          <TiptapEditor
+            content={content}
+            onChange={(value) => {
+              setStatus("Saving…");
+              setContent(value);
+            }}
+          />
+        </div>
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Linked notes</CardTitle>
+              <CardDescription>Connections surfaced from wiki links in this note.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {note.linkedNotes.length ? note.linkedNotes.map((linkedNote) => (
+                <Link key={linkedNote.id} href={`/notes/${linkedNote.id}`} className="block rounded-2xl border border-border bg-muted/30 p-4 transition-colors hover:bg-muted">
+                  <p className="font-medium text-foreground">{linkedNote.title}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">/{linkedNote.slug}</p>
+                </Link>
+              )) : (
+                <p className="text-sm text-muted-foreground">Create <Badge>[[wiki-links]]</Badge> in the editor to connect notes.</p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

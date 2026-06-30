@@ -1,7 +1,6 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Pencil, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -11,12 +10,20 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/toast";
+import { useCategories } from "@/lib/storage/hooks/use-categories";
+import { useProjects } from "@/lib/storage/hooks/use-projects";
 
 interface ProjectRecord {
   id: string;
   name: string;
   color: string;
-  hourlyRate: number | null;
+  hourlyRate?: number | null;
+}
+
+interface CategoryRecord {
+  id: string;
+  name: string;
+  color: string;
 }
 
 function ProjectEditor({
@@ -26,7 +33,7 @@ function ProjectEditor({
   project?: ProjectRecord;
   onSaved: () => void;
 }) {
-  const router = useRouter();
+  const { createProject, updateProject } = useProjects();
   const [name, setName] = useState(project?.name || "");
   const [color, setColor] = useState(project?.color || "#c0392b");
   const [hourlyRate, setHourlyRate] = useState(project?.hourlyRate?.toString() || "");
@@ -34,24 +41,26 @@ function ProjectEditor({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const response = await fetch(project ? `/api/projects/${project.id}` : "/api/projects", {
-      method: project ? "PUT" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name,
-        color,
-        hourlyRate: hourlyRate ? Number(hourlyRate) : null,
-      }),
-    });
+    try {
+      if (project) {
+        await updateProject(project.id, {
+          name,
+          color,
+          hourlyRate: hourlyRate ? Number(hourlyRate) : null,
+        });
+      } else {
+        await createProject({
+          name,
+          color,
+          hourlyRate: hourlyRate ? Number(hourlyRate) : null,
+        });
+      }
 
-    if (!response.ok) {
+      toast.success(project ? "Project updated." : "Project created.");
+      onSaved();
+    } catch {
       toast.error("Unable to save project.");
-      return;
     }
-
-    toast.success(project ? "Project updated." : "Project created.");
-    router.refresh();
-    onSaved();
   }
 
   return (
@@ -75,66 +84,185 @@ function ProjectEditor({
   );
 }
 
-export function ProjectManager({ projects }: { projects: ProjectRecord[] }) {
-  const router = useRouter();
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingProject, setEditingProject] = useState<ProjectRecord | null>(null);
+function CategoryEditor({
+  category,
+  onSaved,
+}: {
+  category?: CategoryRecord;
+  onSaved: () => void;
+}) {
+  const { createCategory, updateCategory } = useCategories();
+  const [name, setName] = useState(category?.name || "");
+  const [color, setColor] = useState(category?.color || "#e74c3c");
 
-  async function handleDelete(id: string) {
-    const response = await fetch(`/api/projects/${id}`, { method: "DELETE" });
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
 
-    if (!response.ok) {
-      toast.error("Unable to delete project.");
-      return;
+    try {
+      if (category) {
+        await updateCategory(category.id, { name, color });
+      } else {
+        await createCategory({ name, color });
+      }
+
+      toast.success(category ? "Category updated." : "Category created.");
+      onSaved();
+    } catch {
+      toast.error("Unable to save category.");
     }
-
-    toast.success("Project deleted.");
-    router.refresh();
   }
 
   return (
-    <div className="space-y-5">
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogTrigger asChild>
-          <Button onClick={() => setEditingProject(null)}>Create project</Button>
-        </DialogTrigger>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editingProject ? "Edit project" : "Create project"}</DialogTitle>
-            <DialogDescription>Capture billing details and color coding for your work.</DialogDescription>
-          </DialogHeader>
-          <ProjectEditor project={editingProject || undefined} onSaved={() => setDialogOpen(false)} />
-        </DialogContent>
-      </Dialog>
+    <form className="space-y-4" onSubmit={handleSubmit}>
+      <div className="space-y-2">
+        <Label htmlFor="category-name">Name</Label>
+        <Input id="category-name" value={name} onChange={(event) => setName(event.target.value)} required />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="category-color">Color</Label>
+        <Input id="category-color" type="color" value={color} onChange={(event) => setColor(event.target.value)} />
+      </div>
+      <Button type="submit">{category ? "Update category" : "Create category"}</Button>
+    </form>
+  );
+}
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        {projects.map((project) => (
-          <Card key={project.id}>
-            <CardHeader>
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <CardTitle>{project.name}</CardTitle>
-                  <CardDescription>
-                    {project.hourlyRate ? `$${project.hourlyRate.toFixed(2)} / hour` : "No hourly rate set"}
-                  </CardDescription>
-                </div>
-                <Badge variant="outline" style={{ borderColor: project.color, color: project.color }}>
-                  {project.color}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="flex gap-2">
-              <Button variant="outline" onClick={() => { setEditingProject(project); setDialogOpen(true); }}>
-                <Pencil />
-                Edit
-              </Button>
-              <Button variant="ghost" onClick={() => handleDelete(project.id)}>
-                <Trash2 className="text-destructive" />
-                Delete
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
+export function ProjectManager() {
+  const { projects, deleteProject } = useProjects();
+  const { categories, deleteCategory } = useCategories();
+  const [projectDialogOpen, setProjectDialogOpen] = useState(false);
+  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState<ProjectRecord | null>(null);
+  const [editingCategory, setEditingCategory] = useState<CategoryRecord | null>(null);
+
+  async function handleDeleteProject(id: string) {
+    try {
+      await deleteProject(id);
+      toast.success("Project deleted.");
+    } catch {
+      toast.error("Unable to delete project.");
+    }
+  }
+
+  async function handleDeleteCategory(id: string) {
+    try {
+      await deleteCategory(id);
+      toast.success("Category deleted.");
+    } catch {
+      toast.error("Unable to delete category.");
+    }
+  }
+
+  return (
+    <div className="space-y-8">
+      <div>
+        <p className="text-sm uppercase tracking-[0.3em] text-primary">Projects</p>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Manage projects & categories</h1>
+        <p className="mt-2 max-w-2xl text-muted-foreground">
+          Create visual buckets for time tracking, billing, and local reporting.
+        </p>
+      </div>
+
+      <div className="grid gap-8 xl:grid-cols-2">
+        <div className="space-y-5">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-semibold">Projects</h2>
+              <p className="text-sm text-muted-foreground">Track work streams, colors, and hourly rates.</p>
+            </div>
+            <Dialog open={projectDialogOpen} onOpenChange={setProjectDialogOpen}>
+              <DialogTrigger asChild>
+                <Button onClick={() => setEditingProject(null)}>Create project</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>{editingProject ? "Edit project" : "Create project"}</DialogTitle>
+                  <DialogDescription>Capture billing details and color coding for your work.</DialogDescription>
+                </DialogHeader>
+                <ProjectEditor project={editingProject || undefined} onSaved={() => setProjectDialogOpen(false)} />
+              </DialogContent>
+            </Dialog>
+          </div>
+
+          <div className="grid gap-4">
+            {projects.map((project) => (
+              <Card key={project.id}>
+                <CardHeader>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <CardTitle>{project.name}</CardTitle>
+                      <CardDescription>
+                        {project.hourlyRate ? `$${project.hourlyRate.toFixed(2)} / hour` : "No hourly rate set"}
+                      </CardDescription>
+                    </div>
+                    <Badge variant="outline" style={{ borderColor: project.color, color: project.color }}>
+                      {project.color}
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="flex gap-2">
+                  <Button variant="outline" onClick={() => { setEditingProject(project); setProjectDialogOpen(true); }}>
+                    <Pencil />
+                    Edit
+                  </Button>
+                  <Button variant="ghost" onClick={() => handleDeleteProject(project.id)}>
+                    <Trash2 className="text-destructive" />
+                    Delete
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-5">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-semibold">Categories</h2>
+              <p className="text-sm text-muted-foreground">Tag sessions with reusable activity groupings.</p>
+            </div>
+            <Dialog open={categoryDialogOpen} onOpenChange={setCategoryDialogOpen}>
+              <DialogTrigger asChild>
+                <Button onClick={() => setEditingCategory(null)} variant="outline">Create category</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>{editingCategory ? "Edit category" : "Create category"}</DialogTitle>
+                  <DialogDescription>Use categories to group similar kinds of work.</DialogDescription>
+                </DialogHeader>
+                <CategoryEditor category={editingCategory || undefined} onSaved={() => setCategoryDialogOpen(false)} />
+              </DialogContent>
+            </Dialog>
+          </div>
+
+          <div className="grid gap-4">
+            {categories.map((category) => (
+              <Card key={category.id}>
+                <CardHeader>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <CardTitle>{category.name}</CardTitle>
+                      <CardDescription>Reusable across all local time entries.</CardDescription>
+                    </div>
+                    <Badge variant="outline" style={{ borderColor: category.color, color: category.color }}>
+                      {category.color}
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="flex gap-2">
+                  <Button variant="outline" onClick={() => { setEditingCategory(category); setCategoryDialogOpen(true); }}>
+                    <Pencil />
+                    Edit
+                  </Button>
+                  <Button variant="ghost" onClick={() => handleDeleteCategory(category.id)}>
+                    <Trash2 className="text-destructive" />
+                    Delete
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );

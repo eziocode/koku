@@ -1,32 +1,33 @@
 import { generateText } from "ai";
 import { NextResponse } from "next/server";
 
-import { badRequest, requireUserContext, serverError, unauthorized } from "@/lib/api";
-import { getAiProviderForUser } from "@/lib/ai/providers";
+import { buildModel } from "@/lib/ai/providers";
+
+function badRequest(message: string) {
+  return NextResponse.json({ error: message }, { status: 400 });
+}
 
 export async function POST(request: Request) {
   try {
-    const context = await requireUserContext();
-    if (!context) {
-      return unauthorized();
-    }
-
     const body = await request.json().catch(() => ({}));
-    const provider = typeof body.provider === "string" ? body.provider : undefined;
+    const provider = typeof body.provider === "string" ? body.provider : "openai";
+    const apiKey = typeof body.apiKey === "string" ? body.apiKey.trim() : "";
 
-    if (!provider) {
-      return badRequest({ provider: ["Provider is required."] });
+    if (!apiKey) {
+      return badRequest("API key is required.");
     }
 
-    const { model } = await getAiProviderForUser(context.userId, provider);
     const result = await generateText({
-      model,
+      model: buildModel(provider, apiKey),
       prompt: "Reply with the single word: connected",
     });
 
     return NextResponse.json({ text: result.text });
   } catch (error) {
     console.error(error);
-    return serverError(error instanceof Error ? error.message : "Unable to test AI provider.");
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unable to test AI provider." },
+      { status: 500 },
+    );
   }
 }

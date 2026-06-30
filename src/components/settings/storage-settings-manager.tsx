@@ -1,97 +1,177 @@
 "use client";
 
-import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
+import { ChangeEvent, useRef } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
+import { kokuDb, type AiKey, type AppSetting, type Category, type Note, type NoteLink, type Project, type TimeEntry } from "@/lib/storage/db";
 
-interface StorageSettingsManagerProps {
-  initialValue?: {
-    provider?: string;
-    schedule?: string;
+interface BackupPayload {
+  version: number;
+  exportedAt: string;
+  data: {
+    projects: Project[];
+    categories: Category[];
+    timeEntries: TimeEntry[];
+    notes: Note[];
+    noteLinks: NoteLink[];
+    aiKeys: AiKey[];
+    settings: AppSetting[];
   };
 }
 
-export function StorageSettingsManager({ initialValue }: StorageSettingsManagerProps) {
-  const router = useRouter();
-  const [schedule, setSchedule] = useState(initialValue?.schedule || "weekly");
+export function StorageSettingsManager() {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  async function handleSave(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const response = await fetch("/api/settings/storage", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ schedule }),
+  async function handleExport() {
+    const payload: BackupPayload = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      data: {
+        projects: await kokuDb.projects.toArray(),
+        categories: await kokuDb.categories.toArray(),
+        timeEntries: await kokuDb.timeEntries.toArray(),
+        notes: await kokuDb.notes.toArray(),
+        noteLinks: await kokuDb.noteLinks.toArray(),
+        aiKeys: await kokuDb.aiKeys.toArray(),
+        settings: await kokuDb.settings.toArray(),
+      },
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
     });
-
-    if (!response.ok) {
-      toast.error("Unable to save storage settings.");
-      return;
-    }
-
-    toast.success("Storage settings saved.");
-    router.refresh();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "koku-export-" + new Date().toISOString().slice(0, 10) + ".json";
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success("Local export downloaded.");
   }
 
-  async function handleBackup() {
-    toast.info("Starting backup…");
-    const response = await fetch("/api/backup", { method: "POST" });
-
-    if (!response.ok) {
-      toast.error("Unable to trigger backup.");
+  async function handleImport(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) {
       return;
     }
 
-    toast.success("Backup completed and uploaded to Catalyst File Store.");
+    const confirmed = window.confirm(
+      "Importing will replace the current local data in this browser. Continue?",
+    );
+
+    if (!confirmed) {
+      event.target.value = "";
+      return;
+    }
+
+    try {
+      const raw = await file.text();
+      const parsed = JSON.parse(raw) as Partial<BackupPayload>;
+      const sourceData = parsed.data;
+
+      if (!sourceData) {
+        throw new Error("Invalid backup file.");
+      }
+
+      const data: BackupPayload["data"] = {
+        projects: Array.isArray(sourceData.projects) ? sourceData.projects : [],
+        categories: Array.isArray(sourceData.categories) ? sourceData.categories : [],
+        timeEntries: Array.isArray(sourceData.timeEntries) ? sourceData.timeEntries : [],
+        notes: Array.isArray(sourceData.notes) ? sourceData.notes : [],
+        noteLinks: Array.isArray(sourceData.noteLinks) ? sourceData.noteLinks : [],
+        aiKeys: Array.isArray(sourceData.aiKeys) ? sourceData.aiKeys : [],
+        settings: Array.isArray(sourceData.settings) ? sourceData.settings : [],
+      };
+
+      await Promise.all([
+        kokuDb.noteLinks.clear(),
+        kokuDb.timeEntries.clear(),
+        kokuDb.notes.clear(),
+        kokuDb.projects.clear(),
+        kokuDb.categories.clear(),
+        kokuDb.aiKeys.clear(),
+        kokuDb.settings.clear(),
+      ]);
+
+      await Promise.all([
+        data.projects.length ? kokuDb.projects.bulkPut(data.projects) : Promise.resolve(),
+        data.categories.length ? kokuDb.categories.bulkPut(data.categories) : Promise.resolve(),
+        data.timeEntries.length ? kokuDb.timeEntries.bulkPut(data.timeEntries) : Promise.resolve(),
+        data.notes.length ? kokuDb.notes.bulkPut(data.notes) : Promise.resolve(),
+        data.noteLinks.length ? kokuDb.noteLinks.bulkPut(data.noteLinks) : Promise.resolve(),
+        data.aiKeys.length ? kokuDb.aiKeys.bulkPut(data.aiKeys) : Promise.resolve(),
+        data.settings.length ? kokuDb.settings.bulkPut(data.settings) : Promise.resolve(),
+      ]);
+
+      toast.success("Local data imported.");
+    } catch {
+      toast.error("Unable to import this file.");
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  function handleGoogleDriveConnect() {
+    window.open("https://accounts.google.com/o/oauth2/v2/auth", "_blank", "noopener,noreferrer");
+    toast.info("Google Drive sync is coming soon.");
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[1fr_0.9fr]">
-      <form className="space-y-4" onSubmit={handleSave}>
+    <div className="space-y-8">
+      <div>
+        <p className="text-sm uppercase tracking-[0.3em] text-primary">Storage</p>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Export, import, and sync</h1>
+        <p className="mt-2 max-w-2xl text-muted-foreground">
+          Your data lives locally by default. Export a snapshot, import a backup, or prepare for future cloud drive sync.
+        </p>
+      </div>
+
+      <input ref={fileInputRef} type="file" accept="application/json" className="hidden" onChange={handleImport} />
+
+      <div className="grid gap-6 xl:grid-cols-[1fr_1fr_0.9fr]">
         <Card>
           <CardHeader>
-            <CardTitle>Storage provider</CardTitle>
-            <CardDescription>
-              Backups are encrypted and stored in your Catalyst File Store folder.
-            </CardDescription>
+            <CardTitle>Export all data</CardTitle>
+            <CardDescription>Download every Dexie table as a single JSON file.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">Zoho Catalyst File Store</span>
-              {" — "}managed storage, no credentials required.
-            </div>
-            <div className="space-y-2">
-              <Label>Backup schedule</Label>
-              <Select value={schedule} onValueChange={setSchedule}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="daily">Daily</SelectItem>
-                  <SelectItem value="weekly">Weekly</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Button type="submit">Save settings</Button>
+            <p className="text-sm text-muted-foreground">
+              Includes projects, categories, notes, note links, time entries, AI keys, and app settings.
+            </p>
+            <Button onClick={handleExport}>Export all data</Button>
           </CardContent>
         </Card>
-      </form>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Backups</CardTitle>
-          <CardDescription>Export all workspace data as an encrypted archive.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Koku packages your notes, projects, time logs, AI keys metadata, and mood history
-            into an AES-256 encrypted zip archive and uploads it to your Catalyst File Store.
-          </p>
-          <Button onClick={handleBackup}>Trigger manual backup</Button>
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Import data</CardTitle>
+            <CardDescription>Restore a previously exported JSON snapshot.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Import replaces the current local database for this browser profile after confirmation.
+            </p>
+            <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+              Import data
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Connect Google Drive</CardTitle>
+            <CardDescription>Placeholder for optional future cloud sync.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              OAuth flow opens in a new tab for now. Actual sync support is coming soon.
+            </p>
+            <Button variant="secondary" onClick={handleGoogleDriveConnect}>Connect Google Drive</Button>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

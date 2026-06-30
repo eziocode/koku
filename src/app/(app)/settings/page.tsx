@@ -4,23 +4,23 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 
 const settingsSections = [
   {
-    title: "Account",
-    description: "Profile preferences, identity, and session settings.",
+    title: "Local Settings",
+    description: "Personalize your display name and device-only preferences.",
     href: "/settings/account",
   },
   {
     title: "Projects",
-    description: "Manage project colors, rates, and active tracking contexts.",
+    description: "Manage project colors, rates, and categories for local tracking.",
     href: "/settings/projects",
   },
   {
     title: "AI Keys",
-    description: "Add encrypted provider credentials for AI workflows.",
+    description: "Store provider credentials locally for AI workflows.",
     href: "/settings/ai-keys",
   },
   {
     title: "Storage",
-    description: "Choose backup providers, schedules, and export destinations.",
+    description: "Export, import, and prepare for optional cloud drive sync.",
     href: "/settings/storage",
   },
 ];
@@ -30,9 +30,9 @@ export default function SettingsPage() {
     <div className="space-y-8">
       <div>
         <p className="text-sm uppercase tracking-[0.3em] text-primary">Settings</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Shape your Koku workspace</h1>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Shape your local workspace</h1>
         <p className="mt-2 max-w-2xl text-muted-foreground">
-          Tune the foundation behind your time intelligence system.
+          Tune the device-first foundation behind your time intelligence system.
         </p>
       </div>
       <div className="grid gap-4 md:grid-cols-2">

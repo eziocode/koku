@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { endOfDay, endOfMonth, format, startOfDay, startOfMonth } from "date-fns";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
+import { useAiKeys } from "@/lib/storage/hooks/use-ai-keys";
+import { useCategories } from "@/lib/storage/hooks/use-categories";
+import { useNotes } from "@/lib/storage/hooks/use-notes";
+import { useProjects } from "@/lib/storage/hooks/use-projects";
+import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
 
 type ChatMessage = {
   id: string;
@@ -16,18 +22,79 @@ type ChatMessage = {
   content: string;
 };
 
-export function AiWorkspace({ providers }: { providers: string[] }) {
-  const [provider, setProvider] = useState(providers[0] || "openai");
+export function AiWorkspace() {
+  const { aiKeys, getApiKeyForProvider } = useAiKeys();
+  const { projects } = useProjects();
+  const { categories } = useCategories();
+  const { notes } = useNotes();
+  const [provider, setProvider] = useState(aiKeys[0]?.provider || "openai");
   const [standup, setStandup] = useState("");
   const [monthlyNarrative, setMonthlyNarrative] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [chatStatus, setChatStatus] = useState<"idle" | "streaming">("idle");
+  const [month, setMonth] = useState(format(new Date(), "yyyy-MM"));
+  const today = new Date();
+  const monthDate = new Date(`${month}-01T00:00:00`);
+  const { entries: todayEntries } = useTimeEntries({
+    from: startOfDay(today).toISOString(),
+    to: endOfDay(today).toISOString(),
+  });
+  const { entries: monthlyEntries } = useTimeEntries({
+    from: startOfMonth(monthDate).toISOString(),
+    to: endOfMonth(monthDate).toISOString(),
+  });
+
+  useEffect(() => {
+    if (aiKeys.length && !aiKeys.some((key) => key.provider === provider)) {
+      setProvider(aiKeys[0].provider);
+    }
+  }, [aiKeys, provider]);
+
+  const availableProviders = useMemo(
+    () => Array.from(new Set(aiKeys.map((key) => key.provider))),
+    [aiKeys],
+  );
+  const projectMap = useMemo(
+    () => new Map(projects.map((project) => [project.id, project.name])),
+    [projects],
+  );
+  const categoryMap = useMemo(
+    () => new Map(categories.map((category) => [category.id, category.name])),
+    [categories],
+  );
+  const noteContext = notes.slice(0, 8).map((note) => ({
+    title: note.title,
+    tags: note.tags,
+    content: note.content,
+  }));
+
+  async function getApiKey() {
+    const apiKey = await getApiKeyForProvider(provider);
+    if (!apiKey) {
+      toast.error("No API key stored for this provider.");
+      return null;
+    }
+    return apiKey;
+  }
 
   async function handleStandup() {
+    const apiKey = await getApiKey();
+    if (!apiKey) {
+      return;
+    }
+
     const response = await fetch("/api/ai/standup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider }),
+      body: JSON.stringify({
+        provider,
+        apiKey,
+        entries: todayEntries.map((entry) => ({
+          title: entry.title,
+          projectName: entry.projectId ? projectMap.get(entry.projectId) || "Unassigned" : "Unassigned",
+          durationSec: entry.durationSec || 0,
+        })),
+      }),
     });
 
     if (!response.ok) {
@@ -40,10 +107,26 @@ export function AiWorkspace({ providers }: { providers: string[] }) {
   }
 
   async function handleMonthlyNarrative() {
+    const apiKey = await getApiKey();
+    if (!apiKey) {
+      return;
+    }
+
     const response = await fetch("/api/ai/monthly-report", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider }),
+      body: JSON.stringify({
+        provider,
+        apiKey,
+        month,
+        entries: monthlyEntries.map((entry) => ({
+          title: entry.title,
+          projectName: entry.projectId ? projectMap.get(entry.projectId) || "Unassigned" : "Unassigned",
+          categoryName: entry.categoryId ? categoryMap.get(entry.categoryId) || undefined : undefined,
+          durationSec: entry.durationSec || 0,
+          notes: entry.notes || null,
+        })),
+      }),
     });
 
     if (!response.ok) {
@@ -57,6 +140,11 @@ export function AiWorkspace({ providers }: { providers: string[] }) {
 
   async function handleChatSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const apiKey = await getApiKey();
+    if (!apiKey) {
+      return;
+    }
+
     const form = event.currentTarget;
     const formData = new FormData(form);
     const content = String(formData.get("prompt") || "").trim();
@@ -91,10 +179,12 @@ export function AiWorkspace({ providers }: { providers: string[] }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         provider,
+        apiKey,
         messages: nextMessages.map((message) => ({
           role: message.role,
           content: message.content,
         })),
+        notes: noteContext,
       }),
     });
 
@@ -125,13 +215,13 @@ export function AiWorkspace({ providers }: { providers: string[] }) {
     setChatStatus("idle");
   }
 
-  if (!providers.length) {
+  if (!availableProviders.length) {
     return (
       <Card>
         <CardHeader>
           <CardTitle>No AI providers configured</CardTitle>
           <CardDescription>
-            Add an encrypted provider key in Settings → AI Keys to unlock chat,
+            Add a local provider key in Settings → AI Keys to unlock chat,
             standups, and monthly narratives.
           </CardDescription>
         </CardHeader>
@@ -152,7 +242,7 @@ export function AiWorkspace({ providers }: { providers: string[] }) {
             <SelectValue placeholder="Provider" />
           </SelectTrigger>
           <SelectContent>
-            {providers.map((value) => (
+            {availableProviders.map((value) => (
               <SelectItem key={value} value={value}>
                 {value}
               </SelectItem>
@@ -166,18 +256,14 @@ export function AiWorkspace({ providers }: { providers: string[] }) {
           <CardHeader>
             <CardTitle>Chat with your notes</CardTitle>
             <CardDescription>
-              Ask grounded questions and stream a response from your selected
-              provider.
+              Ask grounded questions and stream a response from your selected provider.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="max-h-[420px] space-y-3 overflow-y-auto rounded-3xl border border-border bg-muted/20 p-4">
               {messages.length ? (
                 messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className="rounded-2xl border border-border bg-card p-4"
-                  >
+                  <div key={message.id} className="rounded-2xl border border-border bg-card p-4">
                     <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
                       {message.role}
                     </p>
@@ -188,16 +274,12 @@ export function AiWorkspace({ providers }: { providers: string[] }) {
                 ))
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  Ask about recent notes, summarize a project, or request a
-                  focused action plan.
+                  Ask about recent notes, summarize a project, or request a focused action plan.
                 </p>
               )}
             </div>
             <form className="flex gap-3" onSubmit={handleChatSubmit}>
-              <Input
-                name="prompt"
-                placeholder="Summarize my recent product notes"
-              />
+              <Input name="prompt" placeholder="Summarize my recent product notes" />
               <Button type="submit">
                 {chatStatus === "streaming" ? "Streaming…" : "Send"}
               </Button>
@@ -210,17 +292,11 @@ export function AiWorkspace({ providers }: { providers: string[] }) {
         <Card>
           <CardHeader>
             <CardTitle>Daily standup</CardTitle>
-            <CardDescription>
-              Generate an update from today’s tracked work.
-            </CardDescription>
+            <CardDescription>Generate an update from today’s tracked work.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <Button onClick={handleStandup}>Generate standup</Button>
-            <Textarea
-              value={standup}
-              onChange={(event) => setStandup(event.target.value)}
-              className="min-h-64"
-            />
+            <Textarea value={standup} onChange={(event) => setStandup(event.target.value)} className="min-h-64" />
           </CardContent>
         </Card>
       </TabsContent>
@@ -229,17 +305,12 @@ export function AiWorkspace({ providers }: { providers: string[] }) {
         <Card>
           <CardHeader>
             <CardTitle>Monthly narrative</CardTitle>
-            <CardDescription>
-              Craft a reflective monthly summary grounded in your data.
-            </CardDescription>
+            <CardDescription>Craft a reflective monthly summary grounded in your data.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <Input type="month" value={month} onChange={(event) => setMonth(event.target.value)} className="max-w-[220px]" />
             <Button onClick={handleMonthlyNarrative}>Generate narrative</Button>
-            <Textarea
-              value={monthlyNarrative}
-              onChange={(event) => setMonthlyNarrative(event.target.value)}
-              className="min-h-72"
-            />
+            <Textarea value={monthlyNarrative} onChange={(event) => setMonthlyNarrative(event.target.value)} className="min-h-72" />
           </CardContent>
         </Card>
       </TabsContent>

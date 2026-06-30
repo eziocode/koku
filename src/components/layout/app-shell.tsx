@@ -9,14 +9,9 @@ import { cn } from "@/lib/utils";
 
 interface AppShellProps {
   children: ReactNode;
-  user: {
-    name?: string | null;
-    email?: string | null;
-    image?: string | null;
-  };
 }
 
-export function AppShell({ children, user }: AppShellProps) {
+export function AppShell({ children }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
@@ -32,7 +27,7 @@ export function AppShell({ children, user }: AppShellProps) {
         />
       ) : null}
       <div className="flex min-h-screen min-w-0 flex-1 flex-col lg:pl-0">
-        <Topbar user={user} onOpenSidebar={() => setSidebarOpen(true)} />
+        <Topbar onOpenSidebar={() => setSidebarOpen(true)} />
         <main className={cn("flex-1 px-4 py-6 sm:px-6 lg:px-8")}>{children}</main>
       </div>
     </div>

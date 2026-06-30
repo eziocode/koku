@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { kokuDb } from "@/lib/storage/db";
 import { slugify } from "@/lib/utils";
 
 function walkText(value: unknown): string {
@@ -23,7 +23,7 @@ function walkText(value: unknown): string {
   return "";
 }
 
-export function extractWikiLinks(content: unknown) {
+export function extractWikiLinks(content: unknown): string[] {
   const text = walkText(content);
   const matches = text.matchAll(/\[\[([^\]]+)\]\]/g);
   return Array.from(matches)
@@ -31,66 +31,36 @@ export function extractWikiLinks(content: unknown) {
     .filter(Boolean);
 }
 
-export async function ensureUniqueNoteSlug(
-  workspaceId: string,
-  title: string,
-  excludeId?: string,
-) {
+export async function ensureUniqueNoteSlug(title: string, excludeId?: string): Promise<string> {
   const base = slugify(title) || "untitled-note";
   let candidate = base;
-  let index = 1;
+  let i = 1;
 
   while (true) {
-    const existing = await db.note.findFirst({
-      where: {
-        workspaceId,
-        slug: candidate,
-        ...(excludeId ? { NOT: { id: excludeId } } : {}),
-      },
-      select: { id: true },
-    });
-
-    if (!existing) {
+    const existing = await kokuDb.notes.where("slug").equals(candidate).first();
+    if (!existing || existing.id === excludeId) {
       return candidate;
     }
-
-    index += 1;
-    candidate = `${base}-${index}`;
+    candidate = `${base}-${++i}`;
   }
 }
 
-export async function syncNoteLinks({
-  noteId,
-  workspaceId,
-  content,
-}: {
-  noteId: string;
-  workspaceId: string;
-  content: unknown;
-}) {
+export async function syncNoteLinks(noteId: string, content: unknown): Promise<void> {
   const slugs = extractWikiLinks(content);
   const targets = slugs.length
-    ? await db.note.findMany({
-        where: {
-          workspaceId,
-          slug: { in: slugs },
-          NOT: { id: noteId },
-        },
-        select: { id: true },
-      })
+    ? await kokuDb.notes.where("slug").anyOf(slugs).toArray()
     : [];
 
-  await db.noteLink.deleteMany({ where: { sourceNoteId: noteId } });
-
-  if (!targets.length) {
-    return;
+  await kokuDb.noteLinks.where("sourceNoteId").equals(noteId).delete();
+  if (targets.length) {
+    await kokuDb.noteLinks.bulkPut(
+      targets
+        .filter((target) => target.id !== noteId)
+        .map((target) => ({
+          id: crypto.randomUUID(),
+          sourceNoteId: noteId,
+          targetNoteId: target.id,
+        })),
+    );
   }
-
-  await db.noteLink.createMany({
-    data: targets.map((target) => ({
-      sourceNoteId: noteId,
-      targetNoteId: target.id,
-    })),
-    skipDuplicates: true,
-  });
 }

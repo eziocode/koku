@@ -2,7 +2,6 @@
 
 import { Pause, Play, Square } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,21 +10,16 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
+import { useCategories } from "@/lib/storage/hooks/use-categories";
+import { useProjects } from "@/lib/storage/hooks/use-projects";
+import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
 import { useTimerStore } from "@/lib/stores/timer-store";
 import { formatDuration } from "@/lib/utils";
 
-interface TimerOption {
-  id: string;
-  name: string;
-}
-
-interface TimerProps {
-  projects: TimerOption[];
-  categories: TimerOption[];
-}
-
-export function Timer({ projects, categories }: TimerProps) {
-  const router = useRouter();
+export function Timer() {
+  const { projects } = useProjects();
+  const { categories } = useCategories();
+  const { createEntry } = useTimeEntries();
   const { activeTimer, startTimer, pauseTimer, stopTimer } = useTimerStore();
   const [title, setTitle] = useState("");
   const [projectId, setProjectId] = useState<string>("none");
@@ -99,12 +93,8 @@ export function Timer({ projects, categories }: TimerProps) {
       ? timer.elapsedBeforePauseSec
       : Math.max(0, Math.floor((new Date(endedAt).getTime() - new Date(timer.startTime).getTime()) / 1000));
 
-    const response = await fetch("/api/time-entries", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
+    try {
+      await createEntry({
         title: timer.title,
         projectId: timer.projectId,
         categoryId: timer.categoryId,
@@ -113,21 +103,17 @@ export function Timer({ projects, categories }: TimerProps) {
         durationSec,
         tags: timer.pomodoroMode ? ["pomodoro"] : [],
         notes: timer.pomodoroMode ? "Pomodoro focus session" : null,
-      }),
-    });
+      });
 
-    setSubmitting(false);
-
-    if (!response.ok) {
+      setTitle("");
+      setProjectId("none");
+      setCategoryId("none");
+      toast.success("Time entry saved.");
+    } catch {
       toast.error("The timer stopped, but saving the entry failed.");
-      return;
+    } finally {
+      setSubmitting(false);
     }
-
-    setTitle("");
-    setProjectId("none");
-    setCategoryId("none");
-    router.refresh();
-    toast.success("Time entry saved.");
   }
 
   return (

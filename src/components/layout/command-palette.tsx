@@ -5,19 +5,15 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { appNavigation } from "@/lib/navigation";
+import { useNotes } from "@/lib/storage/hooks/use-notes";
 import { useTimerStore } from "@/lib/stores/timer-store";
-
-interface NoteResult {
-  id: string;
-  title: string;
-}
 
 export function CommandPalette() {
   const router = useRouter();
   const { startTimer } = useTimerStore();
   const [open, setOpen] = useState(false);
-  const [notes, setNotes] = useState<NoteResult[]>([]);
   const [query, setQuery] = useState("");
+  const { notes, createNote } = useNotes(query);
 
   useEffect(() => {
     const down = (event: KeyboardEvent) => {
@@ -31,35 +27,18 @@ export function CommandPalette() {
     return () => window.removeEventListener("keydown", down);
   }, []);
 
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    fetch(`/api/notes${query ? `?search=${encodeURIComponent(query)}` : ""}`)
-      .then((response) => response.json())
-      .then((data) => setNotes(Array.isArray(data) ? data.slice(0, 8) : []))
-      .catch(() => setNotes([]));
-  }, [open, query]);
-
-  const navigationItems = useMemo(() => appNavigation.map((item) => ({ value: item.title, href: item.href })), []);
+  const navigationItems = useMemo(
+    () => appNavigation.map((item) => ({ value: item.title, href: item.href })),
+    [],
+  );
+  const noteResults = notes.slice(0, 8);
 
   async function createQuickNote() {
-    const response = await fetch("/api/notes", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: "Quick note",
-        tags: ["quick"],
-        content: { type: "doc", content: [{ type: "paragraph" }] },
-      }),
+    const note = await createNote({
+      title: "Quick note",
+      tags: ["quick"],
+      content: { type: "doc", content: [{ type: "paragraph" }] },
     });
-
-    if (!response.ok) {
-      return;
-    }
-
-    const note = await response.json();
     setOpen(false);
     router.push(`/notes/${note.id}`);
   }
@@ -91,24 +70,46 @@ export function CommandPalette() {
           className="h-14 w-full border-b border-border bg-transparent px-5 text-sm outline-none placeholder:text-muted-foreground"
         />
         <Command.List className="max-h-[420px] overflow-y-auto p-2">
-          <Command.Empty className="px-4 py-8 text-center text-sm text-muted-foreground">No results found.</Command.Empty>
+          <Command.Empty className="px-4 py-8 text-center text-sm text-muted-foreground">
+            No results found.
+          </Command.Empty>
 
           <Command.Group heading="Quick actions" className="px-2 py-2 text-xs text-muted-foreground">
-            <Command.Item onSelect={startQuickTimer} className="rounded-2xl px-3 py-2 text-sm aria-selected:bg-muted">Start timer</Command.Item>
-            <Command.Item onSelect={createQuickNote} className="rounded-2xl px-3 py-2 text-sm aria-selected:bg-muted">Create note</Command.Item>
+            <Command.Item onSelect={startQuickTimer} className="rounded-2xl px-3 py-2 text-sm aria-selected:bg-muted">
+              Start timer
+            </Command.Item>
+            <Command.Item onSelect={createQuickNote} className="rounded-2xl px-3 py-2 text-sm aria-selected:bg-muted">
+              Create note
+            </Command.Item>
           </Command.Group>
 
           <Command.Group heading="Navigate" className="px-2 py-2 text-xs text-muted-foreground">
             {navigationItems.map((item) => (
-              <Command.Item key={item.href} value={item.value} onSelect={() => { setOpen(false); router.push(item.href); }} className="rounded-2xl px-3 py-2 text-sm aria-selected:bg-muted">
+              <Command.Item
+                key={item.href}
+                value={item.value}
+                onSelect={() => {
+                  setOpen(false);
+                  router.push(item.href);
+                }}
+                className="rounded-2xl px-3 py-2 text-sm aria-selected:bg-muted"
+              >
                 {item.value}
               </Command.Item>
             ))}
           </Command.Group>
 
           <Command.Group heading="Notes" className="px-2 py-2 text-xs text-muted-foreground">
-            {notes.map((note) => (
-              <Command.Item key={note.id} value={note.title} onSelect={() => { setOpen(false); router.push(`/notes/${note.id}`); }} className="rounded-2xl px-3 py-2 text-sm aria-selected:bg-muted">
+            {noteResults.map((note) => (
+              <Command.Item
+                key={note.id}
+                value={note.title}
+                onSelect={() => {
+                  setOpen(false);
+                  router.push(`/notes/${note.id}`);
+                }}
+                className="rounded-2xl px-3 py-2 text-sm aria-selected:bg-muted"
+              >
                 {note.title}
               </Command.Item>
             ))}

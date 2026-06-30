@@ -1,7 +1,6 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,34 +9,23 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
-
-interface AiKeyRecord {
-  id: string;
-  provider: string;
-  createdAt: string;
-}
+import { useAiKeys } from "@/lib/storage/hooks/use-ai-keys";
 
 function KeyEditor({ onSaved }: { onSaved: () => void }) {
-  const router = useRouter();
+  const { saveAiKey } = useAiKeys();
   const [provider, setProvider] = useState("openai");
   const [apiKey, setApiKey] = useState("");
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const response = await fetch("/api/ai-keys", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider, apiKey }),
-    });
 
-    if (!response.ok) {
+    try {
+      await saveAiKey(provider, apiKey);
+      toast.success("AI key saved.");
+      onSaved();
+    } catch {
       toast.error("Unable to save AI key.");
-      return;
     }
-
-    toast.success("AI key saved.");
-    router.refresh();
-    onSaved();
   }
 
   return (
@@ -63,27 +51,30 @@ function KeyEditor({ onSaved }: { onSaved: () => void }) {
   );
 }
 
-export function AiKeyManager({ keys }: { keys: AiKeyRecord[] }) {
-  const router = useRouter();
+export function AiKeyManager() {
+  const { aiKeys, deleteAiKey, getApiKeyForProvider } = useAiKeys();
   const [open, setOpen] = useState(false);
 
   async function handleDelete(id: string) {
-    const response = await fetch(`/api/ai-keys/${id}`, { method: "DELETE" });
-
-    if (!response.ok) {
+    try {
+      await deleteAiKey(id);
+      toast.success("AI key removed.");
+    } catch {
       toast.error("Unable to delete key.");
-      return;
     }
-
-    toast.success("AI key removed.");
-    router.refresh();
   }
 
   async function handleTest(provider: string) {
+    const apiKey = await getApiKeyForProvider(provider);
+    if (!apiKey) {
+      toast.error("No API key stored for this provider.");
+      return;
+    }
+
     const response = await fetch("/api/ai/test", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider }),
+      body: JSON.stringify({ provider, apiKey }),
     });
 
     if (!response.ok) {
@@ -95,7 +86,15 @@ export function AiKeyManager({ keys }: { keys: AiKeyRecord[] }) {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-8">
+      <div>
+        <p className="text-sm uppercase tracking-[0.3em] text-primary">AI Keys</p>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Provider credentials</h1>
+        <p className="mt-2 max-w-2xl text-muted-foreground">
+          Store API keys locally in your browser for OpenAI, Anthropic, Gemini, or Groq-backed workflows.
+        </p>
+      </div>
+
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>
           <Button>Add provider key</Button>
@@ -103,14 +102,14 @@ export function AiKeyManager({ keys }: { keys: AiKeyRecord[] }) {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add AI provider</DialogTitle>
-            <DialogDescription>Credentials are encrypted before being stored.</DialogDescription>
+            <DialogDescription>Credentials stay in your local browser database.</DialogDescription>
           </DialogHeader>
           <KeyEditor onSaved={() => setOpen(false)} />
         </DialogContent>
       </Dialog>
 
       <div className="grid gap-4 md:grid-cols-2">
-        {keys.map((key) => (
+        {aiKeys.map((key) => (
           <Card key={key.id}>
             <CardHeader>
               <CardTitle className="capitalize">{key.provider}</CardTitle>

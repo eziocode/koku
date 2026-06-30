@@ -1,7 +1,6 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
+import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
 
 interface SelectOption {
   id: string;
@@ -18,8 +18,7 @@ interface SelectOption {
 interface EntryFormProps {
   projects: SelectOption[];
   categories: SelectOption[];
-  endpoint?: string;
-  method?: "POST" | "PUT";
+  entryId?: string;
   submitLabel?: string;
   onSuccess?: () => void;
   defaultValues?: {
@@ -47,13 +46,12 @@ function toDateTimeLocal(value?: string | null) {
 export function EntryForm({
   projects,
   categories,
-  endpoint = "/api/time-entries",
-  method = "POST",
+  entryId,
   submitLabel = "Save entry",
   onSuccess,
   defaultValues,
 }: EntryFormProps) {
-  const router = useRouter();
+  const { createEntry, updateEntry } = useTimeEntries();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const initialStart = useMemo(
     () => defaultValues?.startAt || new Date().toISOString(),
@@ -71,12 +69,8 @@ export function EntryForm({
     event.preventDefault();
     setIsSubmitting(true);
 
-    const response = await fetch(endpoint, {
-      method,
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
+    try {
+      const payload = {
         title,
         projectId: projectId === "none" ? null : projectId,
         categoryId: categoryId === "none" ? null : categoryId,
@@ -87,19 +81,21 @@ export function EntryForm({
           .map((tag) => tag.trim())
           .filter(Boolean),
         notes: notes || null,
-      }),
-    });
+      };
 
-    setIsSubmitting(false);
+      if (entryId) {
+        await updateEntry(entryId, payload);
+      } else {
+        await createEntry(payload);
+      }
 
-    if (!response.ok) {
+      toast.success("Time entry saved.");
+      onSuccess?.();
+    } catch {
       toast.error("Unable to save this entry.");
-      return;
+    } finally {
+      setIsSubmitting(false);
     }
-
-    toast.success("Time entry saved.");
-    router.refresh();
-    onSuccess?.();
   }
 
   return (
