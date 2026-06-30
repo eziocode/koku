@@ -22,6 +22,46 @@ interface BackupPayload {
   };
 }
 
+/**
+ * Recursively strip any link `href` attributes that are not http(s) URLs from
+ * a TipTap ProseMirror JSON node tree. This prevents javascript: / data: URIs
+ * embedded in imported backup files from being executed when a user clicks a
+ * link node in the editor.
+ */
+function sanitizeTipTapContent(node: unknown): unknown {
+  if (!node || typeof node !== "object") return node;
+  const n = node as Record<string, unknown>;
+
+  // Strip unsafe hrefs from link marks
+  if (n.type === "link" && n.attrs && typeof n.attrs === "object") {
+    const attrs = n.attrs as Record<string, unknown>;
+    const href = attrs.href;
+    if (typeof href === "string" && !/^https?:\/\//i.test(href)) {
+      attrs.href = "";
+    }
+  }
+
+  if (Array.isArray(n.marks)) {
+    n.marks = n.marks.map((mark: unknown) => {
+      const m = mark as Record<string, unknown>;
+      if (m.type === "link" && m.attrs && typeof m.attrs === "object") {
+        const attrs = m.attrs as Record<string, unknown>;
+        const href = attrs.href;
+        if (typeof href === "string" && !/^https?:\/\//i.test(href)) {
+          attrs.href = "";
+        }
+      }
+      return m;
+    });
+  }
+
+  if (Array.isArray(n.content)) {
+    n.content = n.content.map(sanitizeTipTapContent);
+  }
+
+  return n;
+}
+
 interface StorageCounts {
   projects: number;
   categories: number;
@@ -105,7 +145,12 @@ export function StorageSettingsManager() {
         projects: Array.isArray(sourceData.projects) ? sourceData.projects : [],
         categories: Array.isArray(sourceData.categories) ? sourceData.categories : [],
         timeEntries: Array.isArray(sourceData.timeEntries) ? sourceData.timeEntries : [],
-        notes: Array.isArray(sourceData.notes) ? sourceData.notes : [],
+        notes: Array.isArray(sourceData.notes)
+          ? sourceData.notes.map((note) => ({
+              ...note,
+              content: sanitizeTipTapContent(note.content),
+            }))
+          : [],
         noteLinks: Array.isArray(sourceData.noteLinks) ? sourceData.noteLinks : [],
         aiKeys: Array.isArray(sourceData.aiKeys) ? sourceData.aiKeys : [],
         settings: Array.isArray(sourceData.settings) ? sourceData.settings : [],

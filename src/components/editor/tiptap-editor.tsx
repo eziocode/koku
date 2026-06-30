@@ -38,7 +38,12 @@ export function TiptapEditor({ content, onChange }: TiptapEditorProps) {
       StarterKit.configure({ codeBlock: false }),
       TaskList,
       TaskItem.configure({ nested: true }),
-      Link.configure({ openOnClick: true, autolink: true }),
+      Link.configure({
+        openOnClick: true,
+        autolink: true,
+        // Block javascript: and data: URIs to prevent XSS via crafted link nodes
+        isAllowedUri: (url) => /^https?:\/\//i.test(url),
+      }),
       Image,
       Placeholder.configure({ placeholder: "Capture a note, insight, or linked thought…" }),
       CodeBlockLowlight.configure({ lowlight }),
@@ -92,8 +97,10 @@ export function TiptapEditor({ content, onChange }: TiptapEditorProps) {
         <ToolbarButton
           onClick={() => {
             const url = window.prompt("Paste a link URL");
-            if (url) {
-              editor.chain().focus().setLink({ href: url }).run();
+            if (url && /^https?:\/\//i.test(url.trim())) {
+              editor.chain().focus().setLink({ href: url.trim() }).run();
+            } else if (url) {
+              window.alert("Only http:// and https:// links are allowed.");
             }
           }}
         ><Link2 /></ToolbarButton>
