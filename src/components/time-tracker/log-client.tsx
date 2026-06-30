@@ -3,7 +3,7 @@
 import { endOfDay, format, parseISO, startOfDay, subDays } from "date-fns";
 import { Download, GitCompareArrows } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { DailyGrid } from "@/components/time-tracker/daily-grid";
 import { EntryForm } from "@/components/time-tracker/entry-form";
@@ -12,6 +12,7 @@ import { DEFAULT_FILTERS, LogFilterState, LogFilters } from "@/components/time-t
 import { Timer } from "@/components/time-tracker/timer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -19,7 +20,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
@@ -102,10 +102,6 @@ export function LogClient() {
     [categoryMap, entries, projectMap],
   );
 
-  function handleDateSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    router.push(dateInput ? `/log?date=${dateInput}` : "/log");
-  }
 
   function toggleCompare() {
     if (compareMode) {
@@ -161,16 +157,15 @@ export function LogClient() {
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {!compareMode && (
-            <form className="flex items-center gap-3" onSubmit={handleDateSubmit}>
-              <Input
-                type="date"
-                name="date"
-                value={dateInput}
-                onChange={(event) => setDateInput(event.target.value)}
-                className="w-[180px]"
-              />
-              <Button type="submit" variant="outline">Jump</Button>
-            </form>
+            <DatePicker
+              value={dateInput}
+              onChange={(d) => {
+                setDateInput(d);
+                router.push(d ? `/log?date=${d}` : "/log");
+              }}
+              placeholder="Pick a date"
+              className="w-[180px]"
+            />
           )}
           <Button
             variant={compareMode ? "default" : "outline"}

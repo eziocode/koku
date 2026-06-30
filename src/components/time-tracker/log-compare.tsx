@@ -6,7 +6,7 @@ import { useMemo } from "react";
 import { ProjectPieChart } from "@/components/charts/project-pie-chart";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
@@ -78,12 +78,12 @@ export function LogCompare({ dateA, dateB, onChangeDateA, onChangeDateB }: LogCo
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-2">
         <div className="flex items-center gap-3">
-          <Label htmlFor="compare-a" className="shrink-0 font-semibold text-primary">Side A</Label>
-          <Input id="compare-a" type="date" value={dateA} onChange={(e) => onChangeDateA(e.target.value)} className="w-[180px]" />
+          <Label className="shrink-0 font-semibold text-primary">Side A</Label>
+          <DatePicker value={dateA} onChange={onChangeDateA} className="w-[180px]" />
         </div>
         <div className="flex items-center gap-3">
-          <Label htmlFor="compare-b" className="shrink-0 font-semibold text-primary">Side B</Label>
-          <Input id="compare-b" type="date" value={dateB} onChange={(e) => onChangeDateB(e.target.value)} className="w-[180px]" />
+          <Label className="shrink-0 font-semibold text-primary">Side B</Label>
+          <DatePicker value={dateB} onChange={onChangeDateB} className="w-[180px]" />
         </div>
       </div>
       <div className="grid gap-6 md:grid-cols-2">

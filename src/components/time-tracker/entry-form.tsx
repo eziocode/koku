@@ -3,6 +3,7 @@
 import { FormEvent, useRef, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -165,27 +166,29 @@ export function EntryForm({
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="entry-start">Start time</Label>
-          <Input
+          <DateTimePicker
             id="entry-start"
-            type="datetime-local"
             value={startAt}
-            onChange={(event) => {
-              setStartAt(event.target.value);
-              if (timeError) validateTimes(event.target.value, endAt);
+            onChange={(v) => {
+              setStartAt(v);
+              if (timeError) validateTimes(v, endAt);
             }}
+            placeholder="Pick start date & time"
+            className="w-full"
             required
           />
         </div>
         <div className="space-y-2">
           <Label htmlFor="entry-end">End time</Label>
-          <Input
+          <DateTimePicker
             id="entry-end"
-            type="datetime-local"
             value={endAt}
-            onChange={(event) => {
-              setEndAt(event.target.value);
-              if (timeError) validateTimes(startAt, event.target.value);
+            onChange={(v) => {
+              setEndAt(v);
+              if (timeError) validateTimes(startAt, v);
             }}
+            placeholder="Pick end date & time"
+            className="w-full"
           />
         </div>
       </div>

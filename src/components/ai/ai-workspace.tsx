@@ -6,6 +6,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { MonthPicker } from "@/components/ui/month-picker";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
@@ -308,7 +309,7 @@ export function AiWorkspace() {
             <CardDescription>Craft a reflective monthly summary grounded in your data.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Input type="month" value={month} onChange={(event) => setMonth(event.target.value)} className="max-w-[220px]" />
+            <MonthPicker value={month} onChange={setMonth} className="max-w-[220px]" />
             <Button onClick={handleMonthlyNarrative}>Generate narrative</Button>
             <Textarea value={monthlyNarrative} onChange={(event) => setMonthlyNarrative(event.target.value)} className="min-h-72" />
           </CardContent>

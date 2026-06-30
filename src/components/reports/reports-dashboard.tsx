@@ -2,14 +2,14 @@
 
 import { format, parseISO } from "date-fns";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useMemo } from "react";
+import { useMemo } from "react";
 
 import { DailyBarChart } from "@/components/charts/daily-bar-chart";
 import { ProjectPieChart } from "@/components/charts/project-pie-chart";
 import { TrendLineChart } from "@/components/charts/trend-line-chart";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { MonthPicker } from "@/components/ui/month-picker";
 import { exportToCSV, exportToJSON, exportToPDF, exportToXLSX } from "@/lib/export";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
@@ -85,7 +85,7 @@ export function ReportsDashboard() {
     [categoryMap, entries, projectMap],
   );
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const monthInput = String(new FormData(event.currentTarget).get("month") || "");
     router.push(monthInput ? `/reports?month=${monthInput}` : "/reports");
@@ -99,10 +99,11 @@ export function ReportsDashboard() {
           <h1 className="mt-2 text-3xl font-semibold tracking-tight">Monthly intelligence</h1>
           <p className="mt-2 max-w-2xl text-muted-foreground">Understand project allocation, daily trends, and exportable summaries for the month.</p>
         </div>
-        <form className="flex items-center gap-3" onSubmit={handleSubmit}>
-          <Input key={selectedMonth} type="month" name="month" defaultValue={selectedMonth} className="w-[180px]" />
-          <Button type="submit" variant="outline">View</Button>
-        </form>
+        <MonthPicker
+          value={selectedMonth}
+          onChange={(m) => router.push(m ? `/reports?month=${m}` : "/reports")}
+          className="w-[180px]"
+        />
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">

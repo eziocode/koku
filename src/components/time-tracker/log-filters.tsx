@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
@@ -107,19 +108,19 @@ export function LogFilters({ filters, onChange }: LogFiltersProps) {
               <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Date range
               </Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="date"
+              <div className="flex flex-wrap items-center gap-2">
+                <DatePicker
                   value={filters.from}
-                  onChange={(e) => onChange({ ...filters, from: e.target.value })}
-                  className="text-sm"
+                  onChange={(d) => onChange({ ...filters, from: d })}
+                  placeholder="From"
+                  className="flex-1 text-sm"
                 />
                 <span className="text-xs text-muted-foreground">–</span>
-                <Input
-                  type="date"
+                <DatePicker
                   value={filters.to}
-                  onChange={(e) => onChange({ ...filters, to: e.target.value })}
-                  className="text-sm"
+                  onChange={(d) => onChange({ ...filters, to: d })}
+                  placeholder="To"
+                  className="flex-1 text-sm"
                 />
               </div>
             </div>
