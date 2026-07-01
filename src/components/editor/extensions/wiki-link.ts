@@ -30,7 +30,7 @@ export const WikiLink = Node.create({
     return [
       "a",
       mergeAttributes(HTMLAttributes, {
-        href: `/notes/${HTMLAttributes.slug}`,
+        href: `/notes?slug=${HTMLAttributes.slug}`,
         "data-wikilink": "true",
         class:
           "rounded-md bg-primary/10 px-1.5 py-0.5 font-medium text-primary no-underline transition hover:bg-primary/20",

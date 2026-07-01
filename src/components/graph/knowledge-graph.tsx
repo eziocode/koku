@@ -92,7 +92,7 @@ export function KnowledgeGraph() {
     }
 
     sigma.on("clickNode", ({ node }) => {
-      router.push(`/notes/${node}`);
+      router.push(`/notes?id=${node}`);
     });
 
     sigma.on("enterNode", ({ node }) => {

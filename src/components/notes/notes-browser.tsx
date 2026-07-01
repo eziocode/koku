@@ -57,7 +57,7 @@ export function NotesBrowser() {
       });
       setCreateOpen(false);
       toast.success("Note created.");
-      router.push(`/notes/${note.id}`);
+      router.push(`/notes?id=${note.id}`);
     } catch {
       toast.error("Unable to create note.");
     } finally {
@@ -157,7 +157,7 @@ export function NotesBrowser() {
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filteredNotes.map((note) => (
             <div key={note.id} className="group relative">
-              <button type="button" className="w-full text-left" onClick={() => router.push(`/notes/${note.id}`)}>
+              <button type="button" className="w-full text-left" onClick={() => router.push(`/notes?id=${note.id}`)}>
                 <Card className="h-full transition-transform hover:-translate-y-1 hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5">
                   <CardHeader>
                     <CardTitle>{note.title}</CardTitle>

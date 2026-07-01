@@ -275,7 +275,7 @@ export function NoteEditorShell({ noteId }: NoteEditorShellProps) {
             </CardHeader>
             <CardContent className="space-y-3">
               {note.linkedNotes.length ? note.linkedNotes.map((linkedNote) => (
-                <Link key={linkedNote.id} href={`/notes/${linkedNote.id}`} className="block rounded-2xl border border-border bg-muted/30 p-4 transition-colors hover:bg-muted">
+                <Link key={linkedNote.id} href={`/notes?id=${linkedNote.id}`} className="block rounded-2xl border border-border bg-muted/30 p-4 transition-colors hover:bg-muted">
                   <p className="font-medium text-foreground">{linkedNote.title}</p>
                   <p className="mt-1 text-sm text-muted-foreground">/{linkedNote.slug}</p>
                 </Link>

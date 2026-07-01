@@ -40,7 +40,7 @@ export function CommandPalette() {
       content: { type: "doc", content: [{ type: "paragraph" }] },
     });
     setOpen(false);
-    router.push(`/notes/${note.id}`);
+    router.push(`/notes?id=${note.id}`);
   }
 
   function startQuickTimer() {
@@ -106,7 +106,7 @@ export function CommandPalette() {
                 value={note.title}
                 onSelect={() => {
                   setOpen(false);
-                  router.push(`/notes/${note.id}`);
+                  router.push(`/notes?id=${note.id}`);
                 }}
                 className="rounded-2xl px-3 py-2 text-sm aria-selected:bg-muted"
               >
