@@ -12,6 +12,15 @@ import { toast } from "@/components/ui/toast";
 import { AI_PROVIDER_DETAILS, AI_PROVIDERS } from "@/lib/ai/providers";
 import { useAiKeys } from "@/lib/storage/hooks/use-ai-keys";
 
+async function getResponseError(response: Response, fallback: string) {
+  const data = await response.json().catch(() => null);
+  if (data && typeof data === "object" && typeof (data as { error?: unknown }).error === "string") {
+    return (data as { error: string }).error;
+  }
+
+  return fallback;
+}
+
 function KeyEditor({ onSaved }: { onSaved: () => void }) {
   const { saveAiKey } = useAiKeys();
   const [provider, setProvider] = useState("openai");
@@ -68,6 +77,7 @@ function KeyEditor({ onSaved }: { onSaved: () => void }) {
 export function AiKeyManager() {
   const { aiKeys, deleteAiKey, getApiKeyForProvider } = useAiKeys();
   const [open, setOpen] = useState(false);
+  const [testingProvider, setTestingProvider] = useState<string | null>(null);
 
   async function handleDelete(id: string) {
     try {
@@ -85,18 +95,26 @@ export function AiKeyManager() {
       return;
     }
 
-    const response = await fetch("/api/ai/test", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider, apiKey }),
-    });
+    setTestingProvider(provider);
 
-    if (!response.ok) {
-      toast.error("Connection test failed.");
-      return;
+    try {
+      const response = await fetch("/api/ai/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider, apiKey }),
+      });
+
+      if (!response.ok) {
+        toast.error(await getResponseError(response, "Connection test failed."));
+        return;
+      }
+
+      toast.success("Connection successful.");
+    } catch {
+      toast.error("Unable to reach the connection test endpoint.");
+    } finally {
+      setTestingProvider(null);
     }
-
-    toast.success("Connection successful.");
   }
 
   return (
@@ -130,7 +148,13 @@ export function AiKeyManager() {
               <CardDescription>Added {new Date(key.createdAt).toLocaleDateString()}</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => handleTest(key.provider)}>Test connection</Button>
+              <Button
+                variant="outline"
+                onClick={() => handleTest(key.provider)}
+                disabled={testingProvider === key.provider}
+              >
+                {testingProvider === key.provider ? "Testing…" : "Test connection"}
+              </Button>
               <Button variant="ghost" onClick={() => handleDelete(key.id)}>Delete</Button>
             </CardContent>
           </Card>

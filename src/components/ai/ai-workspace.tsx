@@ -24,6 +24,15 @@ type ChatMessage = {
   content: string;
 };
 
+async function getResponseError(response: Response, fallback: string) {
+  const data = await response.json().catch(() => null);
+  if (data && typeof data === "object" && typeof (data as { error?: unknown }).error === "string") {
+    return (data as { error: string }).error;
+  }
+
+  return fallback;
+}
+
 export function AiWorkspace() {
   const { aiKeys, getApiKeyForProvider } = useAiKeys();
   const { projects } = useProjects();
@@ -34,6 +43,7 @@ export function AiWorkspace() {
   const [monthlyNarrative, setMonthlyNarrative] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [chatStatus, setChatStatus] = useState<"idle" | "streaming">("idle");
+  const [testingConnection, setTestingConnection] = useState(false);
   const [month, setMonth] = useState(format(new Date(), "yyyy-MM"));
   const today = new Date();
   const monthDate = new Date(`${month}-01T00:00:00`);
@@ -74,6 +84,34 @@ export function AiWorkspace() {
       return null;
     }
     return apiKey;
+  }
+
+  async function handleTestConnection() {
+    const apiKey = await getApiKey();
+    if (!apiKey) {
+      return;
+    }
+
+    setTestingConnection(true);
+
+    try {
+      const response = await fetch("/api/ai/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider, apiKey }),
+      });
+
+      if (!response.ok) {
+        toast.error(await getResponseError(response, "Connection test failed."));
+        return;
+      }
+
+      toast.success("Connection successful.");
+    } catch {
+      toast.error("Unable to reach the connection test endpoint.");
+    } finally {
+      setTestingConnection(false);
+    }
   }
 
   async function handleStandup() {
@@ -139,6 +177,11 @@ export function AiWorkspace() {
 
   async function handleChatSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (chatStatus === "streaming") {
+      toast.error("Wait for the current response to finish before sending another message.");
+      return;
+    }
+
     const apiKey = await getApiKey();
     if (!apiKey) {
       return;
@@ -173,45 +216,76 @@ export function AiWorkspace() {
     setChatStatus("streaming");
     form.reset();
 
-    const response = await fetch("/api/ai/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        provider,
-        apiKey,
-        messages: nextMessages.map((message) => ({
-          role: message.role,
-          content: message.content,
-        })),
-        notes: noteContext,
-      }),
-    });
+    try {
+      const response = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider,
+          apiKey,
+          messages: nextMessages.map((message) => ({
+            role: message.role,
+            content: message.content,
+          })),
+          notes: noteContext,
+        }),
+      });
 
-    if (!response.ok || !response.body) {
-      setChatStatus("idle");
-      toast.error("Unable to stream AI response.");
-      return;
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let result = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
+      if (!response.ok) {
+        const message = await getResponseError(response, "Unable to stream AI response.");
+        setMessages((current) =>
+          current.map((entry) =>
+            entry.id === assistantId ? { ...entry, content: `Error: ${message}` } : entry,
+          ),
+        );
+        toast.error(message);
+        return;
       }
 
-      result += decoder.decode(value, { stream: true });
+      if (!response.body) {
+        setMessages((current) =>
+          current.map((entry) =>
+            entry.id === assistantId ? { ...entry, content: "Error: No response stream was returned." } : entry,
+          ),
+        );
+        toast.error("No response stream was returned.");
+        return;
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let result = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          result += decoder.decode();
+          break;
+        }
+
+        result += decoder.decode(value, { stream: true });
+        setMessages((current) =>
+          current.map((entry) =>
+            entry.id === assistantId ? { ...entry, content: result } : entry,
+          ),
+        );
+      }
+
       setMessages((current) =>
-        current.map((message) =>
-          message.id === assistantId ? { ...message, content: result } : message,
+        current.map((entry) =>
+          entry.id === assistantId ? { ...entry, content: result || "No response text returned." } : entry,
         ),
       );
+    } catch {
+      setMessages((current) =>
+        current.map((entry) =>
+          entry.id === assistantId ? { ...entry, content: "Error: Unable to reach the AI endpoint." } : entry,
+        ),
+      );
+      toast.error("Unable to reach the AI endpoint.");
+    } finally {
+      setChatStatus("idle");
     }
-
-    setChatStatus("idle");
   }
 
   if (!availableProviders.length) {
@@ -236,18 +310,28 @@ export function AiWorkspace() {
           <TabsTrigger value="standup">Generate Standup</TabsTrigger>
           <TabsTrigger value="monthly">Monthly Report Writer</TabsTrigger>
         </TabsList>
-        <Select value={provider} onValueChange={setSelectedProvider}>
-          <SelectTrigger className="max-w-[220px]">
-            <SelectValue placeholder="Provider" />
-          </SelectTrigger>
-          <SelectContent>
-            {availableProviders.map((value) => (
-              <SelectItem key={value} value={value}>
-                {AI_PROVIDER_DETAILS[value as keyof typeof AI_PROVIDER_DETAILS]?.label ?? value}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={provider} onValueChange={setSelectedProvider}>
+            <SelectTrigger className="max-w-[220px]">
+              <SelectValue placeholder="Provider" />
+            </SelectTrigger>
+            <SelectContent>
+              {availableProviders.map((value) => (
+                <SelectItem key={value} value={value}>
+                  {AI_PROVIDER_DETAILS[value as keyof typeof AI_PROVIDER_DETAILS]?.label ?? value}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleTestConnection}
+            disabled={testingConnection}
+          >
+            {testingConnection ? "Testing…" : "Test connection"}
+          </Button>
+        </div>
       </div>
 
       <TabsContent value="chat">
@@ -278,8 +362,12 @@ export function AiWorkspace() {
               )}
             </div>
             <form className="flex gap-3" onSubmit={handleChatSubmit}>
-              <Input name="prompt" placeholder="Summarize my recent product notes" />
-              <Button type="submit">
+              <Input
+                name="prompt"
+                placeholder="Summarize my recent product notes"
+                disabled={chatStatus === "streaming"}
+              />
+              <Button type="submit" disabled={chatStatus === "streaming"}>
                 {chatStatus === "streaming" ? "Streaming…" : "Send"}
               </Button>
             </form>
