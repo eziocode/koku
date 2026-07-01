@@ -1,7 +1,7 @@
 "use client";
 
 import { endOfDay, endOfMonth, format, startOfDay, startOfMonth } from "date-fns";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,7 +28,7 @@ export function AiWorkspace() {
   const { projects } = useProjects();
   const { categories } = useCategories();
   const { notes } = useNotes();
-  const [provider, setProvider] = useState(aiKeys[0]?.provider || "openai");
+  const [selectedProvider, setSelectedProvider] = useState("openai");
   const [standup, setStandup] = useState("");
   const [monthlyNarrative, setMonthlyNarrative] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -45,16 +45,13 @@ export function AiWorkspace() {
     to: endOfMonth(monthDate).toISOString(),
   });
 
-  useEffect(() => {
-    if (aiKeys.length && !aiKeys.some((key) => key.provider === provider)) {
-      setProvider(aiKeys[0].provider);
-    }
-  }, [aiKeys, provider]);
-
   const availableProviders = useMemo(
     () => Array.from(new Set(aiKeys.map((key) => key.provider))),
     [aiKeys],
   );
+  const provider = availableProviders.includes(selectedProvider)
+    ? selectedProvider
+    : availableProviders[0] ?? "openai";
   const projectMap = useMemo(
     () => new Map(projects.map((project) => [project.id, project.name])),
     [projects],
@@ -238,7 +235,7 @@ export function AiWorkspace() {
           <TabsTrigger value="standup">Generate Standup</TabsTrigger>
           <TabsTrigger value="monthly">Monthly Report Writer</TabsTrigger>
         </TabsList>
-        <Select value={provider} onValueChange={setProvider}>
+        <Select value={provider} onValueChange={setSelectedProvider}>
           <SelectTrigger className="max-w-[220px]">
             <SelectValue placeholder="Provider" />
           </SelectTrigger>

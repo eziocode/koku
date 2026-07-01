@@ -76,6 +76,16 @@ class KokuDB extends Dexie {
       aiKeys: "id, provider, createdAt",
       settings: "key",
     });
+
+    this.version(2).stores({
+      projects: "id, createdAt",
+      categories: "id, name, createdAt",
+      timeEntries: "id, startAt, projectId, categoryId, createdAt, durationSec, [projectId+startAt], [categoryId+startAt]",
+      notes: "id, slug, updatedAt, createdAt",
+      noteLinks: "id, sourceNoteId, targetNoteId",
+      aiKeys: "id, provider, createdAt",
+      settings: "key",
+    });
   }
 }
 

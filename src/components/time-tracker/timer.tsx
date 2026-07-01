@@ -13,7 +13,7 @@ import { toast } from "@/components/ui/toast";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
-import { useTimerStore } from "@/lib/stores/timer-store";
+import { getActiveTimerElapsedSec, useTimerStore } from "@/lib/stores/timer-store";
 import { formatDuration } from "@/lib/utils";
 
 export function Timer() {
@@ -40,11 +40,7 @@ export function Timer() {
         return;
       }
 
-      const elapsed = Math.max(
-        0,
-        Math.floor((Date.now() - new Date(activeTimer.startTime).getTime()) / 1000),
-      );
-      setElapsedSeconds(elapsed);
+      setElapsedSeconds(getActiveTimerElapsedSec(activeTimer));
     };
 
     update();
@@ -70,18 +66,24 @@ export function Timer() {
       return;
     }
 
-    startTimer({
+    const started = startTimer({
       title: title.trim(),
       projectId: projectId === "none" ? null : projectId,
       categoryId: categoryId === "none" ? null : categoryId,
       startTime: new Date().toISOString(),
       pomodoroMode,
     });
+
+    if (!started) {
+      toast.error("Stop and save the active timer before starting another.");
+      return;
+    }
+
     toast.success("Timer started.");
   }
 
   async function handleStop() {
-    const timer = stopTimer();
+    const timer = activeTimer;
 
     if (!timer) {
       return;
@@ -89,9 +91,7 @@ export function Timer() {
 
     setSubmitting(true);
     const endedAt = new Date().toISOString();
-    const durationSec = timer.pausedAt
-      ? timer.elapsedBeforePauseSec
-      : Math.max(0, Math.floor((new Date(endedAt).getTime() - new Date(timer.startTime).getTime()) / 1000));
+    const durationSec = getActiveTimerElapsedSec(timer, new Date(endedAt).getTime());
 
     try {
       await createEntry({
@@ -105,12 +105,13 @@ export function Timer() {
         notes: timer.pomodoroMode ? "Pomodoro focus session" : null,
       });
 
+      stopTimer();
       setTitle("");
       setProjectId("none");
       setCategoryId("none");
       toast.success("Time entry saved.");
     } catch {
-      toast.error("The timer stopped, but saving the entry failed.");
+      toast.error("Saving failed. The timer is still active so you can retry.");
     } finally {
       setSubmitting(false);
     }

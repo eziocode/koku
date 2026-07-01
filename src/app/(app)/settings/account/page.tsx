@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,15 +13,13 @@ export default function AccountSettingsPage() {
   const { getSetting, setSetting } = useSettings();
   const rawDisplayName = getSetting("displayName");
   const savedDisplayName = typeof rawDisplayName === "string" ? rawDisplayName : "";
-  const [displayName, setDisplayName] = useState(savedDisplayName);
-
-  useEffect(() => {
-    setDisplayName(savedDisplayName);
-  }, [savedDisplayName]);
+  const [draftDisplayName, setDraftDisplayName] = useState<string | null>(null);
+  const displayName = draftDisplayName ?? savedDisplayName;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     await setSetting("displayName", displayName.trim());
+    setDraftDisplayName(null);
     toast.success("Local profile updated.");
   }
 
@@ -46,7 +44,7 @@ export default function AccountSettingsPage() {
               <Input
                 id="display-name"
                 value={displayName}
-                onChange={(event) => setDisplayName(event.target.value)}
+                onChange={(event) => setDraftDisplayName(event.target.value)}
                 placeholder="Koku User"
               />
             </div>

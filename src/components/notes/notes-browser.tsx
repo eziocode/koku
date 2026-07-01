@@ -122,7 +122,7 @@ export function NotesBrowser() {
       <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete "{deleteTarget?.title}"?</DialogTitle>
+            <DialogTitle>Delete &quot;{deleteTarget?.title}&quot;?</DialogTitle>
             <DialogDescription>
               This note and all its wiki-links will be permanently removed. This cannot be undone.
             </DialogDescription>
@@ -190,4 +190,3 @@ export function NotesBrowser() {
     </div>
   );
 }
-

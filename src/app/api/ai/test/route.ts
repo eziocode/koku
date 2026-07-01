@@ -2,32 +2,34 @@ import { generateText } from "ai";
 import { NextResponse } from "next/server";
 
 import { buildModel } from "@/lib/ai/providers";
-
-function badRequest(message: string) {
-  return NextResponse.json({ error: message }, { status: 400 });
-}
+import {
+  handleAiRouteError,
+  parseApiKey,
+  parseProvider,
+  readAiJson,
+} from "@/lib/ai/request-validation";
+import { auditLogger } from "@/lib/audit/logger";
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json().catch(() => ({}));
-    const provider = typeof body.provider === "string" ? body.provider : "openai";
-    const apiKey = typeof body.apiKey === "string" ? body.apiKey.trim() : "";
+    const body = await readAiJson(request);
+    const provider = parseProvider(body.provider);
+    const apiKey = parseApiKey(body.apiKey);
 
-    if (!apiKey) {
-      return badRequest("API key is required.");
-    }
-
-    const result = await generateText({
-      model: buildModel(provider, apiKey),
-      prompt: "Reply with the single word: connected",
-    });
+    const result = await auditLogger.measure(
+      "ai.provider.test",
+      () => generateText({
+        model: buildModel(provider, apiKey),
+        prompt: "Reply with the single word: connected",
+      }),
+      "performance",
+      {
+        provider,
+      },
+    );
 
     return NextResponse.json({ text: result.text });
   } catch (error) {
-    console.error(error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unable to test AI provider." },
-      { status: 500 },
-    );
+    return handleAiRouteError(error, "Unable to test AI provider.");
   }
 }

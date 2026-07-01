@@ -11,7 +11,12 @@ export interface TimeEntryFilters {
   from?: string;
   to?: string;
   projectId?: string;
+  projectIds?: string[];
   categoryId?: string;
+  categoryIds?: string[];
+  tags?: string[];
+  minDurationSec?: number;
+  maxDurationSec?: number;
   search?: string;
 }
 
@@ -34,35 +39,66 @@ function getDurationSec(startAt: string, endAt?: string | null) {
   return Math.max(0, Math.floor((Date.parse(endAt) - Date.parse(startAt)) / 1000));
 }
 
-function toDayKey(value: string) {
-  return new Date(value).toISOString().slice(0, 10);
+function normalizeIds(ids?: string[], fallbackId?: string) {
+  return Array.from(new Set([...(ids ?? []), fallbackId].filter(Boolean) as string[]));
+}
+
+function normalizeTags(tags?: string[]) {
+  return Array.from(new Set((tags ?? []).map((tag) => tag.trim().toLowerCase()).filter(Boolean)));
+}
+
+function getLocalDayRange(date: string) {
+  const start = new Date(`${date}T00:00:00`);
+  const end = new Date(start);
+  end.setHours(23, 59, 59, 999);
+
+  return {
+    from: start.toISOString(),
+    to: end.toISOString(),
+  };
 }
 
 export function useTimeEntries(filters: TimeEntryFilters = {}) {
+  const projectIds = normalizeIds(filters.projectIds, filters.projectId);
+  const categoryIds = normalizeIds(filters.categoryIds, filters.categoryId);
+  const tagFilters = normalizeTags(filters.tags);
+  const dayRange = filters.date ? getLocalDayRange(filters.date) : null;
+  const from = filters.from ?? dayRange?.from;
+  const to = filters.to ?? dayRange?.to;
+  const minDurationSec = filters.minDurationSec;
+  const maxDurationSec = filters.maxDurationSec;
+  const search = filters.search?.trim().toLowerCase();
+
   const entries = useLiveQuery(async () => {
-    const search = filters.search?.trim().toLowerCase();
-    const from = filters.from;
-    const to = filters.to;
-    let items = await kokuDb.timeEntries.toArray();
+    let items = from && to
+      ? await kokuDb.timeEntries.where("startAt").between(from, to, true, true).toArray()
+      : from
+        ? await kokuDb.timeEntries.where("startAt").aboveOrEqual(from).toArray()
+        : to
+          ? await kokuDb.timeEntries.where("startAt").belowOrEqual(to).toArray()
+          : await kokuDb.timeEntries.toArray();
 
-    if (filters.date) {
-      items = items.filter((entry) => toDayKey(entry.startAt) === filters.date);
+    if (projectIds.length) {
+      items = items.filter((entry) => entry.projectId ? projectIds.includes(entry.projectId) : false);
     }
 
-    if (from) {
-      items = items.filter((entry) => entry.startAt >= from);
+    if (categoryIds.length) {
+      items = items.filter((entry) => entry.categoryId ? categoryIds.includes(entry.categoryId) : false);
     }
 
-    if (to) {
-      items = items.filter((entry) => entry.startAt <= to);
+    if (tagFilters.length) {
+      items = items.filter((entry) => {
+        const entryTags = normalizeTags(entry.tags);
+        return tagFilters.every((tag) => entryTags.includes(tag));
+      });
     }
 
-    if (filters.projectId) {
-      items = items.filter((entry) => entry.projectId === filters.projectId);
+    if (minDurationSec !== undefined) {
+      items = items.filter((entry) => (entry.durationSec ?? 0) >= minDurationSec);
     }
 
-    if (filters.categoryId) {
-      items = items.filter((entry) => entry.categoryId === filters.categoryId);
+    if (maxDurationSec !== undefined) {
+      items = items.filter((entry) => (entry.durationSec ?? 0) <= maxDurationSec);
     }
 
     if (search) {
@@ -79,11 +115,14 @@ export function useTimeEntries(filters: TimeEntryFilters = {}) {
     );
   }, [
     filters.date,
-    filters.from,
-    filters.to,
-    filters.projectId,
-    filters.categoryId,
-    filters.search,
+    from,
+    to,
+    projectIds,
+    categoryIds,
+    tagFilters,
+    minDurationSec,
+    maxDurationSec,
+    search,
   ], EMPTY_ENTRIES);
 
   async function createEntry(data: CreateEntryInput) {

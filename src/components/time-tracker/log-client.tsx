@@ -3,7 +3,7 @@
 import { endOfDay, format, parseISO, startOfDay, subDays } from "date-fns";
 import { Download, GitCompareArrows } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { DailyGrid } from "@/components/time-tracker/daily-grid";
 import { EntryForm } from "@/components/time-tracker/entry-form";
@@ -32,7 +32,6 @@ export function LogClient() {
   // Date navigation
   const selectedDateValue = searchParams.get("date") || format(new Date(), "yyyy-MM-dd");
   const selectedDate = parseISO(`${selectedDateValue}T00:00:00`);
-  const [dateInput, setDateInput] = useState(selectedDateValue);
 
   // Compare mode
   const compareMode = searchParams.get("compare") === "1";
@@ -76,10 +75,6 @@ export function LogClient() {
 
   const { entries } = useTimeEntries(entryFilters);
 
-  useEffect(() => {
-    setDateInput(selectedDateValue);
-  }, [selectedDateValue]);
-
   const projectMap = useMemo(
     () => new Map(projects.map((project) => [project.id, project])),
     [projects],
@@ -114,7 +109,7 @@ export function LogClient() {
   const handleSaveSuccess = useCallback(() => setNewEntryOpen(false), []);
   const handleSaveAndNew = useCallback(() => setFormKey((k) => k + 1), []);
 
-  function handleExportCSV() {
+  async function handleExportCSV() {
     const rows = joinedEntries.map((e) => ({
       Date: new Date(e.startAt).toLocaleDateString(),
       Start: new Date(e.startAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
@@ -126,10 +121,10 @@ export function LogClient() {
       Tags: e.tags.join(", "),
       Notes: e.notes ?? "",
     }));
-    exportToCSV(rows, `koku-log-${selectedDateValue}.csv`);
+    await exportToCSV(rows, `koku-log-${selectedDateValue}.csv`);
   }
 
-  function handleExportXLSX() {
+  async function handleExportXLSX() {
     const xlsxEntries = joinedEntries.map((e) => ({
       title: e.title,
       startAt: e.startAt,
@@ -141,7 +136,7 @@ export function LogClient() {
       notes: e.notes,
       createdAt: e.createdAt,
     }));
-    exportToXLSX(xlsxEntries, `koku-log-${selectedDateValue}.xlsx`);
+    await exportToXLSX(xlsxEntries, `koku-log-${selectedDateValue}.xlsx`);
   }
 
   return (
@@ -158,9 +153,8 @@ export function LogClient() {
         <div className="flex flex-wrap items-center gap-3">
           {!compareMode && (
             <DatePicker
-              value={dateInput}
+              value={selectedDateValue}
               onChange={(d) => {
-                setDateInput(d);
                 router.push(d ? `/log?date=${d}` : "/log");
               }}
               placeholder="Pick a date"

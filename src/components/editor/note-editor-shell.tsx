@@ -199,7 +199,7 @@ export function NoteEditorShell({ noteId }: NoteEditorShellProps) {
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete "{note.title}"?</DialogTitle>
+            <DialogTitle>Delete &quot;{note.title}&quot;?</DialogTitle>
             <DialogDescription>
               This note and all its wiki-links will be permanently removed from your local storage. This cannot be undone.
             </DialogDescription>

@@ -3,7 +3,7 @@
 import { persist } from "zustand/middleware";
 import { create } from "zustand";
 
-type ActiveTimer = {
+export type ActiveTimer = {
   title: string;
   projectId?: string | null;
   categoryId?: string | null;
@@ -15,23 +15,54 @@ type ActiveTimer = {
 
 type TimerStore = {
   activeTimer: ActiveTimer | null;
-  startTimer: (input: Omit<ActiveTimer, "elapsedBeforePauseSec" | "pausedAt">) => void;
+  startTimer: (input: Omit<ActiveTimer, "elapsedBeforePauseSec" | "pausedAt">) => boolean;
   pauseTimer: () => void;
   stopTimer: () => ActiveTimer | null;
 };
+
+function parseTimestamp(value?: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+export function getActiveTimerElapsedSec(timer: ActiveTimer, now = Date.now()) {
+  if (timer.pausedAt) {
+    return Math.max(0, timer.elapsedBeforePauseSec);
+  }
+
+  const startMs = parseTimestamp(timer.startTime);
+  if (startMs === null) {
+    return Math.max(0, timer.elapsedBeforePauseSec);
+  }
+
+  return Math.max(
+    timer.elapsedBeforePauseSec,
+    Math.floor((now - startMs) / 1000),
+  );
+}
 
 export const useTimerStore = create<TimerStore>()(
   persist(
     (set, get) => ({
       activeTimer: null,
-      startTimer: (input) =>
+      startTimer: (input) => {
+        if (get().activeTimer) {
+          return false;
+        }
+
         set({
           activeTimer: {
             ...input,
             elapsedBeforePauseSec: 0,
             pausedAt: null,
           },
-        }),
+        });
+        return true;
+      },
       pauseTimer: () =>
         set((state) => {
           if (!state.activeTimer) {
@@ -39,26 +70,20 @@ export const useTimerStore = create<TimerStore>()(
           }
 
           if (state.activeTimer.pausedAt) {
-            const pausedDelta = Math.max(
-              0,
-              Math.floor((Date.now() - new Date(state.activeTimer.pausedAt).getTime()) / 1000),
-            );
+            const pausedAtMs = parseTimestamp(state.activeTimer.pausedAt);
+            const pausedDelta = pausedAtMs === null ? 0 : Math.max(0, Math.floor((Date.now() - pausedAtMs) / 1000));
+            const startMs = parseTimestamp(state.activeTimer.startTime) ?? Date.now();
 
             return {
               activeTimer: {
                 ...state.activeTimer,
-                startTime: new Date(
-                  new Date(state.activeTimer.startTime).getTime() + pausedDelta * 1000,
-                ).toISOString(),
+                startTime: new Date(startMs + pausedDelta * 1000).toISOString(),
                 pausedAt: null,
               },
             };
           }
 
-          const elapsed = Math.max(
-            0,
-            Math.floor((Date.now() - new Date(state.activeTimer.startTime).getTime()) / 1000),
-          );
+          const elapsed = getActiveTimerElapsedSec(state.activeTimer);
 
           return {
             activeTimer: {
