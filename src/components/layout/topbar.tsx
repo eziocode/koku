@@ -22,15 +22,13 @@ export function Topbar({ onOpenSidebar }: TopbarProps) {
   const { setTheme, resolvedTheme } = useTheme();
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur sm:px-6">
+    <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border/70 bg-background/75 px-4 backdrop-blur-xl sm:px-6">
       <Button variant="ghost" size="icon" className="lg:hidden" onClick={onOpenSidebar}>
         <Menu />
       </Button>
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-foreground">Local-first workspace</p>
-        <p className="truncate text-sm text-muted-foreground">
-          Everything lives in your browser and works without an account.
-        </p>
+        <p className="truncate text-sm text-muted-foreground">Private, portable, and calm by default.</p>
       </div>
       <TooltipProvider>
         <Tooltip>

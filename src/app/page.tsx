@@ -31,7 +31,7 @@ const features = [
     icon: ChartColumnBig,
     title: "Reporting with signal",
     description: "Break down effort by day, project, and trend with elegant analytics and exports.",
-  },
+  }, 
 ];
 
 export default function Home() {

@@ -68,29 +68,29 @@ export function DashboardClient() {
     <div className="space-y-8">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="text-sm uppercase tracking-[0.3em] text-primary">Dashboard</p>
+          <p className="text-sm uppercase tracking-[0.24em] text-primary">Dashboard</p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight">Your work pulse</h1>
           <p className="mt-2 max-w-2xl text-muted-foreground">
             Track momentum today, notice trends this week, and capture your next focused block.
           </p>
         </div>
-        <Badge variant="secondary">Local-first</Badge>
+        <Badge variant="secondary" className="rounded-full px-3 py-1">Local-first</Badge>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Card>
+        <Card className="minimal-panel">
           <CardHeader>
             <CardDescription>Today’s total</CardDescription>
-            <CardTitle className="text-3xl">{formatDuration(totalTodaySeconds)}</CardTitle>
+            <CardTitle className="text-3xl tabular-nums">{formatDuration(totalTodaySeconds)}</CardTitle>
           </CardHeader>
         </Card>
-        <Card>
+        <Card className="minimal-panel">
           <CardHeader>
             <CardDescription>Entries today</CardDescription>
-            <CardTitle className="text-3xl">{todayEntries.length}</CardTitle>
+            <CardTitle className="text-3xl tabular-nums">{todayEntries.length}</CardTitle>
           </CardHeader>
         </Card>
-        <Card>
+        <Card className="minimal-panel">
           <CardHeader>
             <CardDescription>Quick action</CardDescription>
             <CardTitle className="text-xl">Start a timer below</CardTitle>
@@ -100,7 +100,7 @@ export function DashboardClient() {
 
       <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
         <Timer />
-        <Card>
+        <Card className="minimal-panel">
           <CardHeader>
             <CardTitle>This week</CardTitle>
             <CardDescription>Daily focused hours</CardDescription>
@@ -111,7 +111,7 @@ export function DashboardClient() {
         </Card>
       </div>
 
-      <Card>
+      <Card className="minimal-panel">
         <CardHeader>
           <CardTitle>Recent time entries</CardTitle>
           <CardDescription>Your latest captured sessions.</CardDescription>
@@ -121,7 +121,7 @@ export function DashboardClient() {
             recentEntries.map((entry) => (
               <div
                 key={entry.id}
-                className="flex flex-col gap-3 rounded-2xl border border-border bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between"
+                className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-background/55 p-4 sm:flex-row sm:items-center sm:justify-between"
               >
                 <div>
                   <p className="font-medium text-foreground">{entry.title}</p>
@@ -130,7 +130,7 @@ export function DashboardClient() {
                     {entry.category ? ` • ${entry.category.name}` : ""}
                   </p>
                 </div>
-                <div className="text-sm font-semibold text-foreground">
+                <div className="text-sm font-semibold tabular-nums text-foreground">
                   {formatDuration(entry.durationSec || 0)}
                 </div>
               </div>

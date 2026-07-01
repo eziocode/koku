@@ -28,7 +28,9 @@ export function AppShell({ children }: AppShellProps) {
       ) : null}
       <div className="flex min-h-screen min-w-0 flex-1 flex-col lg:pl-0">
         <Topbar onOpenSidebar={() => setSidebarOpen(true)} />
-        <main className={cn("flex-1 px-4 py-6 sm:px-6 lg:px-8")}>{children}</main>
+        <main className={cn("mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8")}>
+          {children}
+        </main>
       </div>
     </div>
   );
