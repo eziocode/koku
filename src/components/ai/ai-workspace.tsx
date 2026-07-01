@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
+import { AI_PROVIDER_DETAILS } from "@/lib/ai/providers";
 import { useAiKeys } from "@/lib/storage/hooks/use-ai-keys";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useNotes } from "@/lib/storage/hooks/use-notes";
@@ -69,7 +70,7 @@ export function AiWorkspace() {
   async function getApiKey() {
     const apiKey = await getApiKeyForProvider(provider);
     if (!apiKey) {
-      toast.error("No API key stored for this provider.");
+      toast.error("No credential stored for this provider.");
       return null;
     }
     return apiKey;
@@ -219,7 +220,7 @@ export function AiWorkspace() {
         <CardHeader>
           <CardTitle>No AI providers configured</CardTitle>
           <CardDescription>
-            Add a local provider key in Settings → AI Keys to unlock chat,
+            Add a local provider credential in Settings → AI Keys to unlock chat,
             standups, and monthly narratives.
           </CardDescription>
         </CardHeader>
@@ -242,7 +243,7 @@ export function AiWorkspace() {
           <SelectContent>
             {availableProviders.map((value) => (
               <SelectItem key={value} value={value}>
-                {value}
+                {AI_PROVIDER_DETAILS[value as keyof typeof AI_PROVIDER_DETAILS]?.label ?? value}
               </SelectItem>
             ))}
           </SelectContent>

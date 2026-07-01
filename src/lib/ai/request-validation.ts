@@ -97,12 +97,12 @@ export function parseProvider(value: unknown): AiProvider {
 
 export function parseApiKey(value: unknown) {
   if (typeof value === "string" && value.length > MAX_API_KEY_LENGTH) {
-    throw new AiRequestError(400, "API key is too long.");
+    throw new AiRequestError(400, "Credential is too long.");
   }
 
   const apiKey = cleanText(value, MAX_API_KEY_LENGTH);
   if (!apiKey) {
-    throw new AiRequestError(400, "API key is required.");
+    throw new AiRequestError(400, "Provider credential is required.");
   }
 
   return apiKey;

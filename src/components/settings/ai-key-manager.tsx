@@ -9,12 +9,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
+import { AI_PROVIDER_DETAILS, AI_PROVIDERS } from "@/lib/ai/providers";
 import { useAiKeys } from "@/lib/storage/hooks/use-ai-keys";
 
 function KeyEditor({ onSaved }: { onSaved: () => void }) {
   const { saveAiKey } = useAiKeys();
   const [provider, setProvider] = useState("openai");
   const [apiKey, setApiKey] = useState("");
+  const providerDetails = AI_PROVIDER_DETAILS[provider as keyof typeof AI_PROVIDER_DETAILS];
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -35,18 +37,30 @@ function KeyEditor({ onSaved }: { onSaved: () => void }) {
         <Select value={provider} onValueChange={setProvider}>
           <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="openai">OpenAI</SelectItem>
-            <SelectItem value="anthropic">Anthropic</SelectItem>
-            <SelectItem value="google">Google Gemini</SelectItem>
-            <SelectItem value="groq">Groq</SelectItem>
+            {AI_PROVIDERS.map((value) => (
+              <SelectItem key={value} value={value}>
+                {AI_PROVIDER_DETAILS[value].label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
+        <p className="text-xs text-muted-foreground">{providerDetails.description}</p>
       </div>
       <div className="space-y-2">
-        <Label htmlFor="api-key">API key</Label>
-        <Input id="api-key" type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} required />
+        <Label htmlFor="api-key">{providerDetails.credentialLabel}</Label>
+        <Input
+          id="api-key"
+          type="password"
+          value={apiKey}
+          onChange={(event) => setApiKey(event.target.value)}
+          placeholder={providerDetails.credentialPlaceholder}
+          required
+        />
+        <p className="text-xs text-muted-foreground">
+          Koku never asks for ChatGPT, OpenAI, or GitHub passwords. Store only API tokens that the provider explicitly issues for third-party apps.
+        </p>
       </div>
-      <Button type="submit">Save key</Button>
+      <Button type="submit">Save credential</Button>
     </form>
   );
 }
@@ -67,7 +81,7 @@ export function AiKeyManager() {
   async function handleTest(provider: string) {
     const apiKey = await getApiKeyForProvider(provider);
     if (!apiKey) {
-      toast.error("No API key stored for this provider.");
+      toast.error("No credential stored for this provider.");
       return;
     }
 
@@ -91,7 +105,7 @@ export function AiKeyManager() {
         <p className="text-sm uppercase tracking-[0.3em] text-primary">AI Keys</p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">Provider credentials</h1>
         <p className="mt-2 max-w-2xl text-muted-foreground">
-          Store API keys locally in your browser for OpenAI, Anthropic, Gemini, or Groq-backed workflows.
+          Store provider-issued credentials locally in your browser for OpenAI, Codex, Anthropic, Gemini, Groq, or GitHub Models-backed workflows.
         </p>
       </div>
 
@@ -112,7 +126,7 @@ export function AiKeyManager() {
         {aiKeys.map((key) => (
           <Card key={key.id}>
             <CardHeader>
-              <CardTitle className="capitalize">{key.provider}</CardTitle>
+              <CardTitle>{AI_PROVIDER_DETAILS[key.provider as keyof typeof AI_PROVIDER_DETAILS]?.label ?? key.provider}</CardTitle>
               <CardDescription>Added {new Date(key.createdAt).toLocaleDateString()}</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-wrap gap-2">
