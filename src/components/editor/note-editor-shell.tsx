@@ -1,17 +1,38 @@
 "use client";
 
 import { useLiveQuery } from "@/lib/storage/use-live-query";
+import dynamic from "next/dynamic";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { TiptapEditor } from "@/components/editor/tiptap-editor";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { useNotes } from "@/lib/storage/hooks/use-notes";
+
+// TipTap uses browser-only APIs (ProseMirror, lowlight, WebWorkers).
+// Skip SSR entirely so the OpenNext serverless function never attempts to
+// evaluate these imports in a Node.js context.
+const TiptapEditor = dynamic(
+  () => import("@/components/editor/tiptap-editor").then((m) => m.TiptapEditor),
+  {
+    ssr: false,
+    loading: () => <Skeleton className="h-64 w-full rounded-3xl" />,
+  },
+);
 
 interface NoteEditorShellProps {
   noteId: string;
@@ -20,7 +41,8 @@ interface NoteEditorShellProps {
 const EMPTY_TAGS: string[] = [];
 
 export function NoteEditorShell({ noteId }: NoteEditorShellProps) {
-  const { getNote, updateNote } = useNotes();
+  const router = useRouter();
+  const { getNote, updateNote, deleteNote } = useNotes();
   const note = useLiveQuery(() => getNote(noteId), [noteId]);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState<unknown>(null);
@@ -28,6 +50,8 @@ export function NoteEditorShell({ noteId }: NoteEditorShellProps) {
   const [slug, setSlug] = useState("");
   const [status, setStatus] = useState("Saved");
   const [isHydrated, setIsHydrated] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const loadedNoteIdRef = useRef<string | null>(null);
   const lastSavedPayloadRef = useRef("");
   const noteIdValue = note?.id;
@@ -152,10 +176,56 @@ export function NoteEditorShell({ noteId }: NoteEditorShellProps) {
 
   return (
     <div className="space-y-8">
-      <div>
-        <p className="text-sm uppercase tracking-[0.3em] text-primary">Note editor</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Write, connect, remember</h1>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-sm uppercase tracking-[0.3em] text-primary">Note editor</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight">Write, connect, remember</h1>
+        </div>
+        <div className="flex items-center gap-3">
+          <Link href="/notes">
+            <Button variant="outline" size="sm">← All notes</Button>
+          </Link>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => setDeleteOpen(true)}
+          >
+            Delete note
+          </Button>
+        </div>
       </div>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete "{note.title}"?</DialogTitle>
+            <DialogDescription>
+              This note and all its wiki-links will be permanently removed from your local storage. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteOpen(false)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              disabled={deleting}
+              onClick={async () => {
+                setDeleting(true);
+                try {
+                  await deleteNote(noteId);
+                  toast.success("Note deleted.");
+                  router.push("/notes");
+                } catch {
+                  toast.error("Unable to delete this note.");
+                  setDeleting(false);
+                }
+              }}
+            >
+              {deleting ? "Deleting…" : "Delete permanently"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="grid gap-6 xl:grid-cols-[1fr_320px]">
         <div className="space-y-5">

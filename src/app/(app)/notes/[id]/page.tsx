@@ -1,11 +1,14 @@
+"use client";
+
+import { use } from "react";
+
 import { NoteEditorShell } from "@/components/editor/note-editor-shell";
 
-export default async function NoteEditorPage({
+export default function NoteEditorPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { id } = await params;
-
+  const { id } = use(params);
   return <NoteEditorShell noteId={id} />;
 }

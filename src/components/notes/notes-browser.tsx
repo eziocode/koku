@@ -1,6 +1,6 @@
 "use client";
 
-import { Search } from "lucide-react";
+import { Search, Trash2 } from "lucide-react";
 import { useRef, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -24,13 +24,16 @@ export function NotesBrowser() {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [activeTag, setActiveTag] = useState<string>("all");
-  const { notes, createNote } = useNotes(search);
+  const { notes, createNote, deleteNote } = useNotes(search);
   const tags = useMemo(() => Array.from(new Set(notes.flatMap((note) => note.tags))).sort(), [notes]);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [creating, setCreating] = useState(false);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const filteredNotes = useMemo(
     () => notes.filter((note) => activeTag === "all" || note.tags.includes(activeTag)),
@@ -40,7 +43,6 @@ export function NotesBrowser() {
   function openCreateDialog() {
     setNewTitle("");
     setCreateOpen(true);
-    // Focus the title input after dialog opens
     setTimeout(() => titleInputRef.current?.focus(), 80);
   }
 
@@ -60,6 +62,20 @@ export function NotesBrowser() {
       toast.error("Unable to create note.");
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function handleConfirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteNote(deleteTarget.id);
+      toast.success("Note deleted.");
+      setDeleteTarget(null);
+    } catch {
+      toast.error("Unable to delete this note.");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -102,6 +118,24 @@ export function NotesBrowser() {
         </DialogContent>
       </Dialog>
 
+      {/* Delete confirmation dialog */}
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete "{deleteTarget?.title}"?</DialogTitle>
+            <DialogDescription>
+              This note and all its wiki-links will be permanently removed. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>
+            <Button variant="destructive" disabled={deleting} onClick={handleConfirmDelete}>
+              {deleting ? "Deleting…" : "Delete permanently"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <div className="space-y-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="relative max-w-md flex-1">
@@ -122,23 +156,38 @@ export function NotesBrowser() {
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filteredNotes.map((note) => (
-            <button key={note.id} type="button" className="text-left" onClick={() => router.push(`/notes/${note.id}`)}>
-              <Card className="h-full transition-transform hover:-translate-y-1 hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5">
-                <CardHeader>
-                  <CardTitle>{note.title}</CardTitle>
-                  <CardDescription>Updated {new Date(note.updatedAt).toLocaleDateString()}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex flex-wrap gap-2">
-                    {note.tags.length ? note.tags.map((tag) => <Badge key={tag}>{tag}</Badge>) : <Badge variant="outline">No tags</Badge>}
-                  </div>
-                  <p className="text-sm text-muted-foreground">/{note.slug}</p>
-                </CardContent>
-              </Card>
-            </button>
+            <div key={note.id} className="group relative">
+              <button type="button" className="w-full text-left" onClick={() => router.push(`/notes/${note.id}`)}>
+                <Card className="h-full transition-transform hover:-translate-y-1 hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5">
+                  <CardHeader>
+                    <CardTitle>{note.title}</CardTitle>
+                    <CardDescription>Updated {new Date(note.updatedAt).toLocaleDateString()}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex flex-wrap gap-2">
+                      {note.tags.length ? note.tags.map((tag) => <Badge key={tag}>{tag}</Badge>) : <Badge variant="outline">No tags</Badge>}
+                    </div>
+                    <p className="text-sm text-muted-foreground">/{note.slug}</p>
+                  </CardContent>
+                </Card>
+              </button>
+              {/* Delete button — appears on hover */}
+              <button
+                type="button"
+                aria-label="Delete note"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDeleteTarget({ id: note.id, title: note.title });
+                }}
+                className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-lg border border-border bg-card opacity-0 shadow-sm transition-opacity group-hover:opacity-100 hover:border-destructive hover:text-destructive"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
           ))}
         </div>
       </div>
     </div>
   );
 }
+
