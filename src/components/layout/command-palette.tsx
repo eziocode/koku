@@ -7,10 +7,11 @@ import { useEffect, useMemo, useState } from "react";
 import { appNavigation } from "@/lib/navigation";
 import { useNotes } from "@/lib/storage/hooks/use-notes";
 import { useTimerStore } from "@/lib/stores/timer-store";
+import { toast } from "@/components/ui/toast";
 
 export function CommandPalette() {
   const router = useRouter();
-  const { startTimer } = useTimerStore();
+  const { timers, startTimer } = useTimerStore();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const { notes, createNote } = useNotes(query);
@@ -44,13 +45,26 @@ export function CommandPalette() {
   }
 
   function startQuickTimer() {
-    startTimer({
+    if (timers.length > 0) {
+      setOpen(false);
+      router.push("/log");
+      toast.error("Stop and save active timers before starting another.");
+      return;
+    }
+
+    const started = startTimer({
       title: "Quick focus",
       startTime: new Date().toISOString(),
       projectId: null,
       categoryId: null,
       pomodoroMode: false,
     });
+
+    if (!started) {
+      toast.error("Stop and save active timers before starting another.");
+      return;
+    }
+
     setOpen(false);
     router.push("/log");
   }

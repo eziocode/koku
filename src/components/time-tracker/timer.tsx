@@ -1,10 +1,18 @@
 "use client";
 
-import { Pause, Play, Square } from "lucide-react";
+import { Pause, Play, Plus, Square } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -13,107 +21,403 @@ import { toast } from "@/components/ui/toast";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
-import { getActiveTimerElapsedSec, useTimerStore } from "@/lib/stores/timer-store";
+import {
+  getActiveTimerElapsedSec,
+  type ActiveTimer,
+  type TimerStartInput,
+  useTimerStore,
+} from "@/lib/stores/timer-store";
 import { formatDuration } from "@/lib/utils";
+
+interface SelectOption {
+  id: string;
+  name: string;
+}
+
+interface TimerFieldsProps {
+  idPrefix: string;
+  title: string;
+  projectId: string;
+  categoryId: string;
+  pomodoroMode: boolean;
+  projects: SelectOption[];
+  categories: SelectOption[];
+  onTitleChange: (value: string) => void;
+  onProjectIdChange: (value: string) => void;
+  onCategoryIdChange: (value: string) => void;
+  onPomodoroModeChange: (value: boolean) => void;
+}
+
+interface TimerSessionCardProps {
+  timer: ActiveTimer;
+  elapsedSec: number;
+  isPrimary: boolean;
+  projectName: string;
+  categoryName: string;
+  submitting: boolean;
+  onPause: () => void;
+  onResume: () => void;
+  onStop: () => void;
+}
+
+function TimerFields({
+  idPrefix,
+  title,
+  projectId,
+  categoryId,
+  pomodoroMode,
+  projects,
+  categories,
+  onTitleChange,
+  onProjectIdChange,
+  onCategoryIdChange,
+  onPomodoroModeChange,
+}: TimerFieldsProps) {
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <div className="space-y-2 md:col-span-2">
+        <Label htmlFor={`${idPrefix}-title`}>What are you working on?</Label>
+        <Input
+          id={`${idPrefix}-title`}
+          value={title}
+          onChange={(event) => onTitleChange(event.target.value)}
+          placeholder="Design sprint planning"
+        />
+      </div>
+      <div className="space-y-2">
+        <Label>Project</Label>
+        <Select value={projectId} onValueChange={onProjectIdChange}>
+          <SelectTrigger>
+            <SelectValue placeholder="Choose project" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">No project</SelectItem>
+            {projects.map((project) => (
+              <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-2">
+        <Label>Category</Label>
+        <Select value={categoryId} onValueChange={onCategoryIdChange}>
+          <SelectTrigger>
+            <SelectValue placeholder="Choose category" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">No category</SelectItem>
+            {categories.map((category) => (
+              <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex items-center justify-between rounded-2xl border border-border bg-muted/50 p-4 md:col-span-2">
+        <div>
+          <Label htmlFor={`${idPrefix}-pomodoro`} className="font-medium">Pomodoro mode</Label>
+          <p className="text-sm text-muted-foreground">Mark this as a focused cycle session.</p>
+        </div>
+        <Switch id={`${idPrefix}-pomodoro`} checked={pomodoroMode} onCheckedChange={onPomodoroModeChange} />
+      </div>
+    </div>
+  );
+}
+
+function TimerSessionCard({
+  timer,
+  elapsedSec,
+  isPrimary,
+  projectName,
+  categoryName,
+  submitting,
+  onPause,
+  onResume,
+  onStop,
+}: TimerSessionCardProps) {
+  const isPaused = Boolean(timer.pausedAt);
+
+  return (
+    <div className="rounded-2xl border border-border bg-muted/40 p-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-medium text-foreground">{timer.title}</p>
+            <span className="rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground">
+              {isPrimary ? "Primary" : "Pause timer"}
+            </span>
+            <span className="rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground">
+              {isPaused ? "Paused" : "Running"}
+            </span>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {projectName} · {categoryName} · {timer.pomodoroMode ? "Pomodoro" : "Standard tracking"}
+          </p>
+        </div>
+        <p className="shrink-0 text-2xl font-semibold tabular-nums text-foreground">
+          {formatDuration(elapsedSec)}
+        </p>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-3">
+        <Button variant="secondary" onClick={isPaused ? onResume : onPause}>
+          {isPaused ? <Play /> : <Pause />}
+          {isPaused ? "Resume" : "Pause"}
+        </Button>
+        <Button variant="destructive" onClick={onStop} disabled={submitting}>
+          <Square />
+          Stop &amp; save
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function buildTimerInput(
+  title: string,
+  projectId: string,
+  categoryId: string,
+  pomodoroMode: boolean,
+): TimerStartInput {
+  return {
+    title: title.trim(),
+    projectId: projectId === "none" ? null : projectId,
+    categoryId: categoryId === "none" ? null : categoryId,
+    startTime: new Date().toISOString(),
+    pomodoroMode,
+  };
+}
+
+function resetForm(
+  setTitle: (value: string) => void,
+  setProjectId: (value: string) => void,
+  setCategoryId: (value: string) => void,
+  setPomodoroMode: (value: boolean) => void,
+) {
+  setTitle("");
+  setProjectId("none");
+  setCategoryId("none");
+  setPomodoroMode(false);
+}
 
 export function Timer() {
   const { projects } = useProjects();
   const { categories } = useCategories();
   const { createEntry } = useTimeEntries();
-  const { activeTimer, startTimer, pauseTimer, stopTimer } = useTimerStore();
+  const { timers, startTimer, startSecondaryTimer, pauseTimer, resumeTimer, stopTimer } = useTimerStore();
   const [title, setTitle] = useState("");
   const [projectId, setProjectId] = useState<string>("none");
   const [categoryId, setCategoryId] = useState<string>("none");
   const [pomodoroMode, setPomodoroMode] = useState(false);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [submitting, setSubmitting] = useState(false);
+  const [secondaryTitle, setSecondaryTitle] = useState("");
+  const [secondaryProjectId, setSecondaryProjectId] = useState<string>("none");
+  const [secondaryCategoryId, setSecondaryCategoryId] = useState<string>("none");
+  const [secondaryPomodoroMode, setSecondaryPomodoroMode] = useState(false);
+  const [elapsedByTimerId, setElapsedByTimerId] = useState<Record<string, number>>({});
+  const [submittingByTimerId, setSubmittingByTimerId] = useState<Record<string, boolean>>({});
+  const [resumePrimaryId, setResumePrimaryId] = useState<string | null>(null);
+  const [resumeDialogOpen, setResumeDialogOpen] = useState(false);
+  const [resumeSubmitting, setResumeSubmitting] = useState(false);
+
+  const projectMap = useMemo(
+    () => new Map(projects.map((project) => [project.id, project.name])),
+    [projects],
+  );
+  const categoryMap = useMemo(
+    () => new Map(categories.map((category) => [category.id, category.name])),
+    [categories],
+  );
+  const primaryTimer = useMemo(
+    () => timers.find((timer) => !timer.parentTimerId) ?? null,
+    [timers],
+  );
+  const secondaryTimers = useMemo(
+    () => (primaryTimer ? timers.filter((timer) => timer.parentTimerId === primaryTimer.id) : []),
+    [primaryTimer, timers],
+  );
+  const orderedTimers = useMemo(() => {
+    if (!primaryTimer) {
+      return timers;
+    }
+
+    return [
+      primaryTimer,
+      ...timers.filter((timer) => timer.id !== primaryTimer.id),
+    ];
+  }, [primaryTimer, timers]);
+  const heroTimer = primaryTimer ?? timers[0] ?? null;
+  const pendingResumeTimer = resumePrimaryId
+    ? timers.find((timer) => timer.id === resumePrimaryId) ?? null
+    : null;
+  const pendingSecondaryTimers = pendingResumeTimer
+    ? timers.filter((timer) => timer.parentTimerId === pendingResumeTimer.id)
+    : [];
 
   useEffect(() => {
     const update = () => {
-      if (!activeTimer) {
-        setElapsedSeconds(0);
-        return;
-      }
-
-      if (activeTimer.pausedAt) {
-        setElapsedSeconds(activeTimer.elapsedBeforePauseSec);
-        return;
-      }
-
-      setElapsedSeconds(getActiveTimerElapsedSec(activeTimer));
+      setElapsedByTimerId(Object.fromEntries(
+        timers.map((timer) => [timer.id, getActiveTimerElapsedSec(timer)]),
+      ));
     };
 
     update();
     const interval = window.setInterval(update, 1000);
     return () => window.clearInterval(interval);
-  }, [activeTimer]);
+  }, [timers]);
+
+  const heroElapsedSeconds = heroTimer
+    ? elapsedByTimerId[heroTimer.id] ?? getActiveTimerElapsedSec(heroTimer)
+    : 0;
 
   const statusLabel = useMemo(() => {
-    if (!activeTimer) {
+    if (!timers.length) {
       return "Ready to start";
     }
 
-    if (activeTimer.pausedAt) {
-      return "Paused";
+    if (primaryTimer?.pausedAt) {
+      return secondaryTimers.length
+        ? `Primary paused · ${secondaryTimers.length} pause timer${secondaryTimers.length === 1 ? "" : "s"} active`
+        : "Primary paused";
     }
 
-    return activeTimer.pomodoroMode ? "Pomodoro focus" : "Tracking now";
-  }, [activeTimer]);
+    if (timers.length > 1) {
+      return `${timers.length} timers tracking`;
+    }
 
-  async function handleStart() {
+    const onlyTimer = timers[0];
+    return onlyTimer?.pomodoroMode ? "Pomodoro focus" : "Tracking now";
+  }, [primaryTimer, secondaryTimers.length, timers]);
+
+  function setTimerSubmitting(timerId: string, submitting: boolean) {
+    setSubmittingByTimerId((current) => ({
+      ...current,
+      [timerId]: submitting,
+    }));
+  }
+
+  function getProjectName(timer: ActiveTimer) {
+    return timer.projectId ? projectMap.get(timer.projectId) ?? "Unknown project" : "No project";
+  }
+
+  function getCategoryName(timer: ActiveTimer) {
+    return timer.categoryId ? categoryMap.get(timer.categoryId) ?? "Unknown category" : "No category";
+  }
+
+  async function saveTimerEntry(timer: ActiveTimer, endedAt: string) {
+    await createEntry({
+      title: timer.title,
+      projectId: timer.projectId,
+      categoryId: timer.categoryId,
+      startAt: timer.startTime,
+      endAt: endedAt,
+      durationSec: getActiveTimerElapsedSec(timer, new Date(endedAt).getTime()),
+      tags: timer.pomodoroMode ? ["pomodoro"] : [],
+      notes: timer.pomodoroMode ? "Pomodoro focus session" : null,
+    });
+  }
+
+  function handleStart() {
     if (!title.trim()) {
       toast.error("Add a title before starting the timer.");
       return;
     }
 
-    const started = startTimer({
-      title: title.trim(),
-      projectId: projectId === "none" ? null : projectId,
-      categoryId: categoryId === "none" ? null : categoryId,
-      startTime: new Date().toISOString(),
-      pomodoroMode,
-    });
+    const started = startTimer(buildTimerInput(title, projectId, categoryId, pomodoroMode));
 
     if (!started) {
-      toast.error("Stop and save the active timer before starting another.");
+      toast.error("Stop and save all active timers before starting another.");
       return;
     }
 
     toast.success("Timer started.");
   }
 
-  async function handleStop() {
-    const timer = activeTimer;
-
-    if (!timer) {
+  function handleStartSecondary() {
+    if (!primaryTimer?.pausedAt) {
+      toast.error("Pause the primary timer before starting a pause timer.");
       return;
     }
 
-    setSubmitting(true);
+    if (!secondaryTitle.trim()) {
+      toast.error("Add a title before starting the pause timer.");
+      return;
+    }
+
+    const started = startSecondaryTimer(
+      primaryTimer.id,
+      buildTimerInput(secondaryTitle, secondaryProjectId, secondaryCategoryId, secondaryPomodoroMode),
+    );
+
+    if (!started) {
+      toast.error("Pause the primary timer before starting a pause timer.");
+      return;
+    }
+
+    resetForm(setSecondaryTitle, setSecondaryProjectId, setSecondaryCategoryId, setSecondaryPomodoroMode);
+    toast.success("Pause timer started.");
+  }
+
+  async function handleStop(timer: ActiveTimer) {
+    setTimerSubmitting(timer.id, true);
     const endedAt = new Date().toISOString();
-    const durationSec = getActiveTimerElapsedSec(timer, new Date(endedAt).getTime());
 
     try {
-      await createEntry({
-        title: timer.title,
-        projectId: timer.projectId,
-        categoryId: timer.categoryId,
-        startAt: timer.startTime,
-        endAt: endedAt,
-        durationSec,
-        tags: timer.pomodoroMode ? ["pomodoro"] : [],
-        notes: timer.pomodoroMode ? "Pomodoro focus session" : null,
-      });
-
-      stopTimer();
-      setTitle("");
-      setProjectId("none");
-      setCategoryId("none");
+      await saveTimerEntry(timer, endedAt);
+      stopTimer(timer.id);
+      if (timers.length === 1) {
+        resetForm(setTitle, setProjectId, setCategoryId, setPomodoroMode);
+      }
       toast.success("Time entry saved.");
     } catch {
       toast.error("Saving failed. The timer is still active so you can retry.");
     } finally {
-      setSubmitting(false);
+      setTimerSubmitting(timer.id, false);
+    }
+  }
+
+  function handleResume(timer: ActiveTimer) {
+    const relatedSecondaryTimers = timers.filter((item) => item.parentTimerId === timer.id);
+
+    if (!relatedSecondaryTimers.length) {
+      resumeTimer(timer.id);
+      return;
+    }
+
+    setResumePrimaryId(timer.id);
+    setResumeDialogOpen(true);
+  }
+
+  function handleKeepParallel() {
+    if (!pendingResumeTimer) {
+      return;
+    }
+
+    resumeTimer(pendingResumeTimer.id);
+    setResumeDialogOpen(false);
+    setResumePrimaryId(null);
+    toast.success("Primary timer resumed. Pause timers are still running.");
+  }
+
+  async function handleCloseSecondaries() {
+    if (!pendingResumeTimer) {
+      return;
+    }
+
+    setResumeSubmitting(true);
+
+    try {
+      for (const timer of pendingSecondaryTimers) {
+        const endedAt = new Date().toISOString();
+        await saveTimerEntry(timer, endedAt);
+        stopTimer(timer.id);
+      }
+
+      resumeTimer(pendingResumeTimer.id);
+      setResumeDialogOpen(false);
+      setResumePrimaryId(null);
+      toast.success("Pause timers saved. Primary timer resumed.");
+    } catch {
+      toast.error("Unable to save a pause timer. The primary timer is still paused.");
+    } finally {
+      setResumeSubmitting(false);
     }
   }
 
@@ -125,76 +429,118 @@ export function Timer() {
       </CardHeader>
       <CardContent className="space-y-5">
         <div className="rounded-3xl border border-primary/10 bg-primary/5 px-6 py-8 text-center">
-          <p className="text-5xl font-semibold tracking-tight text-foreground">{formatDuration(elapsedSeconds)}</p>
+          <p className="text-5xl font-semibold tracking-tight text-foreground tabular-nums">
+            {formatDuration(heroElapsedSeconds)}
+          </p>
         </div>
-        {!activeTimer ? (
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="timer-title">What are you working on?</Label>
-              <Input id="timer-title" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Design sprint planning" />
-            </div>
-            <div className="space-y-2">
-              <Label>Project</Label>
-              <Select value={projectId} onValueChange={setProjectId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose project" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No project</SelectItem>
-                  {projects.map((project) => (
-                    <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Category</Label>
-              <Select value={categoryId} onValueChange={setCategoryId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose category" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No category</SelectItem>
-                  {categories.map((category) => (
-                    <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center justify-between rounded-2xl border border-border bg-muted/50 p-4 md:col-span-2">
-              <div>
-                <p className="font-medium">Pomodoro mode</p>
-                <p className="text-sm text-muted-foreground">Mark this as a focused cycle session.</p>
-              </div>
-              <Switch checked={pomodoroMode} onCheckedChange={setPomodoroMode} />
-            </div>
-          </div>
-        ) : (
-          <div className="rounded-2xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
-            <p className="font-medium text-foreground">{activeTimer.title}</p>
-            <p className="mt-1">{activeTimer.pomodoroMode ? "Pomodoro mode enabled" : "Standard tracking"}</p>
-          </div>
-        )}
-        <div className="flex flex-wrap gap-3">
-          {!activeTimer ? (
+
+        {!timers.length ? (
+          <>
+            <TimerFields
+              idPrefix="timer"
+              title={title}
+              projectId={projectId}
+              categoryId={categoryId}
+              pomodoroMode={pomodoroMode}
+              projects={projects}
+              categories={categories}
+              onTitleChange={setTitle}
+              onProjectIdChange={setProjectId}
+              onCategoryIdChange={setCategoryId}
+              onPomodoroModeChange={setPomodoroMode}
+            />
             <Button onClick={handleStart} className="min-w-36">
               <Play />
               Start timer
             </Button>
-          ) : (
-            <>
-              <Button variant="secondary" onClick={pauseTimer}>
-                <Pause />
-                {activeTimer.pausedAt ? "Resume" : "Pause"}
-              </Button>
-              <Button variant="destructive" onClick={handleStop} disabled={submitting}>
-                <Square />
-                Stop & save
-              </Button>
-            </>
-          )}
-        </div>
+          </>
+        ) : (
+          <>
+            {primaryTimer?.pausedAt ? (
+              <div className="space-y-4 rounded-2xl border border-dashed border-primary/40 bg-primary/5 p-4">
+                <div>
+                  <p className="font-medium text-foreground">Track the pause period</p>
+                  <p className="text-sm text-muted-foreground">
+                    Start one or more pause timers while the primary timer stays paused.
+                  </p>
+                </div>
+                <TimerFields
+                  idPrefix="pause-timer"
+                  title={secondaryTitle}
+                  projectId={secondaryProjectId}
+                  categoryId={secondaryCategoryId}
+                  pomodoroMode={secondaryPomodoroMode}
+                  projects={projects}
+                  categories={categories}
+                  onTitleChange={setSecondaryTitle}
+                  onProjectIdChange={setSecondaryProjectId}
+                  onCategoryIdChange={setSecondaryCategoryId}
+                  onPomodoroModeChange={setSecondaryPomodoroMode}
+                />
+                <Button onClick={handleStartSecondary} className="min-w-44">
+                  <Plus />
+                  Start pause timer
+                </Button>
+              </div>
+            ) : null}
+
+            <div className="space-y-3">
+              {orderedTimers.map((timer) => (
+                <TimerSessionCard
+                  key={timer.id}
+                  timer={timer}
+                  elapsedSec={elapsedByTimerId[timer.id] ?? getActiveTimerElapsedSec(timer)}
+                  isPrimary={!timer.parentTimerId}
+                  projectName={getProjectName(timer)}
+                  categoryName={getCategoryName(timer)}
+                  submitting={Boolean(submittingByTimerId[timer.id])}
+                  onPause={() => pauseTimer(timer.id)}
+                  onResume={() => handleResume(timer)}
+                  onStop={() => void handleStop(timer)}
+                />
+              ))}
+            </div>
+          </>
+        )}
       </CardContent>
+
+      <Dialog
+        open={resumeDialogOpen}
+        onOpenChange={(open) => {
+          setResumeDialogOpen(open);
+          if (!open && !resumeSubmitting) {
+            setResumePrimaryId(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Resume primary timer?</DialogTitle>
+            <DialogDescription>
+              {pendingSecondaryTimers.length} pause timer{pendingSecondaryTimers.length === 1 ? "" : "s"} are still active.
+              Stop and save them now, or keep them running in parallel while the primary timer resumes.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setResumeDialogOpen(false);
+                setResumePrimaryId(null);
+              }}
+              disabled={resumeSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button variant="secondary" onClick={handleKeepParallel} disabled={resumeSubmitting}>
+              Keep parallel
+            </Button>
+            <Button onClick={() => void handleCloseSecondaries()} disabled={resumeSubmitting}>
+              Stop &amp; save pause timers
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
