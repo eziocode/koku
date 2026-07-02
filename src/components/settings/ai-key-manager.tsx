@@ -68,6 +68,13 @@ function KeyEditor({ onSaved }: { onSaved: () => void }) {
         <p className="text-xs text-muted-foreground">
           Koku never asks for ChatGPT, OpenAI, or GitHub passwords. Store only API tokens that the provider explicitly issues for third-party apps.
         </p>
+        {provider === "openai-codex" ? (
+          <p className="rounded-2xl border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+            ChatGPT account login for Codex is handled by the local Codex CLI. Run{" "}
+            <code className="rounded bg-background px-1 py-0.5">codex login</code>{" "}
+            in your terminal for that workflow; use an OpenAI API key here for Koku&apos;s web AI features.
+          </p>
+        ) : null}
       </div>
       <Button type="submit">Save credential</Button>
     </form>

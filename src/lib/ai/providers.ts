@@ -14,7 +14,7 @@ export const AI_PROVIDER_DETAILS = {
     credentialLabel: "OpenAI API key",
     credentialPlaceholder: "sk-...",
     description:
-      "Uses OpenAI API credentials for Codex-capable coding workflows. ChatGPT account-login tokens are not exposed through the public API.",
+      "Uses an OpenAI platform API key for Codex-capable coding workflows. For ChatGPT account login, use the local Codex CLI login flow instead of pasting a ChatGPT password or session token.",
   },
   anthropic: {
     label: "Anthropic",
@@ -35,11 +35,11 @@ export const AI_PROVIDER_DETAILS = {
     description: "Use a Groq API key through its OpenAI-compatible endpoint.",
   },
   "github-copilot": {
-    label: "GitHub Copilot / Models",
+    label: "GitHub Models / Copilot",
     credentialLabel: "GitHub token",
     credentialPlaceholder: "ghp_...",
     description:
-      "Uses GitHub Models' OpenAI-compatible endpoint with a GitHub token that has models:read access. Direct Copilot subscription login is not available as a public third-party API.",
+      "Uses GitHub Models' OpenAI-compatible endpoint with a GitHub token that has models:read access.",
   },
 } as const;
 

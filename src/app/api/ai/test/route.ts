@@ -1,7 +1,6 @@
-import { generateText } from "ai";
 import { NextResponse } from "next/server";
 
-import { buildModel } from "@/lib/ai/providers";
+import { testProviderConnection } from "@/lib/ai/provider-tests";
 import {
   handleAiRouteError,
   parseApiKey,
@@ -18,17 +17,14 @@ export async function POST(request: Request) {
 
     const result = await auditLogger.measure(
       "ai.provider.test",
-      () => generateText({
-        model: buildModel(provider, apiKey),
-        prompt: "Reply with the single word: connected",
-      }),
+      () => testProviderConnection(provider, apiKey),
       "performance",
       {
         provider,
       },
     );
 
-    return NextResponse.json({ text: result.text });
+    return NextResponse.json({ text: result });
   } catch (error) {
     return handleAiRouteError(error, "Unable to test AI provider.");
   }
