@@ -1,6 +1,6 @@
 "use client";
 
-import { Pause, Play, Plus, Square } from "lucide-react";
+import { ChevronDown, ChevronUp, Pause, Play, Plus, Square } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { TagInput } from "@/components/ui/tag-input";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
+import { QuickCreateCategoryDialog, QuickCreateProjectDialog } from "@/components/time-tracker/quick-create-dialog";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
@@ -39,12 +42,17 @@ interface TimerFieldsProps {
   title: string;
   projectId: string;
   categoryId: string;
+  tags: string[];
+  notes: string;
   pomodoroMode: boolean;
   projects: SelectOption[];
   categories: SelectOption[];
+  tagSuggestions?: string[];
   onTitleChange: (value: string) => void;
   onProjectIdChange: (value: string) => void;
   onCategoryIdChange: (value: string) => void;
+  onTagsChange: (tags: string[]) => void;
+  onNotesChange: (notes: string) => void;
   onPomodoroModeChange: (value: boolean) => void;
 }
 
@@ -65,16 +73,26 @@ function TimerFields({
   title,
   projectId,
   categoryId,
+  tags,
+  notes,
   pomodoroMode,
   projects,
   categories,
+  tagSuggestions = [],
   onTitleChange,
   onProjectIdChange,
   onCategoryIdChange,
+  onTagsChange,
+  onNotesChange,
   onPomodoroModeChange,
 }: TimerFieldsProps) {
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [createProjectOpen, setCreateProjectOpen] = useState(false);
+  const [createCategoryOpen, setCreateCategoryOpen] = useState(false);
+
   return (
     <div className="grid gap-4 md:grid-cols-2">
+      {/* Title */}
       <div className="space-y-2 md:col-span-2">
         <Label htmlFor={`${idPrefix}-title`}>What are you working on?</Label>
         <Input
@@ -84,7 +102,9 @@ function TimerFields({
           placeholder="Design sprint planning"
         />
       </div>
-      <div className="space-y-2">
+
+      {/* Project */}
+      <div className="space-y-1.5">
         <Label>Project</Label>
         <Select value={projectId} onValueChange={onProjectIdChange}>
           <SelectTrigger>
@@ -97,8 +117,17 @@ function TimerFields({
             ))}
           </SelectContent>
         </Select>
+        <button
+          type="button"
+          onClick={() => setCreateProjectOpen(true)}
+          className="text-xs text-primary hover:underline"
+        >
+          + New project
+        </button>
       </div>
-      <div className="space-y-2">
+
+      {/* Category */}
+      <div className="space-y-1.5">
         <Label>Category</Label>
         <Select value={categoryId} onValueChange={onCategoryIdChange}>
           <SelectTrigger>
@@ -111,7 +140,50 @@ function TimerFields({
             ))}
           </SelectContent>
         </Select>
+        <button
+          type="button"
+          onClick={() => setCreateCategoryOpen(true)}
+          className="text-xs text-primary hover:underline"
+        >
+          + New category
+        </button>
       </div>
+
+      {/* Tags */}
+      <div className="space-y-2 md:col-span-2">
+        <Label htmlFor={`${idPrefix}-tags`}>Tags</Label>
+        <TagInput
+          id={`${idPrefix}-tags`}
+          value={tags}
+          onChange={onTagsChange}
+          suggestions={tagSuggestions}
+          placeholder="Add tag…"
+        />
+      </div>
+
+      {/* Notes toggle */}
+      <div className="md:col-span-2">
+        <button
+          type="button"
+          onClick={() => setNotesOpen((o) => !o)}
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+        >
+          {notesOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+          {notesOpen ? "Hide notes" : "Add notes"}
+        </button>
+        {notesOpen && (
+          <Textarea
+            id={`${idPrefix}-notes`}
+            value={notes}
+            onChange={(e) => onNotesChange(e.target.value)}
+            placeholder="Helpful context, goals, or outcomes…"
+            className="mt-2"
+            rows={3}
+          />
+        )}
+      </div>
+
+      {/* Pomodoro */}
       <div className="flex items-center justify-between rounded-2xl border border-border bg-muted/50 p-4 md:col-span-2">
         <div>
           <Label htmlFor={`${idPrefix}-pomodoro`} className="font-medium">Pomodoro mode</Label>
@@ -119,6 +191,18 @@ function TimerFields({
         </div>
         <Switch id={`${idPrefix}-pomodoro`} checked={pomodoroMode} onCheckedChange={onPomodoroModeChange} />
       </div>
+
+      {/* Quick-create dialogs */}
+      <QuickCreateProjectDialog
+        open={createProjectOpen}
+        onOpenChange={setCreateProjectOpen}
+        onCreated={(id) => { onProjectIdChange(id); setCreateProjectOpen(false); }}
+      />
+      <QuickCreateCategoryDialog
+        open={createCategoryOpen}
+        onOpenChange={setCreateCategoryOpen}
+        onCreated={(id) => { onCategoryIdChange(id); setCreateCategoryOpen(false); }}
+      />
     </div>
   );
 }
@@ -176,6 +260,8 @@ function buildTimerInput(
   projectId: string,
   categoryId: string,
   pomodoroMode: boolean,
+  tags: string[],
+  notes: string,
 ): TimerStartInput {
   return {
     title: title.trim(),
@@ -183,6 +269,8 @@ function buildTimerInput(
     categoryId: categoryId === "none" ? null : categoryId,
     startTime: new Date().toISOString(),
     pomodoroMode,
+    tags,
+    notes: notes.trim() || null,
   };
 }
 
@@ -191,31 +279,44 @@ function resetForm(
   setProjectId: (value: string) => void,
   setCategoryId: (value: string) => void,
   setPomodoroMode: (value: boolean) => void,
+  setTags: (value: string[]) => void,
+  setNotes: (value: string) => void,
 ) {
   setTitle("");
   setProjectId("none");
   setCategoryId("none");
   setPomodoroMode(false);
+  setTags([]);
+  setNotes("");
 }
 
 export function Timer() {
   const { projects } = useProjects();
   const { categories } = useCategories();
-  const { createEntry } = useTimeEntries();
+  const { createEntry, entries: allEntries } = useTimeEntries();
   const { timers, startTimer, startSecondaryTimer, pauseTimer, resumeTimer, stopTimer } = useTimerStore();
   const [title, setTitle] = useState("");
   const [projectId, setProjectId] = useState<string>("none");
   const [categoryId, setCategoryId] = useState<string>("none");
+  const [tags, setTags] = useState<string[]>([]);
+  const [notes, setNotes] = useState("");
   const [pomodoroMode, setPomodoroMode] = useState(false);
   const [secondaryTitle, setSecondaryTitle] = useState("");
   const [secondaryProjectId, setSecondaryProjectId] = useState<string>("none");
   const [secondaryCategoryId, setSecondaryCategoryId] = useState<string>("none");
+  const [secondaryTags, setSecondaryTags] = useState<string[]>([]);
+  const [secondaryNotes, setSecondaryNotes] = useState("");
   const [secondaryPomodoroMode, setSecondaryPomodoroMode] = useState(false);
   const [elapsedByTimerId, setElapsedByTimerId] = useState<Record<string, number>>({});
   const [submittingByTimerId, setSubmittingByTimerId] = useState<Record<string, boolean>>({});
   const [resumePrimaryId, setResumePrimaryId] = useState<string | null>(null);
   const [resumeDialogOpen, setResumeDialogOpen] = useState(false);
   const [resumeSubmitting, setResumeSubmitting] = useState(false);
+
+  const tagSuggestions = useMemo(
+    () => Array.from(new Set(allEntries.flatMap((e) => e.tags))).sort(),
+    [allEntries],
+  );
 
   const projectMap = useMemo(
     () => new Map(projects.map((project) => [project.id, project.name])),
@@ -309,8 +410,8 @@ export function Timer() {
       startAt: timer.startTime,
       endAt: endedAt,
       durationSec: getActiveTimerElapsedSec(timer, new Date(endedAt).getTime()),
-      tags: timer.pomodoroMode ? ["pomodoro"] : [],
-      notes: timer.pomodoroMode ? "Pomodoro focus session" : null,
+      tags: timer.pomodoroMode ? Array.from(new Set(["pomodoro", ...timer.tags])) : timer.tags,
+      notes: timer.notes || (timer.pomodoroMode ? "Pomodoro focus session" : null),
     });
   }
 
@@ -320,7 +421,7 @@ export function Timer() {
       return;
     }
 
-    const started = startTimer(buildTimerInput(title, projectId, categoryId, pomodoroMode));
+    const started = startTimer(buildTimerInput(title, projectId, categoryId, pomodoroMode, tags, notes));
 
     if (!started) {
       toast.error("Stop and save all active timers before starting another.");
@@ -343,7 +444,7 @@ export function Timer() {
 
     const started = startSecondaryTimer(
       primaryTimer.id,
-      buildTimerInput(secondaryTitle, secondaryProjectId, secondaryCategoryId, secondaryPomodoroMode),
+      buildTimerInput(secondaryTitle, secondaryProjectId, secondaryCategoryId, secondaryPomodoroMode, secondaryTags, secondaryNotes),
     );
 
     if (!started) {
@@ -351,7 +452,7 @@ export function Timer() {
       return;
     }
 
-    resetForm(setSecondaryTitle, setSecondaryProjectId, setSecondaryCategoryId, setSecondaryPomodoroMode);
+    resetForm(setSecondaryTitle, setSecondaryProjectId, setSecondaryCategoryId, setSecondaryPomodoroMode, setSecondaryTags, setSecondaryNotes);
     toast.success("Pause timer started.");
   }
 
@@ -363,7 +464,7 @@ export function Timer() {
       await saveTimerEntry(timer, endedAt);
       stopTimer(timer.id);
       if (timers.length === 1) {
-        resetForm(setTitle, setProjectId, setCategoryId, setPomodoroMode);
+        resetForm(setTitle, setProjectId, setCategoryId, setPomodoroMode, setTags, setNotes);
       }
       toast.success("Time entry saved.");
     } catch {
@@ -441,12 +542,17 @@ export function Timer() {
               title={title}
               projectId={projectId}
               categoryId={categoryId}
+              tags={tags}
+              notes={notes}
               pomodoroMode={pomodoroMode}
               projects={projects}
               categories={categories}
+              tagSuggestions={tagSuggestions}
               onTitleChange={setTitle}
               onProjectIdChange={setProjectId}
               onCategoryIdChange={setCategoryId}
+              onTagsChange={setTags}
+              onNotesChange={setNotes}
               onPomodoroModeChange={setPomodoroMode}
             />
             <Button onClick={handleStart} className="min-w-36">
@@ -469,12 +575,17 @@ export function Timer() {
                   title={secondaryTitle}
                   projectId={secondaryProjectId}
                   categoryId={secondaryCategoryId}
+                  tags={secondaryTags}
+                  notes={secondaryNotes}
                   pomodoroMode={secondaryPomodoroMode}
                   projects={projects}
                   categories={categories}
+                  tagSuggestions={tagSuggestions}
                   onTitleChange={setSecondaryTitle}
                   onProjectIdChange={setSecondaryProjectId}
                   onCategoryIdChange={setSecondaryCategoryId}
+                  onTagsChange={setSecondaryTags}
+                  onNotesChange={setSecondaryNotes}
                   onPomodoroModeChange={setSecondaryPomodoroMode}
                 />
                 <Button onClick={handleStartSecondary} className="min-w-44">

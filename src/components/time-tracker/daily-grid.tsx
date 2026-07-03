@@ -11,11 +11,6 @@ import { toast } from "@/components/ui/toast";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
 import { formatDuration } from "@/lib/utils";
 
-interface SelectOption {
-  id: string;
-  name: string;
-}
-
 interface EntryRecord {
   id: string;
   title: string;
@@ -30,11 +25,9 @@ interface EntryRecord {
 
 interface DailyGridProps {
   entries: EntryRecord[];
-  projects: SelectOption[];
-  categories: SelectOption[];
 }
 
-export function DailyGrid({ entries, projects, categories }: DailyGridProps) {
+export function DailyGrid({ entries }: DailyGridProps) {
   const { deleteEntry } = useTimeEntries();
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -107,8 +100,6 @@ export function DailyGrid({ entries, projects, categories }: DailyGridProps) {
                   </DialogHeader>
                   {editingEntry ? (
                     <EntryForm
-                      projects={projects}
-                      categories={categories}
                       entryId={editingEntry.id}
                       submitLabel="Update entry"
                       defaultValues={editingEntry}

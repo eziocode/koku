@@ -7,18 +7,15 @@ import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { TagInput } from "@/components/ui/tag-input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
+import { QuickCreateCategoryDialog, QuickCreateProjectDialog } from "@/components/time-tracker/quick-create-dialog";
+import { useCategories } from "@/lib/storage/hooks/use-categories";
+import { useProjects } from "@/lib/storage/hooks/use-projects";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
 
-interface SelectOption {
-  id: string;
-  name: string;
-}
-
 interface EntryFormProps {
-  projects: SelectOption[];
-  categories: SelectOption[];
   entryId?: string;
   submitLabel?: string;
   /** Show a secondary "Save & New" button (for create dialogs). */
@@ -49,8 +46,6 @@ function toDateTimeLocal(value?: string | null) {
 }
 
 export function EntryForm({
-  projects,
-  categories,
   entryId,
   submitLabel = "Save entry",
   showSaveAndNew = false,
@@ -58,9 +53,13 @@ export function EntryForm({
   onSuccessNew,
   defaultValues,
 }: EntryFormProps) {
-  const { createEntry, updateEntry } = useTimeEntries();
+  const { projects } = useProjects();
+  const { categories } = useCategories();
+  const { createEntry, updateEntry, entries: allEntries } = useTimeEntries();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [timeError, setTimeError] = useState<string | null>(null);
+  const [createProjectOpen, setCreateProjectOpen] = useState(false);
+  const [createCategoryOpen, setCreateCategoryOpen] = useState(false);
   // Tracks whether the next submission should stay open for a new entry.
   const saveAndNewRef = useRef(false);
 
@@ -73,8 +72,13 @@ export function EntryForm({
   const [categoryId, setCategoryId] = useState(defaultValues?.categoryId || "none");
   const [startAt, setStartAt] = useState(toDateTimeLocal(initialStart));
   const [endAt, setEndAt] = useState(toDateTimeLocal(defaultValues?.endAt));
-  const [tags, setTags] = useState((defaultValues?.tags || []).join(", "));
+  const [tags, setTags] = useState<string[]>(defaultValues?.tags || []);
   const [notes, setNotes] = useState(defaultValues?.notes || "");
+
+  const tagSuggestions = useMemo(
+    () => Array.from(new Set(allEntries.flatMap((e) => e.tags))).sort(),
+    [allEntries],
+  );
 
   function validateTimes(start: string, end: string) {
     if (!end) return true;
@@ -104,10 +108,7 @@ export function EntryForm({
         categoryId: categoryId === "none" ? null : categoryId,
         startAt: new Date(startAt).toISOString(),
         endAt: endAt ? new Date(endAt).toISOString() : null,
-        tags: tags
-          .split(",")
-          .map((tag) => tag.trim())
-          .filter(Boolean),
+        tags,
         notes: notes || null,
       };
 
@@ -138,7 +139,7 @@ export function EntryForm({
         <Input id="entry-title" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Design review" required />
       </div>
       <div className="grid gap-4 md:grid-cols-2">
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           <Label>Project</Label>
           <Select value={projectId} onValueChange={setProjectId}>
             <SelectTrigger><SelectValue placeholder="Choose project" /></SelectTrigger>
@@ -149,8 +150,15 @@ export function EntryForm({
               ))}
             </SelectContent>
           </Select>
+          <button
+            type="button"
+            onClick={() => setCreateProjectOpen(true)}
+            className="text-xs text-primary hover:underline"
+          >
+            + New project
+          </button>
         </div>
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           <Label>Category</Label>
           <Select value={categoryId} onValueChange={setCategoryId}>
             <SelectTrigger><SelectValue placeholder="Choose category" /></SelectTrigger>
@@ -161,6 +169,13 @@ export function EntryForm({
               ))}
             </SelectContent>
           </Select>
+          <button
+            type="button"
+            onClick={() => setCreateCategoryOpen(true)}
+            className="text-xs text-primary hover:underline"
+          >
+            + New category
+          </button>
         </div>
       </div>
       <div className="grid gap-4 md:grid-cols-2">
@@ -197,7 +212,13 @@ export function EntryForm({
       ) : null}
       <div className="space-y-2">
         <Label htmlFor="entry-tags">Tags</Label>
-        <Input id="entry-tags" value={tags} onChange={(event) => setTags(event.target.value)} placeholder="meeting, design, review" />
+        <TagInput
+          id="entry-tags"
+          value={tags}
+          onChange={setTags}
+          suggestions={tagSuggestions}
+          placeholder="Add tag…"
+        />
       </div>
       <div className="space-y-2">
         <Label htmlFor="entry-notes">Notes</Label>
@@ -223,6 +244,18 @@ export function EntryForm({
           {showSaveAndNew ? "Save" : submitLabel}
         </Button>
       </div>
+
+      {/* Quick-create dialogs */}
+      <QuickCreateProjectDialog
+        open={createProjectOpen}
+        onOpenChange={setCreateProjectOpen}
+        onCreated={(id) => { setProjectId(id); setCreateProjectOpen(false); }}
+      />
+      <QuickCreateCategoryDialog
+        open={createCategoryOpen}
+        onOpenChange={setCreateCategoryOpen}
+        onCreated={(id) => { setCategoryId(id); setCreateCategoryOpen(false); }}
+      />
     </form>
   );
 }

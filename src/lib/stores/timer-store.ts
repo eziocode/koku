@@ -8,6 +8,8 @@ export type ActiveTimer = {
   title: string;
   projectId?: string | null;
   categoryId?: string | null;
+  tags: string[];
+  notes?: string | null;
   startTime: string;
   elapsedBeforePauseSec: number;
   pausedAt?: string | null;
@@ -19,6 +21,8 @@ export type TimerStartInput = {
   title: string;
   projectId?: string | null;
   categoryId?: string | null;
+  tags?: string[];
+  notes?: string | null;
   startTime: string;
   pomodoroMode: boolean;
 };
@@ -69,6 +73,8 @@ function normalizeStoredTimer(value: unknown): ActiveTimer | null {
     title: value.title,
     projectId: asNullableString(value.projectId),
     categoryId: asNullableString(value.categoryId),
+    tags: Array.isArray(value.tags) ? (value.tags as unknown[]).filter((t): t is string => typeof t === "string") : [],
+    notes: asNullableString(value.notes),
     startTime: value.startTime,
     elapsedBeforePauseSec: typeof value.elapsedBeforePauseSec === "number" ? value.elapsedBeforePauseSec : 0,
     pausedAt: asNullableString(value.pausedAt),
@@ -109,6 +115,8 @@ export function getActiveTimerElapsedSec(timer: ActiveTimer | LegacyActiveTimer,
 function createTimer(input: TimerStartInput, parentTimerId?: string | null): ActiveTimer {
   return {
     ...input,
+    tags: input.tags ?? [],
+    notes: input.notes ?? null,
     id: createTimerId(),
     elapsedBeforePauseSec: 0,
     pausedAt: null,

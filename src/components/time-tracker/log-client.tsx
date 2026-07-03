@@ -227,7 +227,7 @@ export function LogClient() {
           <LogFilters filters={filters} onChange={setFilters} />
 
           {/* Daily grid */}
-          <DailyGrid entries={joinedEntries} projects={projects} categories={categories} />
+          <DailyGrid entries={joinedEntries} />
         </>
       )}
 
@@ -240,8 +240,6 @@ export function LogClient() {
           </DialogHeader>
           <EntryForm
             key={formKey}
-            projects={projects}
-            categories={categories}
             showSaveAndNew
             onSuccess={handleSaveSuccess}
             onSuccessNew={handleSaveAndNew}
