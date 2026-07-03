@@ -45,6 +45,42 @@ export function getSegmentColor(key: string | number): string {
   return SEGMENT_PALETTE[Math.abs(hash) % SEGMENT_PALETTE.length];
 }
 
+function mixHexChannel(base: number, accent: number, accentWeight: number) {
+  return Math.round(base * (1 - accentWeight) + accent * accentWeight);
+}
+
+function parseHexColor(color: string) {
+  const match = color.match(/^#([0-9a-f]{6})$/i);
+  if (!match) {
+    return null;
+  }
+
+  const value = match[1];
+  return {
+    r: Number.parseInt(value.slice(0, 2), 16),
+    g: Number.parseInt(value.slice(2, 4), 16),
+    b: Number.parseInt(value.slice(4, 6), 16),
+  };
+}
+
+function toHex(value: number) {
+  return value.toString(16).padStart(2, "0");
+}
+
+export function getSegmentVariantColor(baseColor: string, key: string | number): string {
+  const accent = getSegmentColor(key);
+  const baseRgb = parseHexColor(baseColor);
+  const accentRgb = parseHexColor(accent);
+
+  if (!baseRgb || !accentRgb) {
+    return `color-mix(in srgb, ${baseColor} 72%, ${accent})`;
+  }
+
+  return `#${toHex(mixHexChannel(baseRgb.r, accentRgb.r, 0.28))}${toHex(
+    mixHexChannel(baseRgb.g, accentRgb.g, 0.28),
+  )}${toHex(mixHexChannel(baseRgb.b, accentRgb.b, 0.28))}`;
+}
+
 /**
  * Resolves the colour for a work-log segment: prefer the project's own colour,
  * fall back to a deterministic palette colour keyed by project id, and finally

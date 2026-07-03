@@ -8,7 +8,7 @@
 
 import { eachDayOfInterval, format } from "date-fns";
 
-import { resolveEntryColor } from "@/lib/charts/theme";
+import { getSegmentVariantColor, resolveEntryColor } from "@/lib/charts/theme";
 
 /**
  * Derived lifecycle status for a work log. koku's `TimeEntry` has no explicit
@@ -188,6 +188,19 @@ export function buildSegmentedDays({
 
   const days = Array.from(dayMap.values());
   for (const day of days) {
+    const colorCounts = day.segments.reduce((counts, segment) => {
+      counts.set(segment.color, (counts.get(segment.color) ?? 0) + 1);
+      return counts;
+    }, new Map<string, number>());
+
+    day.segments = day.segments.map((segment) =>
+      (colorCounts.get(segment.color) ?? 0) > 1
+        ? {
+            ...segment,
+            color: getSegmentVariantColor(segment.color, `${day.key}-${segment.id}`),
+          }
+        : segment,
+    );
     day.totalHours = Number((day.totalSeconds / 3600).toFixed(2));
   }
 

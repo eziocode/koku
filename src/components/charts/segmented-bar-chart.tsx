@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { ChartEmpty } from "@/components/charts/chart-states";
@@ -23,8 +23,21 @@ function RoundedSegment(props: {
   fillOpacity?: number;
   segIndex: number;
   payload?: StackedRow;
+  onHoverSegment?: (segment: WorkLogSegment, height: number) => void;
+  onLeaveSegment?: () => void;
 }) {
-  const { x = 0, y = 0, width = 0, height = 0, fill, fillOpacity, segIndex, payload } = props;
+  const {
+    x = 0,
+    y = 0,
+    width = 0,
+    height = 0,
+    fill,
+    fillOpacity,
+    segIndex,
+    payload,
+    onHoverSegment,
+    onLeaveSegment,
+  } = props;
   if (height <= 0 || width <= 0) {
     return null;
   }
@@ -39,7 +52,15 @@ function RoundedSegment(props: {
   const isUnassigned = segment?.assignment === "unassigned";
 
   return (
-    <g>
+    <g
+      onMouseEnter={() => {
+        if (segment) {
+          onHoverSegment?.(segment, height);
+        }
+      }}
+      onMouseLeave={onLeaveSegment}
+      style={{ cursor: segment ? "pointer" : undefined }}
+    >
       <path
         d={path}
         fill={fill}
@@ -81,6 +102,8 @@ interface SegmentedBarChartProps {
   emptyDescription?: string;
 }
 
+const TINY_SEGMENT_TOOLTIP_HEIGHT = 12;
+
 /**
  * Segmented, stacked daily-activity bar chart.
  *
@@ -97,6 +120,10 @@ export function SegmentedBarChart({
   emptyDescription,
 }: SegmentedBarChartProps) {
   const { rows, maxSegments } = useMemo(() => toStackedRows(days), [days]);
+  const [hoveredSegment, setHoveredSegment] = useState<{
+    id: string;
+    showFullDay: boolean;
+  } | null>(null);
 
   const hasData = useMemo(() => days.some((day) => day.segments.length > 0), [days]);
 
@@ -126,9 +153,16 @@ export function SegmentedBarChart({
             tickFormatter={(value: number) => `${value}h`}
           />
           <Tooltip
-            content={<RechartsSegmentTooltip />}
+            allowEscapeViewBox={{ x: true, y: true }}
+            content={
+              <RechartsSegmentTooltip
+                activeSegmentId={hoveredSegment?.id}
+                showFullDay={hoveredSegment ? hoveredSegment.showFullDay : true}
+              />
+            }
             cursor={{ fill: CHART_TOKENS.cursor, radius: 6 }}
-            wrapperStyle={{ outline: "none", zIndex: 50 }}
+            offset={28}
+            wrapperStyle={{ outline: "none", pointerEvents: "none", zIndex: 50 }}
           />
           {Array.from({ length: maxSegments }).map((_, segIndex) => {
             const dataKey = `seg${segIndex}`;
@@ -138,7 +172,19 @@ export function SegmentedBarChart({
                 dataKey={dataKey}
                 stackId="day"
                 animationDuration={CHART_TOKENS.animationDuration}
-                shape={(shapeProps: object) => <RoundedSegment {...shapeProps} segIndex={segIndex} />}
+                shape={(shapeProps: object) => (
+                  <RoundedSegment
+                    {...shapeProps}
+                    segIndex={segIndex}
+                    onHoverSegment={(segment, renderedHeight) => {
+                      setHoveredSegment({
+                        id: segment.id,
+                        showFullDay: renderedHeight < TINY_SEGMENT_TOOLTIP_HEIGHT,
+                      });
+                    }}
+                    onLeaveSegment={() => setHoveredSegment(null)}
+                  />
+                )}
                 onClick={(data: unknown) => {
                   const payload = (data as { payload?: { segments?: WorkLogSegment[] } })?.payload;
                   const segment = payload?.segments?.[segIndex];

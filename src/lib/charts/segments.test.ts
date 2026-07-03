@@ -59,6 +59,19 @@ test("segments are ordered chronologically and carry project colour", () => {
   assert.equal(days[0].segments[0].projectName, "Website");
 });
 
+test("same-day logs with the same base colour get distinguishable segment colours", () => {
+  const days = buildSegmentedDays({
+    entries: [
+      entry({ id: "first", startAt: "2024-06-03T08:00:00.000Z", projectId: "p1" }),
+      entry({ id: "second", startAt: "2024-06-03T09:00:00.000Z", projectId: "p1" }),
+    ],
+    projectMap,
+  });
+
+  assert.equal(days[0].segments.length, 2);
+  assert.notEqual(days[0].segments[0].color, days[0].segments[1].color);
+});
+
 test("unassigned entries get the neutral colour and Unassigned name", () => {
   const days = buildSegmentedDays({
     entries: [entry({ id: "x", startAt: "2024-06-03T08:00:00.000Z", projectId: null })],

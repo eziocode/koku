@@ -1,6 +1,6 @@
 "use client";
 
-import { endOfDay, format, parseISO, startOfDay, subDays } from "date-fns";
+import { endOfDay, format, isSameDay, isValid, parseISO, startOfDay, subDays } from "date-fns";
 import { Download, GitCompareArrows } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
@@ -25,21 +25,49 @@ import { useProjects } from "@/lib/storage/hooks/use-projects";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
 import { exportToCSV, exportToXLSX } from "@/lib/export";
 
+function getValidDateParam(value: string | null, fallback: Date) {
+  if (!value) {
+    return format(fallback, "yyyy-MM-dd");
+  }
+
+  const parsed = parseISO(`${value}T00:00:00`);
+  return isValid(parsed) ? value : format(fallback, "yyyy-MM-dd");
+}
+
+function getManualEntryDefaults(selectedDate: Date) {
+  const now = new Date();
+  const start = new Date(selectedDate);
+  start.setHours(now.getHours(), now.getMinutes(), 0, 0);
+
+  const end = new Date(start);
+  end.setHours(start.getHours() + 1);
+
+  return {
+    startAt: start.toISOString(),
+    endAt: end.toISOString(),
+  };
+}
+
 export function LogClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
   // Date navigation
-  const selectedDateValue = searchParams.get("date") || format(new Date(), "yyyy-MM-dd");
+  const selectedDateValue = getValidDateParam(searchParams.get("date"), new Date());
   const selectedDate = parseISO(`${selectedDateValue}T00:00:00`);
+  const isSelectedDateToday = isSameDay(selectedDate, new Date());
+  const manualEntryDefaults = useMemo(
+    () => getManualEntryDefaults(selectedDate),
+    [selectedDate],
+  );
 
   // Compare mode
   const compareMode = searchParams.get("compare") === "1";
   const [compareA, setCompareA] = useState(
-    searchParams.get("a") || format(subDays(new Date(), 1), "yyyy-MM-dd"),
+    getValidDateParam(searchParams.get("a"), subDays(new Date(), 1)),
   );
   const [compareB, setCompareB] = useState(
-    searchParams.get("b") || format(new Date(), "yyyy-MM-dd"),
+    getValidDateParam(searchParams.get("b"), new Date()),
   );
 
   // Smart filters
@@ -191,11 +219,28 @@ export function LogClient() {
         <>
           {/* Timer + manual entry */}
           <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-            <Timer />
+            {isSelectedDateToday ? (
+              <Timer />
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Live timer is for today</CardTitle>
+                  <CardDescription>
+                    Live tracking records the current time. Use manual entry to log work for {format(selectedDate, "MMM d, yyyy")}.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button onClick={() => router.push("/log")}>Go to today&apos;s live timer</Button>
+                </CardContent>
+              </Card>
+            )}
             <Card>
               <CardHeader>
                 <CardTitle>Manual entry</CardTitle>
-                <CardDescription>Add a session after the fact, cleanly and quickly.</CardDescription>
+                <CardDescription>
+                  Add a session after the fact, cleanly and quickly.
+                  {!isSelectedDateToday ? ` New entries will default to ${format(selectedDate, "MMM d, yyyy")}.` : ""}
+                </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-wrap gap-3">
                 <Button onClick={() => { setFormKey((k) => k + 1); setNewEntryOpen(true); }}>
@@ -241,6 +286,7 @@ export function LogClient() {
           <EntryForm
             key={formKey}
             showSaveAndNew
+            defaultValues={manualEntryDefaults}
             onSuccess={handleSaveSuccess}
             onSuccessNew={handleSaveAndNew}
           />

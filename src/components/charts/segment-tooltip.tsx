@@ -117,9 +117,13 @@ export function DayTooltipCard({ label, segments, activeSegmentId }: DayTooltipC
 export function RechartsSegmentTooltip({
   active,
   payload,
+  activeSegmentId,
+  showFullDay = false,
 }: {
   active?: boolean;
   payload?: Array<{ payload?: unknown; dataKey?: string | number }>;
+  activeSegmentId?: string | null;
+  showFullDay?: boolean;
 }) {
   if (!active || !payload?.length) {
     return null;
@@ -134,7 +138,18 @@ export function RechartsSegmentTooltip({
 
   const dataKey = typeof first?.dataKey === "string" ? first.dataKey : "";
   const index = dataKey.startsWith("seg") ? Number(dataKey.slice(3)) : -1;
-  const activeSegmentId = index >= 0 ? segments[index]?.id : undefined;
+  const fallbackSegmentId = index >= 0 ? segments[index]?.id : undefined;
+  const targetedSegmentId = activeSegmentId ?? fallbackSegmentId;
+  const tooltipSegments =
+    targetedSegmentId && !showFullDay
+      ? segments.filter((segment) => segment.id === targetedSegmentId)
+      : segments;
 
-  return <DayTooltipCard label={row?.label ?? ""} segments={segments} activeSegmentId={activeSegmentId} />;
+  return (
+    <DayTooltipCard
+      label={row?.label ?? ""}
+      segments={tooltipSegments.length ? tooltipSegments : segments}
+      activeSegmentId={targetedSegmentId}
+    />
+  );
 }
