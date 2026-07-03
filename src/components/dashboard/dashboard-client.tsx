@@ -1,18 +1,23 @@
 "use client";
 
-import { eachDayOfInterval, endOfDay, endOfWeek, format, startOfDay, startOfWeek } from "date-fns";
-import { useMemo } from "react";
+import { endOfDay, endOfWeek, format, startOfDay, startOfWeek } from "date-fns";
+import { useRouter } from "next/navigation";
+import { useCallback, useMemo } from "react";
 
-import { DailyBarChart } from "@/components/charts/daily-bar-chart";
+import { ChartCard } from "@/components/charts/chart-card";
+import { ChartLegend } from "@/components/charts/chart-legend";
+import { SegmentedBarChart } from "@/components/charts/segmented-bar-chart";
 import { Timer } from "@/components/time-tracker/timer";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { buildSegmentedDays, toProjectBreakdown, type WorkLogSegment } from "@/lib/charts/segments";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
 import { formatDuration } from "@/lib/utils";
 
 export function DashboardClient() {
+  const router = useRouter();
   const { projects } = useProjects();
   const { categories } = useCategories();
   const today = startOfDay(new Date());
@@ -42,18 +47,35 @@ export function DashboardClient() {
     (sum, entry) => sum + (entry.durationSec || 0),
     0,
   );
-  const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
-  const chartData = weekDays.map((day) => {
-    const label = format(day, "EEE");
-    const totalSeconds = weekEntries
-      .filter((entry) => format(new Date(entry.startAt), "yyyy-MM-dd") === format(day, "yyyy-MM-dd"))
-      .reduce((sum, entry) => sum + (entry.durationSec || 0), 0);
+  const weekDays = useMemo(
+    () =>
+      buildSegmentedDays({
+        entries: weekEntries,
+        projectMap,
+        categoryMap,
+        interval: { start: weekStart, end: weekEnd },
+        labelFormat: "weekday",
+      }),
+    [weekEntries, projectMap, categoryMap, weekStart, weekEnd],
+  );
 
-    return {
-      label,
-      hours: Number((totalSeconds / 3600).toFixed(2)),
-    };
-  });
+  const legendItems = useMemo(() => {
+    const breakdown = toProjectBreakdown(weekDays);
+    return breakdown.slice(0, 6).map((item) => ({
+      key: item.key,
+      label: item.name,
+      color: item.color,
+      value: formatDuration(item.seconds),
+    }));
+  }, [weekDays]);
+
+  const handleSegmentClick = useCallback(
+    (segment: WorkLogSegment) => {
+      const day = segment.startAt ? format(new Date(segment.startAt), "yyyy-MM-dd") : "";
+      router.push(day ? `/log?date=${day}` : "/log");
+    },
+    [router],
+  );
 
   const recentEntries = useMemo(
     () => allEntries.slice(0, 5).map((entry) => ({
@@ -100,15 +122,18 @@ export function DashboardClient() {
 
       <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
         <Timer />
-        <Card className="minimal-panel">
-          <CardHeader>
-            <CardTitle>This week</CardTitle>
-            <CardDescription>Daily focused hours</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <DailyBarChart data={chartData} />
-          </CardContent>
-        </Card>
+        <ChartCard
+          title="This week"
+          description="Each block is a work log — hover for details, click to open that day."
+          footer={legendItems.length ? <ChartLegend items={legendItems} /> : undefined}
+        >
+          <SegmentedBarChart
+            days={weekDays}
+            onSegmentClick={handleSegmentClick}
+            emptyTitle="No sessions this week"
+            emptyDescription="Start a timer or add a manual entry to see your week take shape."
+          />
+        </ChartCard>
       </div>
 
       <Card className="minimal-panel">

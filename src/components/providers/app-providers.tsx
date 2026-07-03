@@ -3,6 +3,7 @@
 import { useTheme } from "next-themes";
 import { ReactNode } from "react";
 
+import { AppearanceProvider } from "@/components/providers/appearance-provider";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { Toaster } from "@/components/ui/toaster";
@@ -22,7 +23,9 @@ export function AppProviders({ children }: { children: ReactNode }) {
       disableTransitionOnChange
     >
       <QueryProvider>
-        {children}
+        <AppearanceProvider>
+          {children}
+        </AppearanceProvider>
         <ThemedToaster />
       </QueryProvider>
     </ThemeProvider>

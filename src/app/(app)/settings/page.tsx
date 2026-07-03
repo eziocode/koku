@@ -4,6 +4,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 
 const settingsSections = [
   {
+    title: "Appearance",
+    description: "Choose your theme (light, dark, system) and accent colour.",
+    href: "/settings/appearance",
+  },
+  {
     title: "Local Settings",
     description: "Personalize your display name and device-only preferences.",
     href: "/settings/account",

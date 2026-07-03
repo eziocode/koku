@@ -43,6 +43,45 @@
   color-scheme: dark;
 }
 
+/* ─── Accent palette overrides ────────────────────────────────────────────── */
+/* Each [data-accent] block overrides only the hue-bearing tokens so that      */
+/* every Tailwind utility that references these variables updates automatically  */
+
+[data-accent="ocean"] {
+  --color-primary: #1a5f8a;
+  --color-primary-foreground: #ffffff;
+  --color-accent: #2672a3;
+  --color-ring: #1a5f8a;
+}
+
+[data-accent="forest"] {
+  --color-primary: #1f6b3b;
+  --color-primary-foreground: #ffffff;
+  --color-accent: #2a8a4d;
+  --color-ring: #1f6b3b;
+}
+
+[data-accent="lavender"] {
+  --color-primary: #5a3da8;
+  --color-primary-foreground: #ffffff;
+  --color-accent: #7458c4;
+  --color-ring: #5a3da8;
+}
+
+[data-accent="amber"] {
+  --color-primary: #9a5c0a;
+  --color-primary-foreground: #ffffff;
+  --color-accent: #c07510;
+  --color-ring: #9a5c0a;
+}
+
+[data-accent="slate"] {
+  --color-primary: #354f6b;
+  --color-primary-foreground: #ffffff;
+  --color-accent: #4a6f90;
+  --color-ring: #354f6b;
+}
+
 * {
   border-color: var(--color-border);
 }

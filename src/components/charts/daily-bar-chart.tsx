@@ -1,38 +1,48 @@
 "use client";
 
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+/**
+ * @deprecated Superseded by `SegmentedBarChart`, which renders per-work-log
+ * segments instead of an aggregated total. This shim adapts the old
+ * `{ label, hours }[]` API to a single-segment-per-day stacked chart so any
+ * remaining callers keep working. New code should use `SegmentedBarChart`.
+ */
+
+import { SegmentedBarChart } from "@/components/charts/segmented-bar-chart";
+import { UNASSIGNED_COLOR } from "@/lib/charts/theme";
+import type { SegmentedDay } from "@/lib/charts/segments";
 
 interface DailyBarChartProps {
   data: Array<{ label: string; hours: number }>;
 }
 
 export function DailyBarChart({ data }: DailyBarChartProps) {
-  return (
-    <div className="h-72 w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(107, 114, 128, 0.15)" />
-          <XAxis dataKey="label" stroke="currentColor" tickLine={false} axisLine={false} />
-          <YAxis stroke="currentColor" tickLine={false} axisLine={false} />
-          <Tooltip
-            cursor={{ fill: "rgba(192,57,43,0.08)" }}
-            contentStyle={{
-              backgroundColor: "hsl(var(--card))",
-              border: "1px solid hsl(var(--border))",
-              borderRadius: "0.75rem",
-              color: "hsl(var(--foreground))",
-              boxShadow: "0 4px 24px rgba(0,0,0,0.18)",
-            }}
-            labelStyle={{ color: "hsl(var(--muted-foreground))", marginBottom: "4px" }}
-            itemStyle={{ color: "hsl(var(--foreground))" }}
-            formatter={(value) => {
-              const num = typeof value === "number" ? value : Number(value ?? 0);
-              return [`${num.toFixed(2)} h`, "Hours"];
-            }}
-          />
-          <Bar dataKey="hours" radius={[8, 8, 0, 0]} fill="#c0392b" />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  );
+  const days: SegmentedDay[] = data.map((point, index) => {
+    const seconds = Math.round(point.hours * 3600);
+    return {
+      key: `${point.label}-${index}`,
+      label: point.label,
+      totalSeconds: seconds,
+      totalHours: point.hours,
+      segments: point.hours
+        ? [
+            {
+              id: `${point.label}-${index}`,
+              title: point.label,
+              description: null,
+              projectId: null,
+              projectName: "Total",
+              categoryName: null,
+              color: UNASSIGNED_COLOR,
+              startAt: "",
+              endAt: null,
+              durationSec: seconds,
+              hours: point.hours,
+              tags: [],
+            },
+          ]
+        : [],
+    };
+  });
+
+  return <SegmentedBarChart days={days} />;
 }

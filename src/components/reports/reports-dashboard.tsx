@@ -1,38 +1,93 @@
 "use client";
 
-import { format, parseISO } from "date-fns";
+import { format, isValid, parseISO } from "date-fns";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 
+import { ChartCard } from "@/components/charts/chart-card";
+import { ChartLegend } from "@/components/charts/chart-legend";
+import { ChartLoading } from "@/components/charts/chart-states";
+import { DEFAULT_FILTERS, LogFilterState, LogFilters } from "@/components/time-tracker/log-filters";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { MonthPicker } from "@/components/ui/month-picker";
+import {
+  buildSegmentedDays,
+  toProjectBreakdown,
+  type WorkLogSegment,
+} from "@/lib/charts/segments";
 import { exportToCSV, exportToJSON, exportToPDF, exportToXLSX } from "@/lib/export";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
+import { formatDuration } from "@/lib/utils";
 
-const DailyBarChart = dynamic(
-  () => import("@/components/charts/daily-bar-chart").then((mod) => mod.DailyBarChart),
+const chartLoader = () => <ChartLoading />;
+
+const SegmentedBarChart = dynamic(
+  () => import("@/components/charts/segmented-bar-chart").then((mod) => mod.SegmentedBarChart),
+  { loading: chartLoader },
 );
 const ProjectPieChart = dynamic(
   () => import("@/components/charts/project-pie-chart").then((mod) => mod.ProjectPieChart),
+  { loading: chartLoader },
 );
 const TrendLineChart = dynamic(
   () => import("@/components/charts/trend-line-chart").then((mod) => mod.TrendLineChart),
+  { loading: chartLoader },
 );
 
 export function ReportsDashboard() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const selectedMonth = searchParams.get("month") || format(new Date(), "yyyy-MM");
-  const monthDate = parseISO(`${selectedMonth}-01`);
+  const monthParam = searchParams.get("month");
+  const monthDate = useMemo(() => {
+    const parsed = monthParam ? parseISO(`${monthParam}-01`) : null;
+    return parsed && isValid(parsed) ? parsed : new Date();
+  }, [monthParam]);
+  const selectedMonth = format(monthDate, "yyyy-MM");
+  const monthStart = useMemo(
+    () => new Date(monthDate.getFullYear(), monthDate.getMonth(), 1),
+    [monthDate],
+  );
+  const monthEnd = useMemo(
+    () => new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0, 23, 59, 59, 999),
+    [monthDate],
+  );
   const { projects } = useProjects();
   const { categories } = useCategories();
+
+  const [filters, setFilters] = useState<LogFilterState>(DEFAULT_FILTERS);
+
+  // The visible chart interval always follows the selected month, but an explicit
+  // date-range filter narrows the query window by intersecting with the month.
+  const range = useMemo(() => {
+    const monthFrom = monthStart.getTime();
+    const monthTo = monthEnd.getTime();
+
+    const filterFrom = filters.from ? new Date(`${filters.from}T00:00:00`).getTime() : NaN;
+    const filterTo = filters.to ? new Date(`${filters.to}T23:59:59.999`).getTime() : NaN;
+
+    const fromMs = Number.isNaN(filterFrom) ? monthFrom : Math.max(monthFrom, filterFrom);
+    const toMs = Number.isNaN(filterTo) ? monthTo : Math.min(monthTo, filterTo);
+
+    // Guard against an inverted window (e.g. range wholly outside the month).
+    if (fromMs > toMs) {
+      return { from: monthStart.toISOString(), to: monthStart.toISOString() };
+    }
+    return { from: new Date(fromMs).toISOString(), to: new Date(toMs).toISOString() };
+  }, [monthStart, monthEnd, filters.from, filters.to]);
+
   const { entries } = useTimeEntries({
-    from: new Date(monthDate.getFullYear(), monthDate.getMonth(), 1).toISOString(),
-    to: new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0, 23, 59, 59, 999).toISOString(),
+    from: range.from,
+    to: range.to,
+    projectIds: filters.projectIds.length ? filters.projectIds : undefined,
+    categoryIds: filters.categoryIds.length ? filters.categoryIds : undefined,
+    tags: filters.tags.length ? filters.tags : undefined,
+    minDurationSec: filters.minH > 0 ? filters.minH * 3600 : undefined,
+    maxDurationSec: filters.maxH > 0 ? filters.maxH * 3600 : undefined,
+    search: filters.q || undefined,
   });
 
   const projectMap = useMemo(
@@ -44,38 +99,54 @@ export function ReportsDashboard() {
     [categories],
   );
 
+  const segmentedDays = useMemo(
+    () =>
+      buildSegmentedDays({
+        entries,
+        projectMap,
+        categoryMap,
+        interval: { start: monthStart, end: monthEnd },
+        labelFormat: "date",
+      }),
+    [entries, projectMap, categoryMap, monthStart, monthEnd],
+  );
+
+  const projectBreakdown = useMemo(() => toProjectBreakdown(segmentedDays), [segmentedDays]);
+
   const summary = useMemo(() => {
-    const projectBreakdownMap = new Map<string, { name: string; value: number; hours: number; color: string }>();
-    const dailyMap = new Map<string, number>();
-    let totalSeconds = 0;
-
-    for (const entry of entries) {
-      totalSeconds += entry.durationSec || 0;
-      const project = entry.projectId ? projectMap.get(entry.projectId) : null;
-      const key = project?.id || "unassigned";
-      const existing = projectBreakdownMap.get(key) || {
-        name: project?.name || "Unassigned",
-        value: 0,
-        hours: 0,
-        color: project?.color || "#c0392b",
-      };
-      existing.value += entry.durationSec || 0;
-      existing.hours = Number((existing.value / 3600).toFixed(2));
-      projectBreakdownMap.set(key, existing);
-
-      const dayKey = format(new Date(entry.startAt), "MMM d");
-      dailyMap.set(dayKey, (dailyMap.get(dayKey) || 0) + (entry.durationSec || 0));
-    }
-
+    const totalSeconds = segmentedDays.reduce((sum, day) => sum + day.totalSeconds, 0);
     return {
       totalHours: Number((totalSeconds / 3600).toFixed(2)),
-      projectBreakdown: Array.from(projectBreakdownMap.values()),
-      daily: Array.from(dailyMap.entries()).map(([label, seconds]) => ({
-        label,
-        hours: Number((seconds / 3600).toFixed(2)),
+      totalSeconds,
+      projectBreakdown: projectBreakdown.map((item) => ({
+        name: item.name,
+        value: item.hours,
+        hours: item.hours,
+        color: item.color,
+        seconds: item.seconds,
       })),
+      daily: segmentedDays.map((day) => ({ label: day.label, hours: day.totalHours })),
     };
-  }, [entries, projectMap]);
+  }, [segmentedDays, projectBreakdown]);
+
+  const legendItems = useMemo(
+    () =>
+      projectBreakdown.slice(0, 8).map((item) => ({
+        key: item.key,
+        label: item.name,
+        color: item.color,
+        value: formatDuration(item.seconds),
+      })),
+    [projectBreakdown],
+  );
+
+  const handleSegmentClick = useCallback(
+    (segment: WorkLogSegment) => {
+      const day = segment.startAt ? format(new Date(segment.startAt), "yyyy-MM-dd") : "";
+      router.push(day ? `/log?date=${day}` : "/log");
+    },
+    [router],
+  );
 
   const xlsxEntries = useMemo(
     () =>
@@ -107,6 +178,8 @@ export function ReportsDashboard() {
           className="w-[180px]"
         />
       </div>
+
+      <LogFilters filters={filters} onChange={setFilters} />
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
@@ -145,36 +218,39 @@ export function ReportsDashboard() {
         </Card>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Project breakdown</CardTitle>
-            <CardDescription>Where your hours accumulated this month.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ProjectPieChart data={summary.projectBreakdown.map((item) => ({ name: item.name, value: item.hours, color: item.color }))} />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Daily totals</CardTitle>
-            <CardDescription>How focused hours landed over the month.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <DailyBarChart data={summary.daily} />
-          </CardContent>
-        </Card>
-      </div>
+      <ChartCard
+        title="Daily activity"
+        description="Each block is a single work log, stacked by day. Hover for details, click to open that day."
+        footer={legendItems.length ? <ChartLegend items={legendItems} /> : undefined}
+      >
+        <SegmentedBarChart
+          days={segmentedDays}
+          height={320}
+          onSegmentClick={handleSegmentClick}
+          emptyTitle="No activity this month"
+          emptyDescription="Adjust filters or log time to populate this view."
+        />
+      </ChartCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Trend line</CardTitle>
-          <CardDescription>Momentum over time.</CardDescription>
-        </CardHeader>
-        <CardContent>
+      <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+        <ChartCard
+          title="Project breakdown"
+          description="Where your hours accumulated this month."
+          footer={legendItems.length ? <ChartLegend items={legendItems} /> : undefined}
+        >
+          <ProjectPieChart
+            data={summary.projectBreakdown.map((item) => ({
+              name: item.name,
+              value: item.hours,
+              color: item.color,
+              seconds: item.seconds,
+            }))}
+          />
+        </ChartCard>
+        <ChartCard title="Momentum" description="How focused hours trended over the month.">
           <TrendLineChart data={summary.daily} />
-        </CardContent>
-      </Card>
+        </ChartCard>
+      </div>
     </div>
   );
 }
