@@ -9,6 +9,9 @@ import {
 } from "@/lib/ai/request-validation";
 import { auditLogger } from "@/lib/audit/logger";
 
+export const runtime = "nodejs";
+export const maxDuration = 30;
+
 export async function POST(request: Request) {
   try {
     const body = await readAiJson(request);

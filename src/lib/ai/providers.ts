@@ -51,7 +51,7 @@ export const defaultModels = {
   "openai-codex": "codex-mini-latest",
   anthropic: "claude-3-5-sonnet-latest",
   google: "gemini-2.5-flash",
-  groq: "llama-3.1-70b-versatile",
+  groq: "llama-3.3-70b-versatile",
   "github-copilot": "openai/gpt-4.1",
 } as const;
 

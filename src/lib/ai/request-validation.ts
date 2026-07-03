@@ -56,6 +56,50 @@ function cleanText(value: unknown, maxLength: number) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 }
 
+// Extracts human-readable text from a TipTap/ProseMirror document tree,
+// arbitrary JSON, or a plain string — ignoring structural scaffolding
+// (node types, marks, attrs) that would otherwise waste model tokens.
+function extractPlainText(value: unknown, maxLength: number): string {
+  const parts: string[] = [];
+  let length = 0;
+
+  const walk = (node: unknown): void => {
+    if (length >= maxLength || node == null) {
+      return;
+    }
+
+    if (typeof node === "string") {
+      if (node) {
+        parts.push(node);
+        length += node.length + 1;
+      }
+      return;
+    }
+
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        if (length >= maxLength) break;
+        walk(item);
+      }
+      return;
+    }
+
+    if (typeof node === "object") {
+      const record = node as Record<string, unknown>;
+      // TipTap text nodes carry their content on `text`; child nodes on `content`.
+      if (typeof record.text === "string") {
+        walk(record.text);
+      }
+      if (record.content !== undefined) {
+        walk(record.content);
+      }
+    }
+  };
+
+  walk(value);
+  return parts.join(" ").replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
 function cleanNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
 }
@@ -96,16 +140,20 @@ export function parseProvider(value: unknown): AiProvider {
 }
 
 export function parseApiKey(value: unknown) {
-  if (typeof value === "string" && value.length > MAX_API_KEY_LENGTH) {
-    throw new AiRequestError(400, "Credential is too long.");
-  }
-
-  const apiKey = cleanText(value, MAX_API_KEY_LENGTH);
-  if (!apiKey) {
+  if (typeof value !== "string") {
     throw new AiRequestError(400, "Provider credential is required.");
   }
 
-  return apiKey;
+  const trimmed = value.trim();
+  if (trimmed.length > MAX_API_KEY_LENGTH) {
+    throw new AiRequestError(400, "Credential is too long.");
+  }
+
+  if (!trimmed) {
+    throw new AiRequestError(400, "Provider credential is required.");
+  }
+
+  return trimmed;
 }
 
 export function parseMessages(value: unknown): RequestMessage[] {
@@ -151,9 +199,7 @@ export function parseNotes(value: unknown): RequestNote[] {
           .filter(Boolean)
           .slice(0, 12)
       : [];
-    const contentPreview = JSON.stringify(record.content ?? "")
-      .slice(0, MAX_NOTE_CONTENT_CHARS)
-      .replace(/\s+/g, " ");
+    const contentPreview = extractPlainText(record.content, MAX_NOTE_CONTENT_CHARS);
 
     return [{ title, tags, contentPreview }];
   });

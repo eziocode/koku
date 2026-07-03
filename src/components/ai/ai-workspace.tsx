@@ -1,7 +1,7 @@
 "use client";
 
 import { endOfDay, endOfMonth, format, startOfDay, startOfMonth } from "date-fns";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,8 +45,14 @@ export function AiWorkspace() {
   const [chatStatus, setChatStatus] = useState<"idle" | "streaming">("idle");
   const [testingConnection, setTestingConnection] = useState(false);
   const [month, setMonth] = useState(format(new Date(), "yyyy-MM"));
-  const today = new Date();
-  const monthDate = new Date(`${month}-01T00:00:00`);
+  const abortRef = useRef<AbortController | null>(null);
+  const today = useMemo(() => new Date(), []);
+  const monthDate = useMemo(() => {
+    const parsed = new Date(`${month}-01T00:00:00`);
+    return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+  }, [month]);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
   const { entries: todayEntries } = useTimeEntries({
     from: startOfDay(today).toISOString(),
     to: endOfDay(today).toISOString(),
@@ -71,11 +77,15 @@ export function AiWorkspace() {
     () => new Map(categories.map((category) => [category.id, category.name])),
     [categories],
   );
-  const noteContext = notes.slice(0, 8).map((note) => ({
-    title: note.title,
-    tags: note.tags,
-    content: note.content,
-  }));
+  const noteContext = useMemo(
+    () =>
+      notes.slice(0, 8).map((note) => ({
+        title: note.title,
+        tags: note.tags,
+        content: note.content,
+      })),
+    [notes],
+  );
 
   async function getApiKey() {
     const apiKey = await getApiKeyForProvider(provider);
@@ -135,7 +145,7 @@ export function AiWorkspace() {
     });
 
     if (!response.ok) {
-      toast.error("Unable to generate standup.");
+      toast.error(await getResponseError(response, "Unable to generate standup."));
       return;
     }
 
@@ -167,7 +177,7 @@ export function AiWorkspace() {
     });
 
     if (!response.ok) {
-      toast.error("Unable to generate monthly narrative.");
+      toast.error(await getResponseError(response, "Unable to generate monthly narrative."));
       return;
     }
 
@@ -216,10 +226,15 @@ export function AiWorkspace() {
     setChatStatus("streaming");
     form.reset();
 
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
       const response = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           provider,
           apiKey,
@@ -276,7 +291,11 @@ export function AiWorkspace() {
           entry.id === assistantId ? { ...entry, content: result || "No response text returned." } : entry,
         ),
       );
-    } catch {
+    } catch (error) {
+      // A deliberate abort (unmount or a new submission) is not an error.
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
       setMessages((current) =>
         current.map((entry) =>
           entry.id === assistantId ? { ...entry, content: "Error: Unable to reach the AI endpoint." } : entry,
@@ -284,6 +303,9 @@ export function AiWorkspace() {
       );
       toast.error("Unable to reach the AI endpoint.");
     } finally {
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+      }
       setChatStatus("idle");
     }
   }
