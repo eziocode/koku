@@ -8,6 +8,7 @@ import { useCallback, useMemo, useState } from "react";
 import { ChartCard } from "@/components/charts/chart-card";
 import { ChartLegend } from "@/components/charts/chart-legend";
 import { ChartLoading } from "@/components/charts/chart-states";
+import { ASSIGNMENT_META, STATUS_META } from "@/components/charts/status-badge";
 import { DEFAULT_FILTERS, LogFilterState, LogFilters } from "@/components/time-tracker/log-filters";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,8 +16,10 @@ import { MonthPicker } from "@/components/ui/month-picker";
 import {
   buildSegmentedDays,
   toProjectBreakdown,
+  toStatusBreakdown,
   type WorkLogSegment,
 } from "@/lib/charts/segments";
+import { getStatusColor } from "@/lib/charts/theme";
 import { exportToCSV, exportToJSON, exportToPDF, exportToXLSX } from "@/lib/export";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
@@ -112,12 +115,18 @@ export function ReportsDashboard() {
   );
 
   const projectBreakdown = useMemo(() => toProjectBreakdown(segmentedDays), [segmentedDays]);
+  const statusBreakdown = useMemo(
+    () => toStatusBreakdown(segmentedDays, getStatusColor),
+    [segmentedDays],
+  );
 
   const summary = useMemo(() => {
     const totalSeconds = segmentedDays.reduce((sum, day) => sum + day.totalSeconds, 0);
+    const totalLogs = segmentedDays.reduce((sum, day) => sum + day.segments.length, 0);
     return {
       totalHours: Number((totalSeconds / 3600).toFixed(2)),
       totalSeconds,
+      totalLogs,
       projectBreakdown: projectBreakdown.map((item) => ({
         name: item.name,
         value: item.hours,
@@ -138,6 +147,34 @@ export function ReportsDashboard() {
         value: formatDuration(item.seconds),
       })),
     [projectBreakdown],
+  );
+
+  // A single pie combining status + assignment, so progress and ownership read
+  // together. Slices reuse the shared status palette for consistency.
+  const statusPie = useMemo(
+    () => [...statusBreakdown.status, ...statusBreakdown.assignment],
+    [statusBreakdown],
+  );
+
+  const statusLegend = useMemo(
+    () => [
+      ...statusBreakdown.status.map((slice) => ({
+        key: slice.key,
+        label: slice.name,
+        color: slice.color,
+        value: `${slice.count}`,
+        Icon: STATUS_META[slice.key as keyof typeof STATUS_META]?.Icon,
+        live: slice.key === "running",
+      })),
+      ...statusBreakdown.assignment.map((slice) => ({
+        key: slice.key,
+        label: slice.name,
+        color: slice.color,
+        value: `${slice.count}`,
+        Icon: ASSIGNMENT_META[slice.key as keyof typeof ASSIGNMENT_META]?.Icon,
+      })),
+    ],
+    [statusBreakdown],
   );
 
   const handleSegmentClick = useCallback(
@@ -181,11 +218,17 @@ export function ReportsDashboard() {
 
       <LogFilters filters={filters} onChange={setFilters} />
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader>
             <CardDescription>Total hours this month</CardDescription>
             <CardTitle className="text-3xl">{summary.totalHours.toFixed(2)}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardDescription>Logs recorded</CardDescription>
+            <CardTitle className="text-3xl">{summary.totalLogs}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
@@ -197,22 +240,19 @@ export function ReportsDashboard() {
         <Card>
           <CardHeader>
             <CardDescription>Export</CardDescription>
-            <CardTitle className="text-xl">Download your report</CardTitle>
+            <CardTitle className="text-lg">Download report</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <Button
               className="w-full"
               onClick={() => void exportToXLSX(xlsxEntries, `koku-${selectedMonth}-report.xlsx`)}
             >
-              Export full report (.xlsx)
+              Full report (.xlsx)
             </Button>
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" size="sm" onClick={() => void exportToCSV(summary.projectBreakdown, `koku-${selectedMonth}.csv`)}>CSV</Button>
               <Button variant="outline" size="sm" onClick={() => exportToJSON({ month: selectedMonth, totalHours: summary.totalHours, projectBreakdown: summary.projectBreakdown, daily: summary.daily }, `koku-${selectedMonth}.json`)}>JSON</Button>
               <Button variant="outline" size="sm" onClick={() => void exportToPDF(summary.projectBreakdown.map((item) => ({ project: item.name, hours: item.hours, color: item.color })), `koku-${selectedMonth}.pdf`)}>PDF</Button>
-              <Button variant="outline" size="sm" disabled title="Coming soon">
-                Google Sheets
-              </Button>
             </div>
           </CardContent>
         </Card>
@@ -220,7 +260,7 @@ export function ReportsDashboard() {
 
       <ChartCard
         title="Daily activity"
-        description="Each block is a single work log, stacked by day. Hover for details, click to open that day."
+        description="Each block is a single work log, stacked by day. Running logs shimmer live; unassigned logs are outlined. Hover for details, click to open that day."
         footer={legendItems.length ? <ChartLegend items={legendItems} /> : undefined}
       >
         <SegmentedBarChart
@@ -232,13 +272,16 @@ export function ReportsDashboard() {
         />
       </ChartCard>
 
-      <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+      <div className="grid gap-6 xl:grid-cols-3">
         <ChartCard
           title="Project breakdown"
           description="Where your hours accumulated this month."
           footer={legendItems.length ? <ChartLegend items={legendItems} /> : undefined}
         >
           <ProjectPieChart
+            height={300}
+            centerLabel="tracked"
+            centerValue={`${summary.totalHours.toFixed(1)}h`}
             data={summary.projectBreakdown.map((item) => ({
               name: item.name,
               value: item.hours,
@@ -247,8 +290,26 @@ export function ReportsDashboard() {
             }))}
           />
         </ChartCard>
+        <ChartCard
+          title="Status & progress"
+          description="Distribution of log status and assignment across the month."
+          footer={statusLegend.length ? <ChartLegend items={statusLegend} /> : undefined}
+        >
+          <ProjectPieChart
+            height={300}
+            centerLabel="logs"
+            centerValue={`${summary.totalLogs}`}
+            data={statusPie.map((slice) => ({
+              name: slice.name,
+              value: slice.count,
+              color: slice.color,
+              seconds: slice.seconds,
+              count: slice.count,
+            }))}
+          />
+        </ChartCard>
         <ChartCard title="Momentum" description="How focused hours trended over the month.">
-          <TrendLineChart data={summary.daily} />
+          <TrendLineChart data={summary.daily} height={300} />
         </ChartCard>
       </div>
     </div>

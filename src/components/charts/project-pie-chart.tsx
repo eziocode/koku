@@ -7,9 +7,20 @@ import { ChartEmpty } from "@/components/charts/chart-states";
 import { CHART_TOKENS } from "@/lib/charts/theme";
 import { formatDuration } from "@/lib/utils";
 
+export interface PieDatum {
+  name: string;
+  value: number;
+  color: string;
+  seconds?: number;
+  count?: number;
+}
+
 interface ProjectPieChartProps {
-  data: Array<{ name: string; value: number; color: string; seconds?: number }>;
+  data: PieDatum[];
   height?: number;
+  /** Text shown in the donut hole (e.g. total). */
+  centerLabel?: string;
+  centerValue?: string;
 }
 
 function PieTooltip({
@@ -17,7 +28,7 @@ function PieTooltip({
   payload,
 }: {
   active?: boolean;
-  payload?: Array<{ payload?: { name: string; value: number; color: string; seconds?: number } }>;
+  payload?: Array<{ payload?: PieDatum }>;
 }) {
   if (!active || !payload?.length) return null;
   const item = payload[0]?.payload;
@@ -30,26 +41,27 @@ function PieTooltip({
       </div>
       <p className="mt-1 text-xs text-muted-foreground">
         {item.seconds != null ? formatDuration(item.seconds) : `${item.value.toFixed(2)} h`}
+        {item.count != null ? ` · ${item.count} log${item.count === 1 ? "" : "s"}` : ""}
       </p>
     </div>
   );
 }
 
-export function ProjectPieChart({ data, height = 320 }: ProjectPieChartProps) {
+export function ProjectPieChart({ data, height = 320, centerLabel, centerValue }: ProjectPieChartProps) {
   const total = useMemo(() => data.reduce((sum, d) => sum + d.value, 0), [data]);
 
   if (!data.length || total === 0) {
     return (
       <ChartEmpty
         height={height}
-        title="No project data"
-        description="Assign entries to projects to see how time is distributed."
+        title="No data"
+        description="Log some work to see how time is distributed."
       />
     );
   }
 
   return (
-    <div className="w-full" style={{ height }}>
+    <div className="relative w-full" style={{ height }}>
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
           <Pie
@@ -70,6 +82,14 @@ export function ProjectPieChart({ data, height = 320 }: ProjectPieChartProps) {
           <Tooltip content={<PieTooltip />} wrapperStyle={{ outline: "none" }} />
         </PieChart>
       </ResponsiveContainer>
+      {centerValue ? (
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-2xl font-semibold tabular-nums">{centerValue}</span>
+          {centerLabel ? (
+            <span className="text-xs text-muted-foreground">{centerLabel}</span>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

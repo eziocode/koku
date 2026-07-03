@@ -4,6 +4,7 @@ import { Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { applyAccentToDocument, cacheAccent, isValidAccent } from "@/lib/appearance";
 import { useSettings } from "@/lib/storage/hooks/use-settings";
 import { cn } from "@/lib/utils";
 
@@ -85,7 +86,16 @@ export function AppearanceSettings() {
                   aria-checked={selected}
                   aria-label={`${label} accent colour`}
                   title={label}
-                  onClick={() => setSetting("accent", key)}
+                  onClick={() => {
+                    if (isValidAccent(key)) {
+                      // Apply + warm the pre-paint cache immediately so both the
+                      // current view and the next hard refresh are flash-free,
+                      // then persist to Dexie (the source of truth).
+                      applyAccentToDocument(key);
+                      cacheAccent(key);
+                    }
+                    void setSetting("accent", key);
+                  }}
                   className={cn(
                     "flex min-h-[80px] cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border p-3 text-xs font-medium transition-all",
                     selected

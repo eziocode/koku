@@ -23,6 +23,7 @@ export function DailyBarChart({ data }: DailyBarChartProps) {
       label: point.label,
       totalSeconds: seconds,
       totalHours: point.hours,
+      hasRunning: false,
       segments: point.hours
         ? [
             {
@@ -38,6 +39,8 @@ export function DailyBarChart({ data }: DailyBarChartProps) {
               durationSec: seconds,
               hours: point.hours,
               tags: [],
+              status: "completed" as const,
+              assignment: "unassigned" as const,
             },
           ]
         : [],

@@ -13,10 +13,11 @@ src/lib/charts/
 src/components/charts/
   chart-card.tsx        → consistent card chrome (header + footer/legend)
   chart-states.tsx      → ChartLoading / ChartEmpty / ChartError
-  chart-legend.tsx      → shared legend
-  segment-tooltip.tsx   → rich per-work-log tooltip
+  chart-legend.tsx      → shared legend (supports icons + live dots)
+  status-badge.tsx      → StatusBadge / AssignmentBadge (shared status pills)
+  segment-tooltip.tsx   → rich per-day tooltip listing every work log
   segmented-bar-chart.tsx → stacked, per-work-log daily bars (primary chart)
-  project-pie-chart.tsx → project distribution donut
+  project-pie-chart.tsx → distribution donut (projects or status)
   trend-line-chart.tsx  → momentum area chart
   daily-bar-chart.tsx   → DEPRECATED shim → SegmentedBarChart
 ```
@@ -25,7 +26,29 @@ src/components/charts/
 
 Instead of a single aggregated bar per day, a day is rendered as a **stack of
 segments** — one segment per work log. Segment height is proportional to that
-log's duration.
+log's duration. Every log for a day is represented (not just the first), each in
+a distinct colour, and hovering the column surfaces details for **all** of them.
+
+### Status & assignment
+
+Each segment carries a derived **status** and **assignment** so the graph and the
+reports pie stay visually consistent:
+
+| Field | Values | How it's derived |
+| --- | --- | --- |
+| `status` | `completed` · `running` · `pending` · `failed` | `running` when the log has no `endAt`; `pending` when it has an end but zero duration; `completed` otherwise. `failed` is only set via an explicit `status` override. |
+| `assignment` | `assigned` · `unassigned` | `assigned` when the log has a `projectId`. |
+
+Colours for these come from `STATUS_COLORS` in `theme.ts` (via `getStatusColor`)
+and are shared by `<StatusBadge>`, `<AssignmentBadge>`, the chart, and the pie
+legend.
+
+**Running logs** render with a moving shimmer overlay + pulsing outline in the
+bar, a spinning icon and pulsing dot in the `<StatusBadge>`, and a live dot in the
+legend. All live animations respect `prefers-reduced-motion`.
+
+**Unassigned logs** get a dashed outline in the bar and the neutral colour, so
+they're recognisable without reading the tooltip.
 
 ```ts
 import { buildSegmentedDays } from "@/lib/charts/segments";

@@ -3,8 +3,10 @@ import { test } from "node:test";
 
 import {
   buildSegmentedDays,
+  deriveStatus,
   toProjectBreakdown,
   toStackedRows,
+  toStatusBreakdown,
   type SegmentSourceEntry,
 } from "./segments";
 
@@ -162,4 +164,67 @@ test("toProjectBreakdown aggregates seconds per project, sorted desc", () => {
   assert.equal(breakdown[0].name, "App");
   assert.equal(breakdown[0].seconds, 7200);
   assert.equal(breakdown[1].seconds, 5400);
+});
+
+test("deriveStatus infers running / completed / pending, honouring explicit status", () => {
+  assert.equal(deriveStatus(entry({ id: "r", startAt: "x", endAt: null })), "running");
+  assert.equal(
+    deriveStatus(entry({ id: "c", startAt: "x", endAt: "y", durationSec: 3600 })),
+    "completed",
+  );
+  assert.equal(
+    deriveStatus(entry({ id: "p", startAt: "x", endAt: "y", durationSec: 0 })),
+    "pending",
+  );
+  assert.equal(
+    deriveStatus(entry({ id: "f", startAt: "x", endAt: "y", status: "failed" })),
+    "failed",
+  );
+});
+
+test("running segments get a minimum visible height and flag the day", () => {
+  const days = buildSegmentedDays({
+    entries: [entry({ id: "run", startAt: "2024-06-03T09:00:00.000Z", endAt: null, durationSec: 0 })],
+    projectMap,
+  });
+  assert.equal(days[0].hasRunning, true);
+  assert.equal(days[0].segments[0].status, "running");
+  assert.ok(days[0].segments[0].hours > 0, "running log should have a visible height");
+});
+
+test("segments carry assignment state (assigned vs unassigned)", () => {
+  const days = buildSegmentedDays({
+    entries: [
+      entry({ id: "a", startAt: "2024-06-03T09:00:00.000Z", projectId: "p1" }),
+      entry({ id: "b", startAt: "2024-06-03T10:00:00.000Z", projectId: null }),
+    ],
+    projectMap,
+  });
+  const byId = Object.fromEntries(days[0].segments.map((s) => [s.id, s.assignment]));
+  assert.equal(byId.a, "assigned");
+  assert.equal(byId.b, "unassigned");
+});
+
+test("toStatusBreakdown aggregates status + assignment counts", () => {
+  const days = buildSegmentedDays({
+    entries: [
+      entry({ id: "a", startAt: "2024-06-03T09:00:00.000Z", projectId: "p1", endAt: "2024-06-03T10:00:00.000Z", durationSec: 3600 }),
+      entry({ id: "b", startAt: "2024-06-03T11:00:00.000Z", projectId: "p2", endAt: null, durationSec: 0 }),
+      entry({ id: "c", startAt: "2024-06-04T09:00:00.000Z", projectId: null, endAt: "2024-06-04T10:00:00.000Z", durationSec: 3600 }),
+    ],
+    projectMap,
+  });
+  const { status, assignment } = toStatusBreakdown(days, (key) => key);
+
+  const completed = status.find((s) => s.key === "completed");
+  const running = status.find((s) => s.key === "running");
+  assert.equal(completed?.count, 2);
+  assert.equal(running?.count, 1);
+
+  const assigned = assignment.find((s) => s.key === "assigned");
+  const unassigned = assignment.find((s) => s.key === "unassigned");
+  assert.equal(assigned?.count, 2);
+  assert.equal(unassigned?.count, 1);
+  // status slices are ordered completed → running → pending → failed
+  assert.deepEqual(status.map((s) => s.key), ["completed", "running"]);
 });

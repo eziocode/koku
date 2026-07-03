@@ -11,8 +11,8 @@ import { toStackedRows, type SegmentedDay, type StackedRow, type WorkLogSegment 
 
 /**
  * Custom bar shape that rounds only the topmost non-empty segment of each day's
- * stack, so every column gets a clean rounded cap regardless of how many
- * segments it holds.
+ * stack, marks running logs with an animated shimmer + live outline, and gives
+ * unassigned logs a dashed outline so they read differently from assigned work.
  */
 function RoundedSegment(props: {
   x?: number;
@@ -28,12 +28,48 @@ function RoundedSegment(props: {
   if (height <= 0 || width <= 0) {
     return null;
   }
+  const segment = payload?.segments?.[segIndex];
   const r = Math.min(CHART_TOKENS.radius, width / 2, height);
   const isTop = payload?.topSegmentIndex === segIndex;
   const path = isTop
     ? `M${x},${y + height} L${x},${y + r} Q${x},${y} ${x + r},${y} L${x + width - r},${y} Q${x + width},${y} ${x + width},${y + r} L${x + width},${y + height} Z`
     : `M${x},${y} h${width} v${height} h${-width} Z`;
-  return <path d={path} fill={fill} fillOpacity={fillOpacity} />;
+
+  const isRunning = segment?.status === "running";
+  const isUnassigned = segment?.assignment === "unassigned";
+
+  return (
+    <g>
+      <path
+        d={path}
+        fill={fill}
+        fillOpacity={fillOpacity}
+        stroke={isUnassigned ? "color-mix(in srgb, var(--color-foreground) 45%, transparent)" : "none"}
+        strokeWidth={isUnassigned ? 1 : 0}
+        strokeDasharray={isUnassigned ? "3 3" : undefined}
+      />
+      {isRunning ? (
+        <>
+          {/* Live shimmer overlay for the running segment. */}
+          <foreignObject x={x} y={y} width={width} height={height} pointerEvents="none">
+            <div
+              className="koku-live-shimmer h-full w-full"
+              style={{ borderRadius: isTop ? `${r}px ${r}px 0 0` : 0 }}
+            />
+          </foreignObject>
+          {/* Pulsing outline to signal the active state. */}
+          <path
+            d={path}
+            fill="none"
+            stroke={fill}
+            strokeWidth={2}
+            className="koku-live-shimmer"
+            opacity={0.9}
+          />
+        </>
+      ) : null}
+    </g>
+  );
 }
 
 interface SegmentedBarChartProps {
@@ -49,10 +85,9 @@ interface SegmentedBarChartProps {
  * Segmented, stacked daily-activity bar chart.
  *
  * Each day is a column; each work log within that day is a differently coloured
- * stacked segment whose height is proportional to its duration. Hovering a
- * segment shows a rich tooltip; clicking invokes `onSegmentClick`.
- *
- * Reusable across the dashboard (weekly view) and reports (monthly view).
+ * stacked segment whose height is proportional to its duration. Running logs
+ * shimmer with a live indicator, unassigned logs get a dashed outline, and
+ * hovering a column shows a rich tooltip listing every log for that day.
  */
 export function SegmentedBarChart({
   days,
@@ -119,7 +154,7 @@ export function SegmentedBarChart({
                     <Cell
                       key={row.key}
                       fill={segment?.color ?? "transparent"}
-                      fillOpacity={segment ? 0.92 : 0}
+                      fillOpacity={segment ? (segment.status === "running" ? 0.72 : 0.92) : 0}
                     />
                   );
                 })}
@@ -137,6 +172,8 @@ export function SegmentedBarChart({
             <th scope="col">Day</th>
             <th scope="col">Work log</th>
             <th scope="col">Project</th>
+            <th scope="col">Status</th>
+            <th scope="col">Assignment</th>
             <th scope="col">Duration</th>
           </tr>
         </thead>
@@ -147,6 +184,8 @@ export function SegmentedBarChart({
                 <td>{row.label}</td>
                 <td>{segment.title}</td>
                 <td>{segment.projectName}</td>
+                <td>{segment.status}</td>
+                <td>{segment.assignment}</td>
                 <td>{formatDuration(segment.durationSec)}</td>
               </tr>
             )),

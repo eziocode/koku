@@ -64,6 +64,32 @@ export function resolveEntryColor(input: {
 }
 
 /**
+ * Status + assignment palette. These colours are intentionally semantic (not
+ * from the categorical palette) and stay consistent across the graph, tooltips,
+ * legends, and the reports pie chart. Chosen for adequate contrast in both
+ * light and dark themes and to read as accessible status colours.
+ */
+export const STATUS_COLORS = {
+  completed: "#2f8f5b", // green — done
+  running: "#3b6ea5", // blue — live/active
+  pending: "#b8862f", // amber — awaiting work
+  failed: "#d92d20", // red — failed
+  assigned: "#5a4fb0", // violet — tied to a project
+  unassigned: "#8b8178", // neutral — no project
+} as const;
+
+export type StatusColorKey = keyof typeof STATUS_COLORS;
+
+/**
+ * Resolves a semantic colour for a status or assignment key, falling back to
+ * the neutral colour for anything unknown. Used by charts and legends so a
+ * single key → colour mapping is shared everywhere.
+ */
+export function getStatusColor(key: string): string {
+  return (STATUS_COLORS as Record<string, string>)[key] ?? UNASSIGNED_COLOR;
+}
+
+/**
  * Shared styling tokens for chart chrome (axes, grid, cursor). Colours use the
  * theme CSS variables so charts respond to light/dark mode automatically.
  */

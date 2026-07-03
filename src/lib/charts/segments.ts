@@ -10,6 +10,19 @@ import { eachDayOfInterval, format } from "date-fns";
 
 import { resolveEntryColor } from "@/lib/charts/theme";
 
+/**
+ * Derived lifecycle status for a work log. koku's `TimeEntry` has no explicit
+ * status column, so status is inferred:
+ *  - `running`   → no `endAt` (an in-flight timer merged into the view)
+ *  - `completed` → has `endAt` and tracked duration
+ *  - `pending`   → has `endAt` but zero duration (logged but not worked)
+ *  - `failed`    → reserved; surfaced when an entry is explicitly flagged
+ */
+export type WorkLogStatus = "completed" | "running" | "pending" | "failed";
+
+/** Whether a work log is tied to a project. */
+export type AssignmentState = "assigned" | "unassigned";
+
 /** A single work-log segment within a stacked day column. */
 export interface WorkLogSegment {
   id: string;
@@ -24,6 +37,8 @@ export interface WorkLogSegment {
   durationSec: number;
   hours: number;
   tags: string[];
+  status: WorkLogStatus;
+  assignment: AssignmentState;
 }
 
 /** One day's worth of segments, ready for a stacked bar column. */
@@ -35,6 +50,8 @@ export interface SegmentedDay {
   totalSeconds: number;
   totalHours: number;
   segments: WorkLogSegment[];
+  /** Convenience flag so the chart can add a live indicator to the column. */
+  hasRunning: boolean;
 }
 
 /** Minimal entry shape required to build segments (subset of `TimeEntry`). */
@@ -48,6 +65,8 @@ export interface SegmentSourceEntry {
   endAt?: string | null;
   durationSec?: number | null;
   tags: string[];
+  /** Explicit status override. When omitted, status is derived from the entry. */
+  status?: WorkLogStatus;
 }
 
 export interface ProjectLookup {
@@ -68,6 +87,17 @@ interface BuildSegmentsOptions {
   labelFormat?: "weekday" | "date";
 }
 
+/** Derives lifecycle status from an entry when not explicitly provided. */
+export function deriveStatus(entry: SegmentSourceEntry): WorkLogStatus {
+  if (entry.status) {
+    return entry.status;
+  }
+  if (!entry.endAt) {
+    return "running";
+  }
+  return (entry.durationSec ?? 0) > 0 ? "completed" : "pending";
+}
+
 function toSegment(
   entry: SegmentSourceEntry,
   projectMap: ProjectLookup,
@@ -77,6 +107,7 @@ function toSegment(
   const categoryName =
     categoryMap && entry.categoryId ? categoryMap.get(entry.categoryId)?.name ?? null : null;
   const durationSec = Math.max(0, entry.durationSec ?? 0);
+  const status = deriveStatus(entry);
 
   return {
     id: entry.id,
@@ -89,8 +120,12 @@ function toSegment(
     startAt: entry.startAt,
     endAt: entry.endAt ?? null,
     durationSec,
-    hours: Number((durationSec / 3600).toFixed(4)),
+    // Running logs have no committed duration yet; give them a minimum visible
+    // height so their live segment is always distinguishable in the stack.
+    hours: Number((Math.max(durationSec, status === "running" ? 900 : 0) / 3600).toFixed(4)),
     tags: entry.tags ?? [],
+    status,
+    assignment: entry.projectId ? "assigned" : "unassigned",
   };
 }
 
@@ -115,7 +150,14 @@ export function buildSegmentedDays({
     const key = format(date, "yyyy-MM-dd");
     let day = dayMap.get(key);
     if (!day) {
-      day = { key, label: labelFor(date), totalSeconds: 0, totalHours: 0, segments: [] };
+      day = {
+        key,
+        label: labelFor(date),
+        totalSeconds: 0,
+        totalHours: 0,
+        segments: [],
+        hasRunning: false,
+      };
       dayMap.set(key, day);
     }
     return day;
@@ -139,6 +181,9 @@ export function buildSegmentedDays({
     const segment = toSegment(entry, projectMap, categoryMap);
     day.segments.push(segment);
     day.totalSeconds += segment.durationSec;
+    if (segment.status === "running") {
+      day.hasRunning = true;
+    }
   }
 
   const days = Array.from(dayMap.values());
@@ -159,10 +204,11 @@ export interface StackedRow {
   label: string;
   totalHours: number;
   segments: WorkLogSegment[];
+  hasRunning: boolean;
   /** Index of the topmost segment for this day, so only it gets rounded corners. `-1` when empty. */
   topSegmentIndex: number;
   /** `seg0`, `seg1`, … hold each segment's hours for the stacked bars. */
-  [segKey: string]: number | string | WorkLogSegment[];
+  [segKey: string]: number | string | boolean | WorkLogSegment[];
 }
 
 export function toStackedRows(days: SegmentedDay[]): {
@@ -177,6 +223,7 @@ export function toStackedRows(days: SegmentedDay[]): {
       label: day.label,
       totalHours: day.totalHours,
       segments: day.segments,
+      hasRunning: day.hasRunning,
       topSegmentIndex: day.segments.length - 1,
     };
     day.segments.forEach((segment, index) => {
@@ -213,4 +260,80 @@ export function toProjectBreakdown(days: SegmentedDay[]): Array<{
   return Array.from(map.values())
     .map((item) => ({ ...item, hours: Number((item.seconds / 3600).toFixed(2)) }))
     .sort((a, b) => b.seconds - a.seconds);
+}
+
+/** A slice of the status/assignment distribution pie. */
+export interface StatusSlice {
+  key: string;
+  name: string;
+  color: string;
+  count: number;
+  seconds: number;
+  hours: number;
+}
+
+/**
+ * Aggregates segments into a combined status + assignment distribution for the
+ * reports pie chart. Produces slices for Completed / Running / Pending / Failed
+ * plus Assigned / Unassigned, each keyed to the shared status palette so colours
+ * and legends stay consistent across the app.
+ */
+export function toStatusBreakdown(
+  days: SegmentedDay[],
+  colorFor: (key: string) => string,
+): { status: StatusSlice[]; assignment: StatusSlice[] } {
+  const statusOrder: WorkLogStatus[] = ["completed", "running", "pending", "failed"];
+  const statusLabel: Record<WorkLogStatus, string> = {
+    completed: "Completed",
+    running: "Running",
+    pending: "Pending",
+    failed: "Failed",
+  };
+
+  const statusAgg = new Map<WorkLogStatus, { count: number; seconds: number }>();
+  const assignmentAgg = new Map<AssignmentState, { count: number; seconds: number }>();
+
+  for (const day of days) {
+    for (const segment of day.segments) {
+      const s = statusAgg.get(segment.status) ?? { count: 0, seconds: 0 };
+      s.count += 1;
+      s.seconds += segment.durationSec;
+      statusAgg.set(segment.status, s);
+
+      const a = assignmentAgg.get(segment.assignment) ?? { count: 0, seconds: 0 };
+      a.count += 1;
+      a.seconds += segment.durationSec;
+      assignmentAgg.set(segment.assignment, a);
+    }
+  }
+
+  const status: StatusSlice[] = statusOrder
+    .filter((key) => statusAgg.has(key))
+    .map((key) => {
+      const agg = statusAgg.get(key)!;
+      return {
+        key,
+        name: statusLabel[key],
+        color: colorFor(key),
+        count: agg.count,
+        seconds: agg.seconds,
+        hours: Number((agg.seconds / 3600).toFixed(2)),
+      };
+    });
+
+  const assignment: StatusSlice[] = (["assigned", "unassigned"] as AssignmentState[])
+    .filter((key) => assignmentAgg.has(key))
+    .map((key) => {
+      const agg = assignmentAgg.get(key)!;
+      return {
+        key,
+        name: key === "assigned" ? "Assigned" : "Unassigned",
+        color: colorFor(key),
+        count: agg.count,
+        seconds: agg.seconds,
+        hours: Number((agg.seconds / 3600).toFixed(2)),
+      };
+    });
+
+  return { status, assignment };
 }

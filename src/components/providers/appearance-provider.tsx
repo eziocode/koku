@@ -2,32 +2,36 @@
 
 import { ReactNode, useEffect } from "react";
 
+import {
+  ACCENT_KEYS,
+  DEFAULT_ACCENT,
+  applyAccentToDocument,
+  cacheAccent,
+  isValidAccent,
+  type AccentKey,
+} from "@/lib/appearance";
 import { useSettings } from "@/lib/storage/hooks/use-settings";
 
-export const ACCENT_KEYS = ["terracotta", "ocean", "forest", "lavender", "amber", "slate"] as const;
-export type AccentKey = (typeof ACCENT_KEYS)[number];
-
-function isValidAccent(value: unknown): value is AccentKey {
-  return typeof value === "string" && (ACCENT_KEYS as readonly string[]).includes(value);
-}
+export { ACCENT_KEYS };
+export type { AccentKey };
 
 /**
- * Reads the persisted accent preference from Dexie and applies a `data-accent`
- * attribute to `<html>` so that the CSS variable overrides in globals.css take effect.
- * "terracotta" is the default @theme value, so no attribute is needed for it.
+ * Reconciles the persisted accent (source-of-truth in Dexie) with the document.
+ *
+ * IndexedDB is asynchronous, so a pre-paint blocking script (see `layout.tsx`
+ * + `buildAccentScript`) applies the accent from a synchronous localStorage
+ * cache *before* first paint to avoid the terracotta flash. This provider then
+ * keeps that cache in sync with the authoritative Dexie value.
  */
 export function AppearanceProvider({ children }: { children: ReactNode }) {
   const { getSetting } = useSettings();
   const rawAccent = getSetting("accent");
-  const accent: AccentKey = isValidAccent(rawAccent) ? rawAccent : "terracotta";
+  const accent: AccentKey = isValidAccent(rawAccent) ? rawAccent : DEFAULT_ACCENT;
 
   useEffect(() => {
-    const html = document.documentElement;
-    if (accent === "terracotta") {
-      html.removeAttribute("data-accent");
-    } else {
-      html.setAttribute("data-accent", accent);
-    }
+    applyAccentToDocument(accent);
+    // Keep the warm cache aligned so the next hard refresh paints correctly.
+    cacheAccent(accent);
   }, [accent]);
 
   return <>{children}</>;

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
 import { AppProviders } from "@/components/providers/app-providers";
+import { buildAccentScript } from "@/lib/appearance";
 
 import "./globals.css";
 
@@ -55,6 +56,13 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <head>
+        {/* Applies the persisted accent before first paint to avoid the
+            terracotta flash-of-default-accent on hard refresh / tab switch.
+            Runs synchronously from a localStorage cache; Dexie remains the
+            source of truth and reconciles post-hydration. */}
+        <script dangerouslySetInnerHTML={{ __html: buildAccentScript() }} />
+      </head>
       <body className="min-h-screen bg-background text-foreground">
         <AppProviders>{children}</AppProviders>
       </body>

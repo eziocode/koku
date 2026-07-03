@@ -11,9 +11,12 @@ import { Timer } from "@/components/time-tracker/timer";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { buildSegmentedDays, toProjectBreakdown, type WorkLogSegment } from "@/lib/charts/segments";
+import { getStatusColor } from "@/lib/charts/theme";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
+import type { SegmentSourceEntry } from "@/lib/charts/segments";
+import { getActiveTimerElapsedSec, useTimerStore } from "@/lib/stores/timer-store";
 import { formatDuration } from "@/lib/utils";
 
 export function DashboardClient() {
@@ -33,6 +36,26 @@ export function DashboardClient() {
     to: weekEnd.toISOString(),
   });
   const { entries: allEntries } = useTimeEntries();
+  const { timers } = useTimerStore();
+
+  // Represent any live timers as running (open-ended) segments so the chart
+  // shows in-flight work alongside completed logs.
+  const runningEntries = useMemo<SegmentSourceEntry[]>(
+    () =>
+      timers.map((timer) => ({
+        id: `running-${timer.id}`,
+        title: timer.title,
+        notes: timer.notes ?? null,
+        projectId: timer.projectId ?? null,
+        categoryId: timer.categoryId ?? null,
+        startAt: timer.startTime,
+        endAt: null,
+        durationSec: getActiveTimerElapsedSec(timer),
+        tags: timer.tags,
+        status: "running" as const,
+      })),
+    [timers],
+  );
 
   const projectMap = useMemo(
     () => new Map(projects.map((project) => [project.id, project])),
@@ -50,23 +73,34 @@ export function DashboardClient() {
   const weekDays = useMemo(
     () =>
       buildSegmentedDays({
-        entries: weekEntries,
+        entries: [...weekEntries, ...runningEntries],
         projectMap,
         categoryMap,
         interval: { start: weekStart, end: weekEnd },
         labelFormat: "weekday",
       }),
-    [weekEntries, projectMap, categoryMap, weekStart, weekEnd],
+    [weekEntries, runningEntries, projectMap, categoryMap, weekStart, weekEnd],
   );
 
   const legendItems = useMemo(() => {
     const breakdown = toProjectBreakdown(weekDays);
-    return breakdown.slice(0, 6).map((item) => ({
+    const items = breakdown.slice(0, 6).map((item) => ({
       key: item.key,
       label: item.name,
       color: item.color,
       value: formatDuration(item.seconds),
     }));
+    // Append a "Running" legend entry when a live log is present this week.
+    if (weekDays.some((day) => day.hasRunning)) {
+      items.push({
+        key: "running",
+        label: "Running",
+        color: getStatusColor("running"),
+        value: "",
+        live: true,
+      } as (typeof items)[number] & { live: boolean });
+    }
+    return items;
   }, [weekDays]);
 
   const handleSegmentClick = useCallback(
