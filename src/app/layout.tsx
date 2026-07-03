@@ -1,7 +1,8 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
 import { AppProviders } from "@/components/providers/app-providers";
+import { ServiceWorkerRegistrar } from "@/components/providers/service-worker-registrar";
 import { buildAccentScript } from "@/lib/appearance";
 
 import "./globals.css";
@@ -26,12 +27,14 @@ export const metadata: Metadata = {
   applicationName: "刻 Koku",
   keywords: ["time tracking", "knowledge graph", "notes", "AI", "productivity"],
   authors: [{ name: "Koku" }],
-  manifest: "/manifest.json",
-  icons: {
-    icon: "/favicon.ico",
-    shortcut: "/favicon.ico",
-    apple: "/favicon.ico",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Koku",
   },
+  // Icons are auto-detected from the `src/app/icon.png` and
+  // `src/app/apple-icon.png` file conventions — no manual entries needed.
   openGraph: {
     title: "刻 Koku",
     description: "Mark the moment. Master your time.",
@@ -43,6 +46,16 @@ export const metadata: Metadata = {
     title: "刻 Koku",
     description: "Mark the moment. Master your time.",
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#a43a30" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+  ],
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -65,6 +78,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen bg-background text-foreground">
         <AppProviders>{children}</AppProviders>
+        <ServiceWorkerRegistrar />
       </body>
     </html>
   );

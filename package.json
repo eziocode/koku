@@ -13,6 +13,7 @@
     "audit:performance": "node scripts/performance-audit.mjs",
     "audit:bundle": "next experimental-analyze --output",
     "audit": "npm run lint && npm run build && npm run audit:security && npm run audit:bundle && npm run audit:performance && npm run audit:deps",
+    "icons": "node scripts/generate-icons.mjs",
     "package": "npm run build && node scripts/package-appsail.mjs"
   },
   "dependencies": {

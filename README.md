@@ -102,6 +102,7 @@ koku runs with **no configuration**. Environment variables are optional and only
 | `npm run start`     | Serve the production build                         |
 | `npm run lint`      | Run ESLint                                         |
 | `npm test`          | Run the unit test suite (via `tsx --test`)         |
+| `npm run icons`     | Regenerate the 刻 app-icon set (favicon + PWA)     |
 
 > If `npm test` cannot resolve `tsx`, run the suite directly with `npx tsx --test src/**/*.test.ts`.
 
