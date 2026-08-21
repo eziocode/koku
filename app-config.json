@@ -1,0 +1,5 @@
+{
+  "command": "node appsail-server.cjs",
+  "build_path": ".next/standalone",
+  "stack": "node24"
+}
