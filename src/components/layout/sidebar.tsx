@@ -1,6 +1,6 @@
 "use client";
 
-import { Github, MessageSquareWarning } from "lucide-react";
+import { GitFork, MessageSquareWarning } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -65,7 +65,7 @@ export function Sidebar({ open, onNavigate }: SidebarProps) {
                   className="text-muted-foreground transition-colors hover:text-foreground"
                   aria-label="View project on GitHub"
                 >
-                  <Github className="h-4 w-4" />
+                  <GitFork className="h-4 w-4" />
                 </a>
               </TooltipTrigger>
               <TooltipContent side="top">Aswin</TooltipContent>
