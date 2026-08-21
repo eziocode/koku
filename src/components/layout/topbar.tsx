@@ -4,6 +4,7 @@ import { Menu, MoonStar, Settings, SunMedium, UserCircle2 } from "lucide-react";
 import Link from "next/link";
 import { useTheme } from "next-themes";
 
+import { DndPill } from "@/components/notifications/dnd-pill";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -30,6 +31,8 @@ export function Topbar({ onOpenSidebar }: TopbarProps) {
         <p className="text-sm font-medium text-foreground">Local-first workspace</p>
         <p className="truncate text-sm text-muted-foreground">Private, portable, and calm by default.</p>
       </div>
+      {/* Renders nothing unless do-not-disturb is on. */}
+      <DndPill />
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>

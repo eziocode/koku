@@ -10,7 +10,13 @@ import { SegmentedBarChart } from "@/components/charts/segmented-bar-chart";
 import { Timer } from "@/components/time-tracker/timer";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { buildSegmentedDays, toProjectBreakdown, type WorkLogSegment } from "@/lib/charts/segments";
+import {
+  buildSegmentedDays,
+  hasExcludedTag,
+  toProjectBreakdown,
+  type WorkLogSegment,
+} from "@/lib/charts/segments";
+import { BREAK_TAG } from "@/lib/notifications/settings";
 import { getStatusColor } from "@/lib/charts/theme";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
@@ -18,6 +24,9 @@ import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
 import type { SegmentSourceEntry } from "@/lib/charts/segments";
 import { getActiveTimerElapsedSec, useTimerStore } from "@/lib/stores/timer-store";
 import { formatDuration } from "@/lib/utils";
+
+/** Tags whose entries are records, not work: excluded from every work total. */
+const WORK_EXCLUDED_TAGS = [BREAK_TAG];
 
 export function DashboardClient() {
   const router = useRouter();
@@ -66,8 +75,14 @@ export function DashboardClient() {
     [categories],
   );
 
+  // Breaks are logged as real entries so they can be audited on /log, but they
+  // are not work — counting them here would inflate today's total.
   const totalTodaySeconds = todayEntries.reduce(
-    (sum, entry) => sum + (entry.durationSec || 0),
+    (sum, entry) => (hasExcludedTag(entry, WORK_EXCLUDED_TAGS) ? sum : sum + (entry.durationSec || 0)),
+    0,
+  );
+  const totalTodayBreakSeconds = todayEntries.reduce(
+    (sum, entry) => (hasExcludedTag(entry, WORK_EXCLUDED_TAGS) ? sum + (entry.durationSec || 0) : sum),
     0,
   );
   const weekDays = useMemo(
@@ -78,6 +93,7 @@ export function DashboardClient() {
         categoryMap,
         interval: { start: weekStart, end: weekEnd },
         labelFormat: "weekday",
+        excludeTags: WORK_EXCLUDED_TAGS,
       }),
     [weekEntries, runningEntries, projectMap, categoryMap, weekStart, weekEnd],
   );
@@ -138,6 +154,13 @@ export function DashboardClient() {
           <CardHeader>
             <CardDescription>Today’s total</CardDescription>
             <CardTitle className="text-3xl tabular-nums">{formatDuration(totalTodaySeconds)}</CardTitle>
+            {/* Break time is excluded from the total above, but shown rather than
+                hidden — silently dropping it would look like lost time. */}
+            {totalTodayBreakSeconds > 0 ? (
+              <CardDescription className="tabular-nums">
+                plus {formatDuration(totalTodayBreakSeconds)} on breaks
+              </CardDescription>
+            ) : null}
           </CardHeader>
         </Card>
         <Card className="minimal-panel">

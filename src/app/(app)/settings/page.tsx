@@ -9,6 +9,16 @@ const settingsSections = [
     href: "/settings/appearance",
   },
   {
+    title: "Notifications",
+    description: "Check-in reminders, breaks, and do-not-disturb. Off until you turn them on.",
+    href: "/settings/notifications",
+  },
+  {
+    title: "Mini player",
+    description: "A floating always-on-top timer that stays visible across tabs.",
+    href: "/settings/mini-player",
+  },
+  {
     title: "Local Settings",
     description: "Personalize your display name and device-only preferences.",
     href: "/settings/account",

@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   buildSegmentedDays,
   deriveStatus,
+  hasExcludedTag,
   toProjectBreakdown,
   toStackedRows,
   toStatusBreakdown,
@@ -240,4 +241,72 @@ test("toStatusBreakdown aggregates status + assignment counts", () => {
   assert.equal(unassigned?.count, 1);
   // status slices are ordered completed → running → pending → failed
   assert.deepEqual(status.map((s) => s.key), ["completed", "running"]);
+});
+
+/* ─── Excluding tagged entries (breaks) ───────────────────────────────────── */
+
+test("excludeTags removes matching entries and their seconds from the total", () => {
+  // A break is a real TimeEntry so it can be audited on /log, but it must not
+  // count as work in any total or it silently inflates every report.
+  const days = buildSegmentedDays({
+    entries: [
+      entry({ id: "work", startAt: "2026-08-21T09:00:00.000Z", projectId: "p1", durationSec: 3600 }),
+      entry({ id: "lunch", startAt: "2026-08-21T12:00:00.000Z", durationSec: 1800, tags: ["break"] }),
+    ],
+    projectMap,
+    excludeTags: ["break"],
+  });
+
+  assert.equal(days.length, 1);
+  assert.deepEqual(days[0].segments.map((s) => s.id), ["work"]);
+  assert.equal(days[0].totalSeconds, 3600);
+  assert.equal(days[0].totalHours, 1);
+});
+
+test("omitting excludeTags preserves the previous behaviour exactly", () => {
+  const entries = [
+    entry({ id: "work", startAt: "2026-08-21T09:00:00.000Z", projectId: "p1", durationSec: 3600 }),
+    entry({ id: "lunch", startAt: "2026-08-21T12:00:00.000Z", durationSec: 1800, tags: ["break"] }),
+  ];
+
+  const withDefault = buildSegmentedDays({ entries, projectMap });
+  const withEmpty = buildSegmentedDays({ entries, projectMap, excludeTags: [] });
+
+  assert.equal(withDefault[0].segments.length, 2);
+  assert.equal(withDefault[0].totalSeconds, 5400);
+  assert.deepEqual(withEmpty, withDefault);
+});
+
+test("tag matching ignores case and surrounding whitespace", () => {
+  const days = buildSegmentedDays({
+    entries: [entry({ id: "lunch", startAt: "2026-08-21T12:00:00.000Z", tags: [" Break "] })],
+    projectMap,
+    excludeTags: ["break"],
+  });
+
+  assert.equal(days[0]?.segments.length ?? 0, 0);
+});
+
+test("an entry keeps its other tags and is only excluded on a match", () => {
+  const days = buildSegmentedDays({
+    entries: [
+      entry({ id: "a", startAt: "2026-08-21T09:00:00.000Z", tags: ["deep", "billable"] }),
+      entry({ id: "b", startAt: "2026-08-21T10:00:00.000Z", tags: ["deep", "break"] }),
+    ],
+    projectMap,
+    excludeTags: ["break"],
+  });
+
+  assert.deepEqual(days[0].segments.map((s) => s.id), ["a"]);
+});
+
+test("hasExcludedTag is inert with an empty exclusion list", () => {
+  assert.equal(
+    hasExcludedTag(entry({ id: "x", startAt: "2026-08-21T09:00:00.000Z", tags: ["break"] }), []),
+    false,
+  );
+  assert.equal(
+    hasExcludedTag(entry({ id: "x", startAt: "2026-08-21T09:00:00.000Z", tags: ["break"] }), ["break"]),
+    true,
+  );
 });

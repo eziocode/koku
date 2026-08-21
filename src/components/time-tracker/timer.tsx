@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown, ChevronUp, Pause, Play, Plus, Square } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,6 +20,8 @@ import { Switch } from "@/components/ui/switch";
 import { TagInput } from "@/components/ui/tag-input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
+import { PopOutButton } from "@/components/mini-player/pop-out-button";
+import { BreakButton, BreakCard } from "@/components/time-tracker/break-controls";
 import { QuickCreateCategoryDialog, QuickCreateProjectDialog } from "@/components/time-tracker/quick-create-dialog";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
@@ -30,7 +32,13 @@ import {
   type TimerStartInput,
   useTimerStore,
 } from "@/lib/stores/timer-store";
+import { useNotificationPreferences } from "@/lib/notifications/use-notification-preferences";
+import { useSecondTick } from "@/lib/stores/use-ticker";
+import { buildEntryFromTimer } from "@/lib/time-tracking/stop-timer";
 import { formatDuration } from "@/lib/utils";
+
+/** Shown when the store refuses a resume because a break is in progress. */
+const BREAK_BLOCKS_RESUME = "Finish or cancel your break to resume tracking.";
 
 interface SelectOption {
   id: string;
@@ -294,7 +302,10 @@ export function Timer() {
   const { projects } = useProjects();
   const { categories } = useCategories();
   const { createEntry, entries: allEntries } = useTimeEntries();
-  const { timers, startTimer, startSecondaryTimer, pauseTimer, resumeTimer, stopTimer } = useTimerStore();
+  const { timers, activeBreak, startTimer, startSecondaryTimer, pauseTimer, resumeTimer, stopTimer } =
+    useTimerStore();
+  const tickNow = useSecondTick();
+  const { prefs } = useNotificationPreferences();
   const [title, setTitle] = useState("");
   const [projectId, setProjectId] = useState<string>("none");
   const [categoryId, setCategoryId] = useState<string>("none");
@@ -307,7 +318,6 @@ export function Timer() {
   const [secondaryTags, setSecondaryTags] = useState<string[]>([]);
   const [secondaryNotes, setSecondaryNotes] = useState("");
   const [secondaryPomodoroMode, setSecondaryPomodoroMode] = useState(false);
-  const [elapsedByTimerId, setElapsedByTimerId] = useState<Record<string, number>>({});
   const [submittingByTimerId, setSubmittingByTimerId] = useState<Record<string, boolean>>({});
   const [resumePrimaryId, setResumePrimaryId] = useState<string | null>(null);
   const [resumeDialogOpen, setResumeDialogOpen] = useState(false);
@@ -352,23 +362,18 @@ export function Timer() {
     ? timers.filter((timer) => timer.parentTimerId === pendingResumeTimer.id)
     : [];
 
-  useEffect(() => {
-    const update = () => {
-      setElapsedByTimerId(Object.fromEntries(
-        timers.map((timer) => [timer.id, getActiveTimerElapsedSec(timer)]),
-      ));
-    };
-
-    update();
-    const interval = window.setInterval(update, 1000);
-    return () => window.clearInterval(interval);
-  }, [timers]);
-
-  const heroElapsedSeconds = heroTimer
-    ? elapsedByTimerId[heroTimer.id] ?? getActiveTimerElapsedSec(heroTimer)
-    : 0;
+  // Elapsed values come from one shared clock (`useSecondTick`) rather than an
+  // interval per component: `/log` and `/dashboard` both mount this component,
+  // and separate intervals meant duplicated work and clocks that could disagree
+  // by a second. Values are derived from timestamps, so a throttled or slept
+  // tab is still correct on its next paint.
+  const heroElapsedSeconds = heroTimer ? getActiveTimerElapsedSec(heroTimer, tickNow) : 0;
 
   const statusLabel = useMemo(() => {
+    if (activeBreak) {
+      return timers.length ? `On a break · ${timers.length === 1 ? "timer" : "timers"} paused` : "On a break";
+    }
+
     if (!timers.length) {
       return "Ready to start";
     }
@@ -385,7 +390,7 @@ export function Timer() {
 
     const onlyTimer = timers[0];
     return onlyTimer?.pomodoroMode ? "Pomodoro focus" : "Tracking now";
-  }, [primaryTimer, secondaryTimers.length, timers]);
+  }, [activeBreak, primaryTimer, secondaryTimers.length, timers]);
 
   function setTimerSubmitting(timerId: string, submitting: boolean) {
     setSubmittingByTimerId((current) => ({
@@ -403,16 +408,7 @@ export function Timer() {
   }
 
   async function saveTimerEntry(timer: ActiveTimer, endedAt: string) {
-    await createEntry({
-      title: timer.title,
-      projectId: timer.projectId,
-      categoryId: timer.categoryId,
-      startAt: timer.startTime,
-      endAt: endedAt,
-      durationSec: getActiveTimerElapsedSec(timer, new Date(endedAt).getTime()),
-      tags: timer.pomodoroMode ? Array.from(new Set(["pomodoro", ...timer.tags])) : timer.tags,
-      notes: timer.notes || (timer.pomodoroMode ? "Pomodoro focus session" : null),
-    });
+    await createEntry(buildEntryFromTimer(timer, endedAt));
   }
 
   function handleStart() {
@@ -421,10 +417,18 @@ export function Timer() {
       return;
     }
 
-    const started = startTimer(buildTimerInput(title, projectId, categoryId, pomodoroMode, tags, notes));
+    const started = startTimer(
+      buildTimerInput(title, projectId, categoryId, pomodoroMode, tags, notes),
+      { allowDuringBreak: !prefs.breaks.blockNewTimers },
+    );
 
     if (!started) {
-      toast.error("Stop and save all active timers before starting another.");
+      // The store refuses for one of two reasons, and they need different advice.
+      toast.error(
+        activeBreak
+          ? "Finish or cancel your break before starting a timer."
+          : "Stop and save all active timers before starting another.",
+      );
       return;
     }
 
@@ -478,7 +482,9 @@ export function Timer() {
     const relatedSecondaryTimers = timers.filter((item) => item.parentTimerId === timer.id);
 
     if (!relatedSecondaryTimers.length) {
-      resumeTimer(timer.id);
+      if (!resumeTimer(timer.id)) {
+        toast.error(BREAK_BLOCKS_RESUME);
+      }
       return;
     }
 
@@ -491,7 +497,11 @@ export function Timer() {
       return;
     }
 
-    resumeTimer(pendingResumeTimer.id);
+    if (!resumeTimer(pendingResumeTimer.id)) {
+      toast.error(BREAK_BLOCKS_RESUME);
+      return;
+    }
+
     setResumeDialogOpen(false);
     setResumePrimaryId(null);
     toast.success("Primary timer resumed. Pause timers are still running.");
@@ -511,10 +521,17 @@ export function Timer() {
         stopTimer(timer.id);
       }
 
-      resumeTimer(pendingResumeTimer.id);
+      // The pause timers are saved either way; only the resume can be refused,
+      // so report that honestly rather than claiming the primary is running.
+      const resumed = resumeTimer(pendingResumeTimer.id);
       setResumeDialogOpen(false);
       setResumePrimaryId(null);
-      toast.success("Pause timers saved. Primary timer resumed.");
+
+      if (resumed) {
+        toast.success("Pause timers saved. Primary timer resumed.");
+      } else {
+        toast.error(`Pause timers saved. ${BREAK_BLOCKS_RESUME}`);
+      }
     } catch {
       toast.error("Unable to save a pause timer. The primary timer is still paused.");
     } finally {
@@ -535,7 +552,9 @@ export function Timer() {
           </p>
         </div>
 
-        {!timers.length ? (
+        {activeBreak ? (
+          <BreakCard />
+        ) : !timers.length ? (
           <>
             <TimerFields
               idPrefix="timer"
@@ -555,10 +574,14 @@ export function Timer() {
               onNotesChange={setNotes}
               onPomodoroModeChange={setPomodoroMode}
             />
-            <Button onClick={handleStart} className="min-w-36">
-              <Play />
-              Start timer
-            </Button>
+            <div className="flex flex-wrap gap-3">
+              <Button onClick={handleStart} className="min-w-36">
+                <Play />
+                Start timer
+              </Button>
+              <BreakButton />
+              <PopOutButton />
+            </div>
           </>
         ) : (
           <>
@@ -600,7 +623,7 @@ export function Timer() {
                 <TimerSessionCard
                   key={timer.id}
                   timer={timer}
-                  elapsedSec={elapsedByTimerId[timer.id] ?? getActiveTimerElapsedSec(timer)}
+                  elapsedSec={getActiveTimerElapsedSec(timer, tickNow)}
                   isPrimary={!timer.parentTimerId}
                   projectName={getProjectName(timer)}
                   categoryName={getCategoryName(timer)}
@@ -610,6 +633,10 @@ export function Timer() {
                   onStop={() => void handleStop(timer)}
                 />
               ))}
+              <div className="flex flex-wrap gap-3">
+                <BreakButton />
+                <PopOutButton />
+              </div>
             </div>
           </>
         )}

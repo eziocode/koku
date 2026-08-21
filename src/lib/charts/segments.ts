@@ -77,7 +77,7 @@ export interface CategoryLookup {
   get(id: string): { id: string; name: string } | undefined;
 }
 
-interface BuildSegmentsOptions {
+export interface BuildSegmentsOptions {
   entries: SegmentSourceEntry[];
   projectMap: ProjectLookup;
   categoryMap?: CategoryLookup;
@@ -85,6 +85,26 @@ interface BuildSegmentsOptions {
   interval?: { start: Date; end: Date };
   /** Axis label format: `weekday` → `Mon`, `date` → `Jun 3`. Defaults to `date`. */
   labelFormat?: "weekday" | "date";
+  /**
+   * Entries carrying any of these tags are left out entirely — not just hidden,
+   * but excluded from `totalSeconds` too.
+   *
+   * Exists for breaks: a break is written as a real `TimeEntry` so it shows in
+   * the log and can be audited, but `deriveStatus` would otherwise class it as
+   * ordinary completed work and it would inflate every work total. Defaults to
+   * excluding nothing, so existing callers are unaffected.
+   */
+  excludeTags?: string[];
+}
+
+/** Whether an entry carries any of the excluded tags (case-insensitive). */
+export function hasExcludedTag(entry: SegmentSourceEntry, excludeTags: string[]): boolean {
+  if (excludeTags.length === 0) {
+    return false;
+  }
+
+  const excluded = excludeTags.map((tag) => tag.trim().toLowerCase());
+  return (entry.tags ?? []).some((tag) => excluded.includes(tag.trim().toLowerCase()));
 }
 
 /** Derives lifecycle status from an entry when not explicitly provided. */
@@ -140,6 +160,7 @@ export function buildSegmentedDays({
   categoryMap,
   interval,
   labelFormat = "date",
+  excludeTags = [],
 }: BuildSegmentsOptions): SegmentedDay[] {
   const labelFor = (date: Date) =>
     labelFormat === "weekday" ? format(date, "EEE") : format(date, "MMM d");
@@ -170,7 +191,9 @@ export function buildSegmentedDays({
   }
 
   // Sort ascending by start so segments stack chronologically (earliest first).
-  const sorted = [...entries].sort((a, b) => a.startAt.localeCompare(b.startAt));
+  const sorted = [...entries]
+    .filter((entry) => !hasExcludedTag(entry, excludeTags))
+    .sort((a, b) => a.startAt.localeCompare(b.startAt));
 
   for (const entry of sorted) {
     const date = new Date(entry.startAt);

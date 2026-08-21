@@ -15,11 +15,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { MonthPicker } from "@/components/ui/month-picker";
 import {
   buildSegmentedDays,
+  hasExcludedTag,
   toProjectBreakdown,
   toStatusBreakdown,
   type WorkLogSegment,
 } from "@/lib/charts/segments";
 import { getStatusColor } from "@/lib/charts/theme";
+import { BREAK_TAG } from "@/lib/notifications/settings";
 import { exportToCSV, exportToJSON, exportToPDF, exportToXLSX } from "@/lib/export";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
@@ -40,6 +42,9 @@ const TrendLineChart = dynamic(
   () => import("@/components/charts/trend-line-chart").then((mod) => mod.TrendLineChart),
   { loading: chartLoader },
 );
+
+/** Tags whose entries are records, not work: excluded from every work total. */
+const WORK_EXCLUDED_TAGS = [BREAK_TAG];
 
 export function ReportsDashboard() {
   const router = useRouter();
@@ -110,8 +115,22 @@ export function ReportsDashboard() {
         categoryMap,
         interval: { start: monthStart, end: monthEnd },
         labelFormat: "date",
+        // Breaks are real entries so they stay auditable on /log, but counting
+        // them as work would inflate every figure on this page.
+        excludeTags: WORK_EXCLUDED_TAGS,
       }),
     [entries, projectMap, categoryMap, monthStart, monthEnd],
+  );
+
+  // Reported separately rather than dropped: hiding break time entirely reads as
+  // missing data, whereas labelling it answers "where did the rest of the day go".
+  const breakSeconds = useMemo(
+    () =>
+      entries.reduce(
+        (sum, entry) => (hasExcludedTag(entry, WORK_EXCLUDED_TAGS) ? sum + (entry.durationSec || 0) : sum),
+        0,
+      ),
+    [entries],
   );
 
   const projectBreakdown = useMemo(() => toProjectBreakdown(segmentedDays), [segmentedDays]);
@@ -218,7 +237,7 @@ export function ReportsDashboard() {
 
       <LogFilters filters={filters} onChange={setFilters} />
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <Card>
           <CardHeader>
             <CardDescription>Total hours this month</CardDescription>
@@ -229,6 +248,12 @@ export function ReportsDashboard() {
           <CardHeader>
             <CardDescription>Logs recorded</CardDescription>
             <CardTitle className="text-3xl">{summary.totalLogs}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardDescription>Break time</CardDescription>
+            <CardTitle className="text-3xl tabular-nums">{formatDuration(breakSeconds)}</CardTitle>
           </CardHeader>
         </Card>
         <Card>

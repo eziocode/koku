@@ -81,7 +81,11 @@ export function DailyGrid({ entries }: DailyGridProps) {
                   <Badge key={tag}>{tag}</Badge>
                 ))}
               </div>
-              {entry.notes ? <p className="text-sm text-muted-foreground">{entry.notes}</p> : null}
+              {entry.notes ? (
+                /* whitespace-pre-line because quick notes append timestamped
+                   lines; without it they collapse onto one unreadable line. */
+                <p className="whitespace-pre-line text-sm text-muted-foreground">{entry.notes}</p>
+              ) : null}
             </div>
             <div className="flex items-center gap-3">
               <div className="min-w-24 text-right text-lg font-semibold text-foreground">

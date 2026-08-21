@@ -3,6 +3,11 @@
 import { useLiveQuery } from "@/lib/storage/use-live-query";
 
 import { kokuDb, type TimeEntry } from "@/lib/storage/db";
+import {
+  createTimeEntry,
+  getDurationSec,
+  type CreateTimeEntryInput,
+} from "@/lib/time-tracking/time-entries";
 
 const EMPTY_ENTRIES: TimeEntry[] = [];
 
@@ -20,24 +25,6 @@ export interface TimeEntryFilters {
   search?: string;
 }
 
-interface CreateEntryInput {
-  title: string;
-  projectId?: string | null;
-  categoryId?: string | null;
-  startAt: string;
-  endAt?: string | null;
-  durationSec?: number | null;
-  tags: string[];
-  notes?: string | null;
-}
-
-function getDurationSec(startAt: string, endAt?: string | null) {
-  if (!endAt) {
-    return null;
-  }
-
-  return Math.max(0, Math.floor((Date.parse(endAt) - Date.parse(startAt)) / 1000));
-}
 
 function normalizeIds(ids?: string[], fallbackId?: string) {
   return Array.from(new Set([...(ids ?? []), fallbackId].filter(Boolean) as string[]));
@@ -125,22 +112,8 @@ export function useTimeEntries(filters: TimeEntryFilters = {}) {
     search,
   ], EMPTY_ENTRIES);
 
-  async function createEntry(data: CreateEntryInput) {
-    const entry: TimeEntry = {
-      id: crypto.randomUUID(),
-      title: data.title,
-      projectId: data.projectId ?? null,
-      categoryId: data.categoryId ?? null,
-      startAt: data.startAt,
-      endAt: data.endAt ?? null,
-      durationSec: data.durationSec ?? getDurationSec(data.startAt, data.endAt),
-      tags: data.tags,
-      notes: data.notes ?? null,
-      createdAt: new Date().toISOString(),
-    };
-
-    await kokuDb.timeEntries.add(entry);
-    return entry;
+  async function createEntry(data: CreateTimeEntryInput) {
+    return createTimeEntry(data);
   }
 
   async function updateEntry(

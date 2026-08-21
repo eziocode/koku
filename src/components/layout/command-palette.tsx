@@ -6,12 +6,14 @@ import { useEffect, useMemo, useState } from "react";
 
 import { appNavigation } from "@/lib/navigation";
 import { useNotes } from "@/lib/storage/hooks/use-notes";
+import { useNotificationPreferences } from "@/lib/notifications/use-notification-preferences";
 import { useTimerStore } from "@/lib/stores/timer-store";
 import { toast } from "@/components/ui/toast";
 
 export function CommandPalette() {
   const router = useRouter();
-  const { timers, startTimer } = useTimerStore();
+  const { timers, activeBreak, startTimer } = useTimerStore();
+  const { prefs } = useNotificationPreferences();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const { notes, createNote } = useNotes(query);
@@ -52,13 +54,23 @@ export function CommandPalette() {
       return;
     }
 
-    const started = startTimer({
-      title: "Quick focus",
-      startTime: new Date().toISOString(),
-      projectId: null,
-      categoryId: null,
-      pomodoroMode: false,
-    });
+    if (activeBreak && prefs.breaks.blockNewTimers) {
+      setOpen(false);
+      router.push("/log");
+      toast.error("Finish or cancel your break before starting a timer.");
+      return;
+    }
+
+    const started = startTimer(
+      {
+        title: "Quick focus",
+        startTime: new Date().toISOString(),
+        projectId: null,
+        categoryId: null,
+        pomodoroMode: false,
+      },
+      { allowDuringBreak: !prefs.breaks.blockNewTimers },
+    );
 
     if (!started) {
       toast.error("Stop and save active timers before starting another.");
