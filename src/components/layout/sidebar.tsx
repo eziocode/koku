@@ -1,10 +1,12 @@
 "use client";
 
+import { Github, MessageSquareWarning } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { Logo } from "@/components/layout/logo";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { appNavigation } from "@/lib/navigation";
 
@@ -51,7 +53,40 @@ export function Sidebar({ open, onNavigate }: SidebarProps) {
         </nav>
       </ScrollArea>
       <div className="border-t border-border/70 px-6 py-4 text-xs leading-5 text-muted-foreground">
-        Mark the moment. Master your time.
+        <p>Mark the moment. Master your time.</p>
+        <TooltipProvider>
+          <div className="mt-3 flex items-center gap-3">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <a
+                  href="https://github.com/eziocode/koku"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-muted-foreground transition-colors hover:text-foreground"
+                  aria-label="View project on GitHub"
+                >
+                  <Github className="h-4 w-4" />
+                </a>
+              </TooltipTrigger>
+              <TooltipContent side="top">Aswin</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <a
+                  href="https://github.com/eziocode/koku/issues"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-muted-foreground transition-colors hover:text-foreground"
+                  aria-label="Report an issue"
+                >
+                  <MessageSquareWarning className="h-4 w-4" />
+                  <span>Report an issue</span>
+                </a>
+              </TooltipTrigger>
+              <TooltipContent side="top">Open GitHub Issues</TooltipContent>
+            </Tooltip>
+          </div>
+        </TooltipProvider>
       </div>
     </aside>
   );
