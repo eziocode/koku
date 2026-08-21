@@ -42,6 +42,7 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   poweredByHeader: false,
 
   // Keep AI SDK packages as Node.js externals so they resolve from
@@ -51,6 +52,10 @@ const nextConfig: NextConfig = {
   // No next/image usage in this app — disable the optimisation proxy.
   images: {
     unoptimized: true,
+  },
+
+  turbopack: {
+    root: __dirname,
   },
 
   experimental: {
