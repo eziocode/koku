@@ -66,6 +66,14 @@ export interface NotificationPreferences {
     /** Refuse to start new timers while a break is running. */
     blockNewTimers: boolean;
   };
+  endOfDay: {
+    /** Master switch for the end-of-day auto-stop feature. */
+    enabled: boolean;
+    /** 24-hour "HH:MM" string — when to fire the wrap-up notification. */
+    logoffTime: string;
+    /** Minutes after the notification fires before timers are stopped automatically. */
+    gracePeriodMinutes: number;
+  };
 }
 
 export const NOTIFICATION_DEFAULTS: NotificationPreferences = {
@@ -87,6 +95,11 @@ export const NOTIFICATION_DEFAULTS: NotificationPreferences = {
     autoResume: true,
     notifyOnComplete: true,
     blockNewTimers: true,
+  },
+  endOfDay: {
+    enabled: false,
+    logoffTime: "18:00",
+    gracePeriodMinutes: 15,
   },
 };
 
@@ -147,6 +160,16 @@ export const notificationPreferencesSchema = z
         blockNewTimers: z.boolean().catch(true),
       })
       .catch(NOTIFICATION_DEFAULTS.breaks),
+    endOfDay: z
+      .object({
+        enabled: z.boolean().catch(false),
+        logoffTime: z
+          .string()
+          .regex(/^\d{2}:\d{2}$/)
+          .catch(NOTIFICATION_DEFAULTS.endOfDay.logoffTime),
+        gracePeriodMinutes: z.number().int().min(5).max(60).catch(NOTIFICATION_DEFAULTS.endOfDay.gracePeriodMinutes),
+      })
+      .catch(NOTIFICATION_DEFAULTS.endOfDay),
   })
   .catch(NOTIFICATION_DEFAULTS);
 

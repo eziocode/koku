@@ -460,6 +460,68 @@ export function NotificationSettings() {
         </CardContent>
       </Card>
 
+      {/* ── End of day ───────────────────────────────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle>End of day</CardTitle>
+          <CardDescription>
+            At your logoff time, koku asks if you're done. If there's no response within the grace
+            period, running timers are stopped and saved automatically.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <ToggleRow
+            id="eod-enabled"
+            label="Auto-stop at end of day"
+            description="Requires notifications to be allowed above."
+            checked={prefs.endOfDay.enabled}
+            disabled={!granted}
+            onCheckedChange={(checked) => void patch({ endOfDay: { enabled: checked } })}
+          />
+
+          <div className={cn("flex flex-wrap gap-4", (!prefs.endOfDay.enabled || !granted) && "opacity-50")}>
+            <div className="space-y-2">
+              <Label htmlFor="eod-logoff-time">Logoff time</Label>
+              <Input
+                id="eod-logoff-time"
+                type="time"
+                className="min-h-11 w-36"
+                disabled={!prefs.endOfDay.enabled || !granted}
+                value={minutesToTimeInput(timeInputToMinutes(prefs.endOfDay.logoffTime) ?? 18 * 60)}
+                onChange={(event) => {
+                  void patch({ endOfDay: { logoffTime: event.target.value } });
+                }}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="eod-grace-period">Grace period</Label>
+              <Select
+                value={String(prefs.endOfDay.gracePeriodMinutes)}
+                disabled={!prefs.endOfDay.enabled || !granted}
+                onValueChange={(value) =>
+                  void patch({ endOfDay: { gracePeriodMinutes: Number(value) } })
+                }
+              >
+                <SelectTrigger id="eod-grace-period" className="w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[5, 10, 15, 20, 30].map((minutes) => (
+                    <SelectItem key={minutes} value={String(minutes)}>
+                      {minutes} minutes
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            Requires koku to be open in a browser tab. Works independently of the check-in schedule above.
+          </p>
+        </CardContent>
+      </Card>
+
       {/* ── Test and reset ───────────────────────────────────────────────── */}
       <Card>
         <CardHeader>

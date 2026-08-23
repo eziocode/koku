@@ -2,11 +2,24 @@
 
 import { useEffect, useRef } from "react";
 
+import { format } from "date-fns";
+
 import { kokuDb } from "@/lib/storage/db";
-import { showKokuNotification } from "@/lib/notifications/client";
+import { closeKokuNotifications, showKokuNotification } from "@/lib/notifications/client";
 import { deriveCheckInContext } from "@/lib/notifications/context";
 import { resolveDnd } from "@/lib/notifications/dnd";
-import { buildCheckInNotification } from "@/lib/notifications/payload";
+import {
+  clearEndOfDayState,
+  readEndOfDayState,
+  writeEndOfDayState,
+} from "@/lib/notifications/end-of-day";
+import { isSwToPageMessage } from "@/lib/notifications/messages";
+import {
+  buildCheckInNotification,
+  buildEndOfDayDoneNotification,
+  buildEndOfDayNotification,
+  NOTIFICATION_TAGS,
+} from "@/lib/notifications/payload";
 import { isWithinQuietHours } from "@/lib/notifications/quiet-hours";
 import { readScheduleState, writeScheduleState } from "@/lib/notifications/runtime";
 import { evaluateSchedule, reanchorSchedule } from "@/lib/notifications/schedule";
@@ -15,6 +28,7 @@ import { useLeaderStatus } from "@/lib/notifications/use-leader";
 import { useNotificationPermission } from "@/lib/notifications/use-notification-permission";
 import { useNotificationPreferences } from "@/lib/notifications/use-notification-preferences";
 import { useTimerStore } from "@/lib/stores/timer-store";
+import { stopTimerAndPersist } from "@/lib/time-tracking/stop-timer";
 
 /**
  * How often we *check* whether a check-in is due — not how often one fires.
@@ -70,7 +84,49 @@ export function NotificationScheduler() {
     maxActionsRef.current = support.maxActions;
   }, [prefs, support.maxActions]);
 
-  const active = deliverable && isLeader;
+  // EOD: whether the feature can fire (permission required but master switch not required,
+  // so the end-of-day guard works independently of the check-in schedule).
+  const eodDeliverable = prefs.endOfDay.enabled && support.supported && permission === "granted";
+
+  useEffect(() => {
+    if (!eodDeliverable || !isLeader) {
+      return;
+    }
+
+    // Handle SW → page messages for EOD actions (user clicking notification buttons).
+    function onSwMessage(event: MessageEvent) {
+      if (!isSwToPageMessage(event.data)) {
+        return;
+      }
+
+      if (event.data.type === "eod-stop-timers") {
+        const endedAt = new Date().toISOString();
+        const timerIds = useTimerStore.getState().timers.map((t) => t.id);
+
+        void Promise.all(timerIds.map((id) => stopTimerAndPersist(id, endedAt))).then(() => {
+          clearEndOfDayState();
+          void closeKokuNotifications(NOTIFICATION_TAGS.endOfDay);
+        });
+
+        return;
+      }
+
+      if (event.data.type === "eod-keep-running") {
+        const state = readEndOfDayState();
+        if (state) {
+          writeEndOfDayState({ ...state, userResponded: true });
+        }
+        return;
+      }
+    }
+
+    navigator.serviceWorker.addEventListener("message", onSwMessage);
+    return () => {
+      navigator.serviceWorker.removeEventListener("message", onSwMessage);
+    };
+  }, [eodDeliverable, isLeader]);
+
+  const active = (deliverable || eodDeliverable) && isLeader;
 
   useEffect(() => {
     if (!active) {
@@ -86,33 +142,74 @@ export function NotificationScheduler() {
 
       const current = prefsRef.current;
       const now = Date.now();
-      const decision = evaluateSchedule(readScheduleState(), now, current.checkIn.intervalMinutes, {
-        suppressed: isSuppressed(current, now),
-      });
 
-      writeScheduleState(decision.next);
+      // ── Recurring check-in ────────────────────────────────────────────────
+      if (deliverable && isLeader) {
+        const decision = evaluateSchedule(readScheduleState(), now, current.checkIn.intervalMinutes, {
+          suppressed: isSuppressed(current, now),
+        });
 
-      if (!decision.fire) {
-        return;
+        writeScheduleState(decision.next);
+
+        if (decision.fire) {
+          const { timers, activeBreak } = useTimerStore.getState();
+          const lastEntryTitle =
+            timers.length === 0 && !activeBreak ? await readLastEntryTitle() : null;
+
+          if (!cancelled) {
+            const built = buildCheckInNotification(
+              deriveCheckInContext(timers, activeBreak, lastEntryTitle, now),
+              current,
+              { maxActions: maxActionsRef.current },
+              now,
+            );
+
+            if (built) {
+              await showKokuNotification(built);
+            }
+          }
+        }
       }
-
-      const { timers, activeBreak } = useTimerStore.getState();
-      const lastEntryTitle =
-        timers.length === 0 && !activeBreak ? await readLastEntryTitle() : null;
 
       if (cancelled) {
         return;
       }
 
-      const built = buildCheckInNotification(
-        deriveCheckInContext(timers, activeBreak, lastEntryTitle, now),
-        current,
-        { maxActions: maxActionsRef.current },
-        now,
-      );
+      // ── End-of-day auto-stop check ────────────────────────────────────────
+      const eodPrefs = current.endOfDay;
+      if (eodPrefs.enabled) {
+        const { timers: activeTimers } = useTimerStore.getState();
+        if (activeTimers.length > 0) {
+          const todayKey = format(new Date(now), "yyyy-MM-dd");
+          const [eodHour, eodMin] = eodPrefs.logoffTime.split(":").map(Number);
+          const logoffDate = new Date(now);
+          logoffDate.setHours(eodHour, eodMin, 0, 0);
+          const logoffMs = logoffDate.getTime();
 
-      if (built) {
-        await showKokuNotification(built);
+          const eodState = readEndOfDayState();
+
+          if (eodState?.firedForDay === todayKey && eodState.userResponded) {
+            // User already responded — no further action today.
+          } else if (eodState?.firedForDay === todayKey) {
+            // Notification already fired; check whether grace period has expired.
+            const elapsedMs = now - eodState.notifiedAt;
+            const graceMs = eodPrefs.gracePeriodMinutes * 60_000;
+            if (elapsedMs >= graceMs) {
+              const endedAt = new Date(now).toISOString();
+              const timerIds = useTimerStore.getState().timers.map((t) => t.id);
+              await Promise.all(timerIds.map((id) => stopTimerAndPersist(id, endedAt)));
+              clearEndOfDayState();
+              void closeKokuNotifications(NOTIFICATION_TAGS.endOfDay);
+              await showKokuNotification(buildEndOfDayDoneNotification(now));
+            }
+          } else if (now >= logoffMs) {
+            // Past logoff time and not yet notified today — fire the wrap-up prompt.
+            await showKokuNotification(
+              buildEndOfDayNotification(eodPrefs.gracePeriodMinutes, { maxActions: maxActionsRef.current }, now),
+            );
+            writeEndOfDayState({ notifiedAt: now, firedForDay: todayKey, userResponded: false });
+          }
+        }
       }
     };
 
@@ -150,7 +247,7 @@ export function NotificationScheduler() {
   const previousIntervalRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!active) {
+    if (!deliverable) {
       previousIntervalRef.current = null;
       return;
     }
@@ -164,7 +261,7 @@ export function NotificationScheduler() {
       previousIntervalRef.current = intervalMinutes;
       writeScheduleState(reanchorSchedule(readScheduleState(), Date.now(), intervalMinutes));
     }
-  }, [active, intervalMinutes]);
+  }, [deliverable, intervalMinutes]);
 
   // A lapsed timed DND is cleared by the leader so the topbar pill disappears in
   // every tab, rather than each tab merely ignoring it locally.

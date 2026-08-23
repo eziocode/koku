@@ -1,4 +1,5 @@
 import {
+  EOD_NOTIFICATION_ACTION_IDS,
   NOTIFICATION_ACTION_IDS,
   type KokuNotificationData,
   type NotificationActionId,
@@ -17,6 +18,8 @@ export const NOTIFICATION_TAGS = {
   checkIn: "koku-checkin",
   break: "koku-break",
   test: "koku-test",
+  endOfDay: "koku-eod",
+  endOfDayDone: "koku-eod-done",
 } as const;
 
 export const NOTIFICATION_ICON = "/icon-192.png";
@@ -165,6 +168,69 @@ export function buildBreakCompleteNotification(
       tag: NOTIFICATION_TAGS.break,
       renotify: true,
       // Never sticky: a finished break is information, not a task.
+      requireInteraction: false,
+      icon: NOTIFICATION_ICON,
+      badge: NOTIFICATION_BADGE,
+      data,
+    },
+  };
+}
+
+/**
+ * The wrap-up prompt fired at the user's configured logoff time.
+ *
+ * Uses `requireInteraction` so it stays in the tray until the user responds or
+ * the grace period expires and the scheduler auto-stops.
+ */
+export function buildEndOfDayNotification(
+  gracePeriodMinutes: number,
+  capabilities: NotificationCapabilities,
+  now = Date.now(),
+): BuiltNotification {
+  const data: KokuNotificationData = {
+    kokuType: "end-of-day",
+    timerId: null,
+    breakId: null,
+    createdAt: now,
+  };
+
+  const actions: NotificationAction[] = capabilities.maxActions >= 2
+    ? EOD_NOTIFICATION_ACTION_IDS.map((action) => ({
+        action,
+        title: action === "eod-stop" ? "Stop & Save" : "Keep Going",
+      }))
+    : [];
+
+  return {
+    title: "Time to wrap up?",
+    options: {
+      body: `Your timer is still running. Auto-stops in ${gracePeriodMinutes} min if no response.`,
+      tag: NOTIFICATION_TAGS.endOfDay,
+      renotify: true,
+      requireInteraction: true,
+      icon: NOTIFICATION_ICON,
+      badge: NOTIFICATION_BADGE,
+      actions,
+      data,
+    },
+  };
+}
+
+/** Confirmation shown after timers are automatically stopped. */
+export function buildEndOfDayDoneNotification(now = Date.now()): BuiltNotification {
+  const data: KokuNotificationData = {
+    kokuType: "end-of-day",
+    timerId: null,
+    breakId: null,
+    createdAt: now,
+  };
+
+  return {
+    title: "Timers saved",
+    options: {
+      body: "Your running timers were stopped and saved automatically.",
+      tag: NOTIFICATION_TAGS.endOfDayDone,
+      renotify: false,
       requireInteraction: false,
       icon: NOTIFICATION_ICON,
       badge: NOTIFICATION_BADGE,

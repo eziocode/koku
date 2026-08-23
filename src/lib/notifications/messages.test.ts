@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import {
+  EOD_NOTIFICATION_ACTION_IDS,
   INTENT_PARAM,
   isNotificationIntent,
   isSwToPageMessage,
@@ -20,6 +21,15 @@ const serviceWorkerSource = readFileSync("public/sw.js", "utf8");
 
 test("every action id is still handled by the service worker", () => {
   for (const action of NOTIFICATION_ACTION_IDS) {
+    assert.ok(
+      serviceWorkerSource.includes(`"${action}"`),
+      `public/sw.js no longer references the "${action}" action`,
+    );
+  }
+});
+
+test("every end-of-day action id is still handled by the service worker", () => {
+  for (const action of EOD_NOTIFICATION_ACTION_IDS) {
     assert.ok(
       serviceWorkerSource.includes(`"${action}"`),
       `public/sw.js no longer references the "${action}" action`,

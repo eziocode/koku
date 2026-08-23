@@ -182,6 +182,20 @@ self.addEventListener("notificationclick", (event) => {
 
   notification.close();
 
+  if (action === "eod-stop") {
+    event.waitUntil(
+      broadcast({ source: "koku-sw", type: "eod-stop-timers" }),
+    );
+    return;
+  }
+
+  if (action === "eod-keep") {
+    event.waitUntil(
+      broadcast({ source: "koku-sw", type: "eod-keep-running" }),
+    );
+    return;
+  }
+
   if (action === "dismiss") {
     event.waitUntil(
       broadcast({ source: "koku-sw", type: "notification-dismissed", tag: notification.tag }),
