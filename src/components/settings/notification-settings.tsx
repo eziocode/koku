@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
-import { showKokuNotification } from "@/lib/notifications/client";
+import { explainShowFailure, showKokuNotificationDetailed } from "@/lib/notifications/client";
 import { formatDndRemaining, resolveDnd } from "@/lib/notifications/dnd";
 import { buildTestNotification } from "@/lib/notifications/payload";
 import { explainUnsupported } from "@/lib/notifications/permission";
@@ -535,11 +535,22 @@ export function NotificationSettings() {
             variant="outline"
             disabled={!granted}
             onClick={async () => {
-              const shown = await showKokuNotification(
+              const result = await showKokuNotificationDetailed(
                 buildTestNotification(prefs, { maxActions: support.maxActions }),
               );
-              if (!shown) {
-                toast.error("Couldn’t show the notification. Check your browser’s permissions.");
+
+              if (!result.shown) {
+                toast.error(explainShowFailure(result) ?? "Couldn’t show the notification.");
+                return;
+              }
+
+              // The browser accepted it. If nothing appears from here it is the
+              // operating system suppressing it, which no web API can detect —
+              // so say so rather than claim success outright.
+              if (result.via === "constructor") {
+                toast.success("Sent — without buttons, because the service worker wasn’t ready.");
+              } else {
+                toast.success("Sent. If nothing appeared, check your OS notification settings for your browser.");
               }
             }}
           >
