@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { ADMIN_EMAIL } from "@/app/api/auth/me/route";
 import { initCatalyst, upsertRow, zcqlEscape, zcqlQuery } from "@/lib/db/catalyst-client";
 import { TABLE_CONFIG } from "@/app/api/sync/[table]/route";
+import { extractCatalystRowId } from "@/lib/admin-data";
 
 export const runtime = "nodejs";
 
@@ -126,16 +127,18 @@ export async function DELETE(request: Request) {
     const userId = url.searchParams.get("userId");
     const id = url.searchParams.get("id");
     const config = tableName ? getConfig(tableName) : null;
-    if (!config || !userId || !id) return NextResponse.json({ error: "table, userId, id required" }, { status: 400 });
+    if (!config || !userId || !id || !id.trim()) return NextResponse.json({ error: "Valid table, userId, id required" }, { status: 400 });
 
     const rows = await zcqlQuery(auth.app, `SELECT ROWID FROM ${config.table} WHERE id = '${zcqlEscape(id)}' AND user_id = '${zcqlEscape(userId)}'`);
     if (rows.length) {
       const raw = rows[0] as Record<string, unknown>;
-      const nested = raw[config.table] as Record<string, unknown> | undefined;
-      await auth.app.datastore().table(config.table).deleteRow(nested?.ROWID ?? raw.ROWID);
+      const rowId = extractCatalystRowId(raw, config.table);
+      if (rowId === null) return NextResponse.json({ error: "Row has no Catalyst ID" }, { status: 500 });
+      await auth.app.datastore().table(config.table).deleteRow(rowId);
     }
-    return NextResponse.json({ deleted: true });
-  } catch {
-    return NextResponse.json({ error: "Unable to delete row" }, { status: 500 });
+    return NextResponse.json({ deleted: true, found: rows.length > 0 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to delete row";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

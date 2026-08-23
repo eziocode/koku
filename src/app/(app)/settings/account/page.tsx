@@ -44,10 +44,10 @@ export default function AccountSettingsPage() {
     toast.success("Local profile updated.");
   }
 
-  async function handleLogout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    setCloudUser(null);
-    toast.success("Signed out of Zoho.");
+  function handleLogout() {
+    // Real navigation lets Catalyst clear its session cookie. fetch() follows
+    // the redirect without changing the browser session/page reliably.
+    window.location.assign("/api/auth/logout");
   }
 
   return (
@@ -104,7 +104,12 @@ export default function AccountSettingsPage() {
                 </Button>
               </div>
             ) : (
-              <CatalystSignIn />
+              <CatalystSignIn onSignedIn={() => {
+                fetch("/api/auth/me", { cache: "no-store" })
+                  .then((response) => response.json())
+                  .then(({ user }: { user: CloudUser | null }) => setCloudUser(user))
+                  .catch(() => setCloudUser(null));
+              }} />
             )}
           </CardContent>
         </Card>
