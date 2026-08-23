@@ -9,6 +9,7 @@ import {
   NOTIFICATION_DEFAULTS,
   notificationPreferencesSchema,
 } from "@/lib/notifications/settings";
+import { ONBOARDING_DEFAULTS, onboardingStateSchema } from "@/lib/onboarding/settings";
 
 /**
  * Typed registry for the Dexie `settings` table.
@@ -27,6 +28,7 @@ export const SETTING_SCHEMAS = {
   displayName: z.string().catch(""),
   notifications: notificationPreferencesSchema,
   miniPlayer: miniPlayerPreferencesSchema,
+  onboarding: onboardingStateSchema,
 } as const;
 
 export type SettingKey = keyof typeof SETTING_SCHEMAS;
@@ -38,6 +40,7 @@ export const SETTING_DEFAULTS: { [K in SettingKey]: SettingValue<K> } = {
   displayName: "",
   notifications: NOTIFICATION_DEFAULTS,
   miniPlayer: MINI_PLAYER_DEFAULTS,
+  onboarding: ONBOARDING_DEFAULTS,
 };
 
 /**

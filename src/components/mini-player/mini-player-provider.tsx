@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
 import { MiniPlayerSurface } from "@/components/mini-player/mini-player-surface";
 import { useMiniPlayerPreferences } from "@/lib/notifications/use-notification-preferences";
+import { armAutoOpen } from "@/lib/mini-player/auto-open";
 import { useMiniPlayerOwnership } from "@/lib/mini-player/ownership";
 import {
   closeMiniPlayerWindow,
@@ -40,6 +41,11 @@ export function MiniPlayerProvider() {
 
   const isOwner = ownership === "owner";
   const autoOpen = prefs.enabled && prefs.autoOpenOnStart && isOwner;
+  const autoOpenOnTabSwitch = prefs.enabled && prefs.autoOpenOnTabSwitch && isOwner;
+
+  /* Set only when *we* opened the window because the tab was hidden, so coming
+     back closes that window and never one the user popped out deliberately. */
+  const openedByTabSwitchRef = useRef(false);
 
   /**
    * Auto-open on timer start.
@@ -64,6 +70,49 @@ export function MiniPlayerProvider() {
       }
     });
   }, [autoOpen]);
+
+  /**
+   * Follow the user out of the tab, and fold away when they return.
+   *
+   * Gated on something actually being tracked: an auto-opened window showing
+   * "No timer running" is pure noise, and it is the one case where the mini
+   * player can legitimately look empty.
+   */
+  useEffect(() => {
+    if (!autoOpenOnTabSwitch) {
+      return;
+    }
+
+    const isLive = () => {
+      const { timers, activeBreak } = useTimerStore.getState();
+      return timers.length > 0 || Boolean(activeBreak && !activeBreak.completedAt);
+    };
+
+    const disarm = armAutoOpen(() => {
+      if (getMiniPlayerWindowState().status !== "closed" || !isLive()) {
+        return false;
+      }
+
+      openedByTabSwitchRef.current = true;
+      return true;
+    });
+
+    const onVisible = () => {
+      if (document.visibilityState !== "visible" || !openedByTabSwitchRef.current) {
+        return;
+      }
+
+      openedByTabSwitchRef.current = false;
+      closeMiniPlayerWindow();
+    };
+
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      disarm();
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [autoOpenOnTabSwitch]);
 
   // Turning the feature off, or losing ownership, closes any open window rather
   // than leaving one behind that nothing controls.

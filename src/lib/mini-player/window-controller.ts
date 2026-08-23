@@ -72,12 +72,23 @@ function handleClosed() {
 export interface OpenMiniPlayerOptions {
   width?: number;
   height?: number;
+  /**
+   * Don't surface a failure as `status: "error"`.
+   *
+   * Used by the automatic paths (tab switch, media-session auto-PiP), where the
+   * user never asked for a window and a `NotAllowedError` is the *expected*
+   * outcome on browsers that decline to open one unprompted. Reporting that as
+   * an error would light up the pop-out button's failure toast for something
+   * nobody did.
+   */
+  silent?: boolean;
 }
 
 /**
  * Opens the window, or focuses it if already open.
  *
- * MUST be called synchronously from a user-activated event handler.
+ * MUST be called synchronously from a user-activated event handler, unless the
+ * browser is invoking us through the media-session auto-PiP action.
  */
 export async function openMiniPlayerWindow(
   options: OpenMiniPlayerOptions = {},
@@ -99,11 +110,18 @@ export async function openMiniPlayerWindow(
 
   setState({ status: "opening" });
 
+  /* Held outside the try so the catch can close a window that opened fine but
+     then failed to be set up. Without this, a throw anywhere below leaves a real
+     OS window on screen that React never portals into — a blank mini player that
+     nothing owns and no close path reaches. */
+  let opened: Window | null = null;
+
   try {
     const win = await window.documentPictureInPicture!.requestWindow({
       width: options.width ?? MINI_PLAYER_WIDTH,
       height: options.height ?? MINI_PLAYER_HEIGHT,
     });
+    opened = win;
 
     transplant = transplantStyles(document, win.document);
 
@@ -140,8 +158,18 @@ export async function openMiniPlayerWindow(
     const reason: MiniPlayerOpenFailure =
       name === "NotAllowedError" ? "no-user-activation" : "unknown";
 
+    teardown();
+
+    if (opened) {
+      try {
+        opened.close();
+      } catch {
+        /* already gone */
+      }
+    }
+
     auditLogger.event("mini-player.open.failed", "runtime", { error: name, reason });
-    setState({ status: "error", reason });
+    setState(options.silent ? CLOSED : { status: "error", reason });
     return state;
   }
 }

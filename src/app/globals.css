@@ -186,13 +186,38 @@ body {
     animation: koku-shimmer 1.8s linear infinite;
   }
 
+  /* ─── Breathing marker ────────────────────────────────────────────────── */
+  /* Used by the one-time check-in intro. Slow on purpose: a 5.6s cycle reads   */
+  /* as breathing, whereas the 1.6s `koku-live-dot` cadence reads as alarm.     */
+
+  @keyframes koku-breathe {
+    0%,
+    100% {
+      transform: scale(0.9);
+      opacity: 0.55;
+    }
+    50% {
+      transform: scale(1.06);
+      opacity: 1;
+    }
+  }
+
+  .koku-breathe {
+    animation: koku-breathe 5.6s ease-in-out infinite;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .koku-live-dot,
-    .koku-live-shimmer {
+    .koku-live-shimmer,
+    .koku-breathe {
       animation: none;
     }
     .koku-live-dot {
       opacity: 0.9;
+    }
+    .koku-breathe {
+      opacity: 1;
+      transform: none;
     }
   }
 

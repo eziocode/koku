@@ -98,6 +98,31 @@ export function MiniPlayerSettings() {
             />
           </div>
 
+          <div
+            className={cn(
+              "flex items-center justify-between gap-4 rounded-2xl border border-border bg-muted/50 p-4",
+              !prefs.enabled && "opacity-50",
+            )}
+          >
+            <div className="min-w-0">
+              <Label htmlFor="mini-player-auto-open-tab-switch" className="font-medium">
+                Follow me when I switch tabs
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                Pops the player out when you leave koku while something is being tracked, and folds
+                it away when you come back. It never opens with nothing running. Chrome only allows
+                this for installed apps — add koku to your dock or taskbar and it works everywhere.
+              </p>
+            </div>
+            <Switch
+              id="mini-player-auto-open-tab-switch"
+              checked={prefs.autoOpenOnTabSwitch}
+              disabled={!prefs.enabled}
+              aria-disabled={!prefs.enabled}
+              onCheckedChange={(checked) => void patch({ autoOpenOnTabSwitch: checked })}
+            />
+          </div>
+
           <p className="text-sm text-muted-foreground">
             Only one koku tab can hold the mini player at a time, and leaving the app closes it.
           </p>

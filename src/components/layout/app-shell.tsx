@@ -5,6 +5,7 @@ import { ReactNode, useState } from "react";
 import { CommandPalette } from "@/components/layout/command-palette";
 import { MiniPlayerProvider } from "@/components/mini-player/mini-player-provider";
 import { NotificationCenter } from "@/components/notifications/notification-center";
+import { CheckInIntro } from "@/components/onboarding/check-in-intro";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { cn } from "@/lib/utils";
@@ -25,6 +26,9 @@ export function AppShell({ children }: AppShellProps) {
       {/* Portals the floating mini player into its Picture-in-Picture window.
           Mounted here, not in AppProviders, so it never runs on the marketing root. */}
       <MiniPlayerProvider />
+      {/* One-time explainer for the recurring check-in. Shown here rather than in
+          AppProviders so it can never greet a visitor on the marketing root. */}
+      <CheckInIntro />
       <Sidebar open={sidebarOpen} onNavigate={() => setSidebarOpen(false)} />
       {sidebarOpen ? (
         <button

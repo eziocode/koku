@@ -131,7 +131,13 @@ export function transplantStyles(source: Document, target: Document): StyleTrans
 
   const clones = new Map<Element, Element>();
   const pending: Promise<void>[] = [];
+
+  /* Appended NOW, not after the adoption loop. `adopt` inserts every clone
+     *before* this node, and `insertBefore` throws `NotFoundError` when the
+     reference child is not already a child of the parent — which aborted the
+     whole transplant on the very first sheet and left the window empty. */
   const override = createStyle(target, OVERRIDE_CSS);
+  target.head.append(override);
 
   const adopt = (node: Element) => {
     if (clones.has(node)) {
@@ -152,8 +158,6 @@ export function transplantStyles(source: Document, target: Document): StyleTrans
   for (const node of source.querySelectorAll('link[rel="stylesheet"], style')) {
     adopt(node);
   }
-
-  target.head.append(override);
 
   /* Theme following. `next-themes` toggles the `dark` class on <html> and
      `applyAccentToDocument` sets/removes `data-accent` on the same node, so a
