@@ -19,6 +19,14 @@ export interface EndOfDayState {
   firedForDay: string;
   /** True once the user explicitly responds (stop or keep-going), preventing further auto-stop. */
   userResponded: boolean;
+  /**
+   * When a snoozed prompt should fire again, or `null` when not snoozed.
+   *
+   * Held here rather than by rewriting `notifiedAt` into the future, because the
+   * grace period is measured from `notifiedAt` and moving it would silently
+   * extend the auto-stop deadline as well as the re-prompt.
+   */
+  snoozedUntil: number | null;
 }
 
 function isValidState(value: unknown): value is EndOfDayState {
@@ -31,7 +39,10 @@ function isValidState(value: unknown): value is EndOfDayState {
     typeof v.firedForDay === "string" &&
     typeof v.userResponded === "boolean" &&
     typeof v.notifiedAt === "number" &&
-    Number.isFinite(v.notifiedAt)
+    Number.isFinite(v.notifiedAt) &&
+    (v.snoozedUntil === null ||
+      v.snoozedUntil === undefined ||
+      (typeof v.snoozedUntil === "number" && Number.isFinite(v.snoozedUntil)))
   );
 }
 
@@ -47,7 +58,13 @@ export function readEndOfDayState(): EndOfDayState | null {
     }
 
     const parsed: unknown = JSON.parse(raw);
-    return isValidState(parsed) ? parsed : null;
+    if (!isValidState(parsed)) {
+      return null;
+    }
+
+    // A row written before snoozing existed has no `snoozedUntil`; normalise it
+    // here so callers never have to treat undefined as a third state.
+    return { ...parsed, snoozedUntil: parsed.snoozedUntil ?? null };
   } catch {
     return null;
   }

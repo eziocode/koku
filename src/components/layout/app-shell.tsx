@@ -6,6 +6,7 @@ import { CommandPalette } from "@/components/layout/command-palette";
 import { MiniPlayerProvider } from "@/components/mini-player/mini-player-provider";
 import { NotificationCenter } from "@/components/notifications/notification-center";
 import { CheckInIntro } from "@/components/onboarding/check-in-intro";
+import { EndOfDaySetup } from "@/components/onboarding/end-of-day-setup";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { cn } from "@/lib/utils";
@@ -28,6 +29,9 @@ export function AppShell({ children }: AppShellProps) {
       <MiniPlayerProvider />
       {/* One-time explainer for the recurring check-in. Shown here rather than in
           AppProviders so it can never greet a visitor on the marketing root. */}
+      {/* Mandatory: blocks until the user supplies a logoff time. Rendered before
+          CheckInIntro, which waits on the same answer. */}
+      <EndOfDaySetup />
       <CheckInIntro />
       <Sidebar open={sidebarOpen} onNavigate={() => setSidebarOpen(false)} />
       {sidebarOpen ? (

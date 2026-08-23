@@ -1,6 +1,8 @@
 import {
   EOD_NOTIFICATION_ACTION_IDS,
+  EOD_SNOOZE_MINUTES,
   NOTIFICATION_ACTION_IDS,
+  type EodNotificationActionId,
   type KokuNotificationData,
   type NotificationActionId,
 } from "@/lib/notifications/messages";
@@ -176,11 +178,25 @@ export function buildBreakCompleteNotification(
   };
 }
 
+const EOD_ACTION_TITLES: Record<EodNotificationActionId, string> = {
+  "eod-stop": "End day",
+  "eod-snooze": `+${EOD_SNOOZE_MINUTES} min`,
+  "eod-keep": "Skip today",
+};
+
 /**
  * The wrap-up prompt fired at the user's configured logoff time.
  *
- * Uses `requireInteraction` so it stays in the tray until the user responds or
- * the grace period expires and the scheduler auto-stops.
+ * `requireInteraction` keeps it in the tray until the user answers — which also
+ * means it outlives every koku tab, so the worker's click handling must not
+ * assume a window exists (see `EOD_PARAM`).
+ *
+ * Buttons are truncated to `maxActions` rather than withheld: the previous
+ * version rendered nothing at all below two slots, which left the only sticky
+ * notification koku sends with no way to answer it. Where the browser renders no
+ * buttons at all, a click on the body counts as "Skip today" — the notification
+ * was demonstrably seen, and auto-stopping someone's timers after they engaged
+ * with the prompt is the one outcome worth ruling out.
  */
 export function buildEndOfDayNotification(
   gracePeriodMinutes: number,
@@ -194,23 +210,55 @@ export function buildEndOfDayNotification(
     createdAt: now,
   };
 
-  const actions: NotificationAction[] = capabilities.maxActions >= 2
-    ? EOD_NOTIFICATION_ACTION_IDS.map((action) => ({
-        action,
-        title: action === "eod-stop" ? "Stop & Save" : "Keep Going",
-      }))
-    : [];
+  const actions: NotificationAction[] =
+    capabilities.maxActions > 0
+      ? EOD_NOTIFICATION_ACTION_IDS.slice(0, capabilities.maxActions).map((action) => ({
+          action,
+          title: EOD_ACTION_TITLES[action],
+        }))
+      : [];
 
   return {
     title: "Time to wrap up?",
     options: {
-      body: `Your timer is still running. Auto-stops in ${gracePeriodMinutes} min if no response.`,
+      body:
+        actions.length > 0
+          ? `Your timer is still running. Auto-stops in ${gracePeriodMinutes} min if you don't answer.`
+          : `Your timer is still running. Auto-stops in ${gracePeriodMinutes} min — click here to keep it running.`,
       tag: NOTIFICATION_TAGS.endOfDay,
       renotify: true,
       requireInteraction: true,
       icon: NOTIFICATION_ICON,
       badge: NOTIFICATION_BADGE,
       actions,
+      data,
+    },
+  };
+}
+
+/** Confirms a snooze so the tray does not just go quiet for 15 minutes. */
+export function buildEndOfDaySnoozedNotification(
+  resumeAt: number,
+  now = Date.now(),
+): BuiltNotification {
+  const data: KokuNotificationData = {
+    kokuType: "end-of-day",
+    timerId: null,
+    breakId: null,
+    createdAt: now,
+  };
+
+  const clock = new Date(resumeAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+  return {
+    title: "Snoozed",
+    options: {
+      body: `koku will ask again at ${clock}. Your timers keep running.`,
+      tag: NOTIFICATION_TAGS.endOfDay,
+      renotify: false,
+      requireInteraction: false,
+      icon: NOTIFICATION_ICON,
+      badge: NOTIFICATION_BADGE,
       data,
     },
   };

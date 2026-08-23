@@ -4,7 +4,9 @@ import { test } from "node:test";
 
 import {
   EOD_NOTIFICATION_ACTION_IDS,
+  EOD_PARAM,
   INTENT_PARAM,
+  isEodActionId,
   isNotificationIntent,
   isSwToPageMessage,
   NOTIFICATION_ACTION_IDS,
@@ -60,6 +62,44 @@ test("the intent query parameter matches the one the worker opens windows with",
     serviceWorkerSource.includes(`INTENT_PARAM = "${INTENT_PARAM}"`),
     `public/sw.js does not define INTENT_PARAM as "${INTENT_PARAM}"`,
   );
+});
+
+test("the end-of-day query parameter matches the one the worker opens windows with", () => {
+  // Without this the buttons on a notification that outlived every tab look live
+  // and silently do nothing.
+  assert.ok(
+    serviceWorkerSource.includes(`EOD_PARAM = "${EOD_PARAM}"`),
+    `public/sw.js does not define EOD_PARAM as "${EOD_PARAM}"`,
+  );
+});
+
+test("end-of-day answers are delivered to one window, never broadcast", () => {
+  // Broadcasting meant every open tab stopped the timers and wrote its own
+  // duplicate entry.
+  assert.ok(
+    serviceWorkerSource.includes("async function deliverToOne("),
+    "public/sw.js no longer defines deliverToOne",
+  );
+
+  for (const action of EOD_NOTIFICATION_ACTION_IDS) {
+    const branch = serviceWorkerSource.slice(
+      serviceWorkerSource.indexOf(`action === "${action}"`),
+    );
+    assert.ok(
+      branch.slice(0, 400).includes("deliverToOne("),
+      `the "${action}" branch does not use deliverToOne`,
+    );
+  }
+});
+
+test("only real end-of-day answers are accepted from the URL", () => {
+  for (const action of EOD_NOTIFICATION_ACTION_IDS) {
+    assert.equal(isEodActionId(action), true, action);
+  }
+
+  for (const value of ["eod-delete", "open-log", "", undefined, null, 7]) {
+    assert.equal(isEodActionId(value), false, String(value));
+  }
 });
 
 test("the worker still declares both message sources it relies on", () => {

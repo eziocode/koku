@@ -56,8 +56,11 @@ export function CheckInIntro() {
 
   // Nothing to introduce where notifications cannot be delivered at all, and
   // nothing to decide if the user already turned them on from settings.
+  // Waits for the mandatory end-of-day answer so a new user is never met by two
+  // dialogs stacked on each other.
   const open =
     loaded &&
+    onboarding.endOfDaySetAt !== null &&
     onboarding.checkInIntroSeenAt === null &&
     support.supported &&
     !prefs.enabled;

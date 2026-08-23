@@ -4,6 +4,8 @@ import { test } from "node:test";
 import {
   buildBreakCompleteNotification,
   buildCheckInNotification,
+  buildEndOfDayNotification,
+  buildEndOfDaySnoozedNotification,
   buildNotificationActions,
   buildTestNotification,
   NOTIFICATION_TAGS,
@@ -184,4 +186,47 @@ test("the test notification explains the no-buttons case on browsers without act
     buildTestNotification(prefs(), noActions, NOW).options.body ?? "",
     /no buttons/,
   );
+});
+
+
+/* ─── End of day ──────────────────────────────────────────────────────────── */
+
+test("end-of-day buttons are truncated to what the browser renders, not withheld", () => {
+  // The previous version emitted nothing below two slots, which left the only
+  // sticky notification koku sends with no way to answer it.
+  const twoSlots = buildEndOfDayNotification(15, { maxActions: 2 }, 0);
+  assert.deepEqual(
+    twoSlots.options.actions?.map((action) => action.action),
+    ["eod-stop", "eod-snooze"],
+  );
+
+  const roomy = buildEndOfDayNotification(15, { maxActions: 3 }, 0);
+  assert.deepEqual(
+    roomy.options.actions?.map((action) => action.action),
+    ["eod-stop", "eod-snooze", "eod-keep"],
+  );
+
+  const one = buildEndOfDayNotification(15, { maxActions: 1 }, 0);
+  assert.deepEqual(
+    one.options.actions?.map((action) => action.action),
+    ["eod-stop"],
+  );
+});
+
+test("with no buttons the body explains that clicking keeps the timer running", () => {
+  const noSlots = buildEndOfDayNotification(15, { maxActions: 0 }, 0);
+  assert.deepEqual(noSlots.options.actions, []);
+  assert.match(String(noSlots.options.body), /click here to keep it running/);
+});
+
+test("the wrap-up prompt stays in the tray until it is answered", () => {
+  const built = buildEndOfDayNotification(15, { maxActions: 2 }, 0);
+  assert.equal(built.options.requireInteraction, true);
+  assert.equal(built.options.tag, NOTIFICATION_TAGS.endOfDay);
+});
+
+test("a snooze replaces the prompt on the same tag so the tray is never silent", () => {
+  const built = buildEndOfDaySnoozedNotification(0, 0);
+  assert.equal(built.options.tag, NOTIFICATION_TAGS.endOfDay);
+  assert.equal(built.options.requireInteraction, false);
 });

@@ -29,6 +29,7 @@
 const CACHE = "koku-shell-v2";
 const APP_SHELL = ["/dashboard", "/icon-192.png", "/icon-512.png"];
 const INTENT_PARAM = "koku-intent";
+const EOD_PARAM = "koku-eod";
 
 /* ┌────────────────────────────────────────────────────────────────────────────┐
  * │ DEVELOPMENT BYPASS — do not remove.                                        │
@@ -139,6 +140,39 @@ async function broadcast(message) {
 }
 
 /**
+ * Delivers a message to exactly ONE koku window, focusing it first.
+ *
+ * End-of-day answers must not be broadcast. Every tab runs the same scheduler
+ * and every tab's timer store is kept in sync across tabs, so three open tabs
+ * receiving "eod-stop-timers" meant three tabs each calling
+ * `stopTimerAndPersist` and three duplicate entries in the log. Targeting the
+ * focused window (or the first one, if none is focused) makes the answer land
+ * once no matter how many tabs are open, and no longer depends on which tab
+ * happens to hold the leader lock.
+ *
+ * With no window at all — `requireInteraction` keeps this notification in the
+ * tray long after the last tab is closed — the answer travels in the URL of a
+ * window we open, so the button still does what it says.
+ */
+async function deliverToOne(message, fallbackUrl) {
+  const clientList = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+  const target = clientList.find((client) => client.focused) || clientList[0];
+
+  if (target) {
+    try {
+      await target.focus();
+    } catch {
+      /* focus can be refused; still deliver the answer */
+    }
+
+    target.postMessage(message);
+    return;
+  }
+
+  await self.clients.openWindow(fallbackUrl);
+}
+
+/**
  * Focuses an existing koku window and tells it what the user asked for.
  *
  * `includeUncontrolled` matters: in dev, and on the very first load before
@@ -176,22 +210,41 @@ async function routeIntent(intent, notification) {
 
 self.addEventListener("notificationclick", (event) => {
   const { notification } = event;
+  const isEod = (notification.data && notification.data.kokuType) === "end-of-day";
   // An empty `action` means the notification body was clicked, which is the only
-  // path available on browsers that do not render action buttons.
-  const action = event.action || "open-log";
+  // path available on browsers that do not render action buttons. For the
+  // end-of-day prompt that counts as "Skip today": the user clearly saw it, so
+  // auto-stopping their timers anyway is the one outcome to rule out.
+  const action = event.action || (isEod ? "eod-keep" : "open-log");
 
   notification.close();
 
   if (action === "eod-stop") {
     event.waitUntil(
-      broadcast({ source: "koku-sw", type: "eod-stop-timers" }),
+      deliverToOne(
+        { source: "koku-sw", type: "eod-stop-timers" },
+        `/dashboard?${EOD_PARAM}=eod-stop`,
+      ),
     );
     return;
   }
 
   if (action === "eod-keep") {
     event.waitUntil(
-      broadcast({ source: "koku-sw", type: "eod-keep-running" }),
+      deliverToOne(
+        { source: "koku-sw", type: "eod-keep-running" },
+        `/dashboard?${EOD_PARAM}=eod-keep`,
+      ),
+    );
+    return;
+  }
+
+  if (action === "eod-snooze") {
+    event.waitUntil(
+      deliverToOne(
+        { source: "koku-sw", type: "eod-snooze" },
+        `/dashboard?${EOD_PARAM}=eod-snooze`,
+      ),
     );
     return;
   }

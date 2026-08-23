@@ -19,6 +19,7 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
 import { explainShowFailure, showKokuNotificationDetailed } from "@/lib/notifications/client";
 import { formatDndRemaining, resolveDnd } from "@/lib/notifications/dnd";
+import { EOD_SNOOZE_MINUTES } from "@/lib/notifications/messages";
 import { buildTestNotification } from "@/lib/notifications/payload";
 import { explainUnsupported } from "@/lib/notifications/permission";
 import { minutesToTimeInput, timeInputToMinutes } from "@/lib/notifications/quiet-hours";
@@ -517,7 +518,17 @@ export function NotificationSettings() {
           </div>
 
           <p className="text-xs text-muted-foreground">
-            Requires koku to be open in a browser tab. Works independently of the check-in schedule above.
+            The prompt carries {support.supportsActions ? "buttons" : "no buttons in this browser"} —
+            End day, +{EOD_SNOOZE_MINUTES} min, and Skip today
+            {support.supportsActions
+              ? `, of which this browser shows the first ${support.maxActions}`
+              : ", so clicking the notification itself counts as Skip today"}
+            . It stays in your notification centre until you answer, so you can answer it from any
+            app, not just this tab.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Requires koku to be open in a browser tab when your logoff time passes. Works
+            independently of the check-in schedule above.
           </p>
         </CardContent>
       </Card>

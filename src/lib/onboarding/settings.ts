@@ -15,17 +15,29 @@ export interface OnboardingState {
   version: 1;
   /** When the recurring check-in explainer was acknowledged. */
   checkInIntroSeenAt: string | null;
+  /**
+   * When the user supplied their end-of-day logoff time.
+   *
+   * Needed as a separate flag because `endOfDay.logoffTime` always holds a
+   * value (it defaults to "18:00"), so the preference itself cannot answer
+   * "has the user actually told us?" — and the setup prompt is mandatory, so
+   * getting that answer wrong either blocks a configured user forever or lets
+   * an unconfigured one through.
+   */
+  endOfDaySetAt: string | null;
 }
 
 export const ONBOARDING_DEFAULTS: OnboardingState = {
   version: 1,
   checkInIntroSeenAt: null,
+  endOfDaySetAt: null,
 };
 
 export const onboardingStateSchema = z
   .object({
     version: z.literal(1).catch(1),
     checkInIntroSeenAt: z.string().nullable().catch(null),
+    endOfDaySetAt: z.string().nullable().catch(null),
   })
   .catch(ONBOARDING_DEFAULTS);
 

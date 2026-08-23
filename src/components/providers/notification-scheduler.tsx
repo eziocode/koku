@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import { format } from "date-fns";
 
@@ -13,11 +13,18 @@ import {
   readEndOfDayState,
   writeEndOfDayState,
 } from "@/lib/notifications/end-of-day";
-import { isSwToPageMessage } from "@/lib/notifications/messages";
+import {
+  EOD_PARAM,
+  EOD_SNOOZE_MINUTES,
+  isEodActionId,
+  isSwToPageMessage,
+  type EodNotificationActionId,
+} from "@/lib/notifications/messages";
 import {
   buildCheckInNotification,
   buildEndOfDayDoneNotification,
   buildEndOfDayNotification,
+  buildEndOfDaySnoozedNotification,
   NOTIFICATION_TAGS,
 } from "@/lib/notifications/payload";
 import { isWithinQuietHours } from "@/lib/notifications/quiet-hours";
@@ -88,35 +95,83 @@ export function NotificationScheduler() {
   // so the end-of-day guard works independently of the check-in schedule).
   const eodDeliverable = prefs.endOfDay.enabled && support.supported && permission === "granted";
 
-  useEffect(() => {
-    if (!eodDeliverable || !isLeader) {
+  /**
+   * Applies one end-of-day answer.
+   *
+   * Deliberately not gated on leadership. The worker now delivers these to a
+   * single window rather than broadcasting (see `deliverToOne` in
+   * `public/sw.js`), so whichever tab is handed the answer is the one that must
+   * act on it — requiring that tab to also hold the leader lock would drop the
+   * answer whenever the user clicked from any tab but the leader, which is what
+   * made the buttons look dead with more than one tab open.
+   */
+  const applyEodAction = useCallback(async (action: EodNotificationActionId) => {
+    if (action === "eod-stop") {
+      const endedAt = new Date().toISOString();
+      const timerIds = useTimerStore.getState().timers.map((timer) => timer.id);
+      await Promise.all(timerIds.map((id) => stopTimerAndPersist(id, endedAt)));
+      clearEndOfDayState();
+      await closeKokuNotifications(NOTIFICATION_TAGS.endOfDay);
       return;
     }
 
-    // Handle SW → page messages for EOD actions (user clicking notification buttons).
+    if (action === "eod-snooze") {
+      const now = Date.now();
+      const resumeAt = now + EOD_SNOOZE_MINUTES * 60_000;
+      const state = readEndOfDayState();
+
+      writeEndOfDayState({
+        notifiedAt: now,
+        firedForDay: state?.firedForDay ?? format(new Date(now), "yyyy-MM-dd"),
+        userResponded: false,
+        snoozedUntil: resumeAt,
+      });
+
+      // Replaces the prompt rather than leaving the tray silent for 15 minutes,
+      // so a snooze is visibly a snooze and not a click that did nothing.
+      await showKokuNotification(buildEndOfDaySnoozedNotification(resumeAt, now));
+      return;
+    }
+
+    // eod-keep — answered for the day; no auto-stop, no re-prompt.
+    const state = readEndOfDayState();
+    const now = Date.now();
+    writeEndOfDayState({
+      notifiedAt: state?.notifiedAt ?? now,
+      firedForDay: state?.firedForDay ?? format(new Date(now), "yyyy-MM-dd"),
+      userResponded: true,
+      snoozedUntil: null,
+    });
+    await closeKokuNotifications(NOTIFICATION_TAGS.endOfDay);
+  }, []);
+
+  /**
+   * Listens in every tab, not just the leader, and regardless of whether the
+   * feature is currently enabled: an answer to a notification koku already sent
+   * has to be honoured even if the user switched the feature off in between.
+   */
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
+      return;
+    }
+
     function onSwMessage(event: MessageEvent) {
       if (!isSwToPageMessage(event.data)) {
         return;
       }
 
       if (event.data.type === "eod-stop-timers") {
-        const endedAt = new Date().toISOString();
-        const timerIds = useTimerStore.getState().timers.map((t) => t.id);
+        void applyEodAction("eod-stop");
+        return;
+      }
 
-        void Promise.all(timerIds.map((id) => stopTimerAndPersist(id, endedAt))).then(() => {
-          clearEndOfDayState();
-          void closeKokuNotifications(NOTIFICATION_TAGS.endOfDay);
-        });
-
+      if (event.data.type === "eod-snooze") {
+        void applyEodAction("eod-snooze");
         return;
       }
 
       if (event.data.type === "eod-keep-running") {
-        const state = readEndOfDayState();
-        if (state) {
-          writeEndOfDayState({ ...state, userResponded: true });
-        }
-        return;
+        void applyEodAction("eod-keep");
       }
     }
 
@@ -124,7 +179,34 @@ export function NotificationScheduler() {
     return () => {
       navigator.serviceWorker.removeEventListener("message", onSwMessage);
     };
-  }, [eodDeliverable, isLeader]);
+  }, [applyEodAction]);
+
+  /**
+   * Picks up an answer that arrived in the URL.
+   *
+   * The wrap-up prompt is `requireInteraction`, so it survives every koku tab
+   * being closed. Clicking a button then has no window to post to, and the
+   * worker opens one with the answer as a query parameter instead. The parameter
+   * is stripped immediately so a reload or a shared link cannot replay it.
+   */
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const url = new URL(window.location.href);
+    const raw = url.searchParams.get(EOD_PARAM);
+    if (!raw) {
+      return;
+    }
+
+    url.searchParams.delete(EOD_PARAM);
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+
+    if (isEodActionId(raw)) {
+      void applyEodAction(raw);
+    }
+  }, [applyEodAction]);
 
   const active = (deliverable || eodDeliverable) && isLeader;
 
@@ -188,9 +270,30 @@ export function NotificationScheduler() {
 
           const eodState = readEndOfDayState();
 
-          if (eodState?.firedForDay === todayKey && eodState.userResponded) {
-            // User already responded — no further action today.
-          } else if (eodState?.firedForDay === todayKey) {
+          const firedToday = eodState?.firedForDay === todayKey;
+
+          if (firedToday && eodState.userResponded) {
+            // "Skip today" — answered, so neither re-prompt nor auto-stop.
+          } else if (firedToday && eodState.snoozedUntil !== null) {
+            // Snoozed. The grace clock is deliberately not running during a
+            // snooze: `notifiedAt` is re-stamped when the prompt comes back, so
+            // "+15 min" cannot quietly bring the auto-stop forward.
+            if (now >= eodState.snoozedUntil) {
+              await showKokuNotification(
+                buildEndOfDayNotification(
+                  eodPrefs.gracePeriodMinutes,
+                  { maxActions: maxActionsRef.current },
+                  now,
+                ),
+              );
+              writeEndOfDayState({
+                notifiedAt: now,
+                firedForDay: todayKey,
+                userResponded: false,
+                snoozedUntil: null,
+              });
+            }
+          } else if (firedToday) {
             // Notification already fired; check whether grace period has expired.
             const elapsedMs = now - eodState.notifiedAt;
             const graceMs = eodPrefs.gracePeriodMinutes * 60_000;
@@ -207,7 +310,12 @@ export function NotificationScheduler() {
             await showKokuNotification(
               buildEndOfDayNotification(eodPrefs.gracePeriodMinutes, { maxActions: maxActionsRef.current }, now),
             );
-            writeEndOfDayState({ notifiedAt: now, firedForDay: todayKey, userResponded: false });
+            writeEndOfDayState({
+              notifiedAt: now,
+              firedForDay: todayKey,
+              userResponded: false,
+              snoozedUntil: null,
+            });
           }
         }
       }
