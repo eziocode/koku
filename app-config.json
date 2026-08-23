@@ -1,5 +1,5 @@
 {
-  "command": "node appsail-server.cjs",
+  "command": "node server.js",
   "build_path": ".next/standalone",
   "stack": "node24"
 }
