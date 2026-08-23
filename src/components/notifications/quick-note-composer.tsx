@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
+import { persistQuickNote, type QuickNoteOrigin } from "@/lib/notes";
 import { QUICK_NOTE_TAG } from "@/lib/notifications/settings";
 import { useTimerStore } from "@/lib/stores/timer-store";
 import { createTimeEntry } from "@/lib/time-tracking/time-entries";
@@ -32,6 +33,19 @@ interface QuickNoteComposerProps {
   onOpenChange: (open: boolean) => void;
   target: QuickNoteTarget;
   onSaved?: (target: QuickNoteTarget) => void;
+}
+
+/** Maps the composer's target onto the shape the notes writer wants. */
+function toOrigin(target: QuickNoteTarget): QuickNoteOrigin {
+  if (target.kind === "timer") {
+    return { kind: "timer", label: target.title, elapsedSec: target.elapsedSec };
+  }
+
+  if (target.kind === "break") {
+    return { kind: "break", label: target.label, elapsedSec: null };
+  }
+
+  return { kind: "standalone", label: null, elapsedSec: null };
 }
 
 function describeTarget(target: QuickNoteTarget): string {
@@ -81,10 +95,10 @@ export function QuickNoteComposer({ open, onOpenChange, target, onSaved }: Quick
     try {
       if (target.kind === "timer") {
         appendNote(target.timerId, trimmed);
-        toast.success(`Note added to “${target.title}”.`);
+        toast.success(`Note added to “${target.title}” and your notes.`);
       } else if (target.kind === "break") {
         appendBreakNote(trimmed);
-        toast.success("Note added to your break.");
+        toast.success("Note added to your break and your notes.");
       } else {
         // Nothing is running, so the note becomes a zero-duration entry. Nothing
         // is lost, it lands on /log at the right time, and because
@@ -99,7 +113,17 @@ export function QuickNoteComposer({ open, onOpenChange, target, onSaved }: Quick
           tags: [QUICK_NOTE_TAG],
           notes: trimmed,
         });
-        toast.success("Note saved to your log.");
+        toast.success("Note saved to your log and your notes.");
+      }
+
+      // Also lands in the notes section, tagged and stamped, so a thought
+      // captured in one line has somewhere to grow. Failing this must not lose
+      // the note the user already typed, so the primary write above stays
+      // authoritative and this is reported separately.
+      try {
+        await persistQuickNote(trimmed, toOrigin(target), formatDuration);
+      } catch {
+        toast.error("Saved, but couldn’t copy it into your notes.");
       }
 
       onSaved?.(target);
@@ -135,6 +159,11 @@ export function QuickNoteComposer({ open, onOpenChange, target, onSaved }: Quick
           className="min-h-11"
           disabled={saving}
         />
+        <p className="text-xs text-muted-foreground">
+          Also saved to Notes, tagged{" "}
+          <span className="rounded bg-muted px-1 font-medium">Quicknote</span>, with the date and
+          time filled in for you.
+        </p>
         <p className="text-xs text-muted-foreground">
           <kbd className="rounded border border-border px-1">Enter</kbd> to save ·{" "}
           <kbd className="rounded border border-border px-1">Esc</kbd> to dismiss

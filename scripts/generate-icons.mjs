@@ -19,6 +19,7 @@
  *   public/icon-192.png       192x192 (PWA manifest)
  *   public/icon-512.png       512x512 (PWA manifest)
  *   public/icon-maskable.png  512x512 (PWA maskable — extra safe-area padding)
+ *   public/icon-badge.png     96x96   (notification badge — monochrome alpha mask)
  *
  * Requires: sharp (installed) + cairosvg (system) for CJK rasterization.
  */
@@ -55,6 +56,30 @@ function svg(size, radius, inset = 0.72) {
 </svg>`;
 }
 
+/**
+ * The notification badge: the glyph alone, no plate, on transparency.
+ *
+ * `NotificationOptions.badge` is not a small copy of the app icon — Chrome and
+ * Android treat it as an alpha mask and re-tint every non-transparent pixel to
+ * suit the status bar. Feeding it the terracotta-plated 192px icon therefore
+ * produced a solid coloured square with the 刻 invisible inside it, because the
+ * plate is opaque and gets tinted along with the glyph. Solid white glyph on a
+ * transparent ground is the only input that survives that pass.
+ *
+ * Generous inset: the badge is rendered around 16–24px, so the glyph needs the
+ * whole canvas to stay legible at that size.
+ */
+function badgeSvg(size) {
+  const fontSize = Math.round(size * 0.92);
+  const cy = size / 2 + fontSize * 0.02;
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+  <text x="50%" y="${cy}" fill="#ffffff" text-anchor="middle" dominant-baseline="central"
+        font-family="Hiragino Sans GB, Hiragino Mincho ProN, Noto Sans CJK JP, sans-serif"
+        font-weight="700" font-size="${fontSize}">${GLYPH}</text>
+</svg>`;
+}
+
 /** Rasterize an SVG string to a PNG buffer using cairosvg (bundles CJK glyph). */
 function rasterize(svgString, size) {
   const tmp = resolve(tmpdir(), `koku-icon-${size}-${Date.now()}.svg`);
@@ -80,6 +105,14 @@ async function writeIcon(relPath, size, { radius = Math.round(size * 0.22), inse
   console.log(`  ✓ ${relPath}  (${size}×${size})`);
 }
 
+async function writeBadge(relPath, size) {
+  const out = resolve(ROOT, relPath);
+  mkdirSync(dirname(out), { recursive: true });
+  const png = rasterize(badgeSvg(size), size);
+  await sharp(png).png({ compressionLevel: 9 }).toFile(out);
+  console.log(`  ✓ ${relPath}  (${size}×${size}, monochrome badge)`);
+}
+
 async function main() {
   console.log("🎨  Generating koku 刻 app icons …");
 
@@ -92,6 +125,8 @@ async function main() {
   await writeIcon("public/icon-512.png", 512, { radius: 112 });
   // Maskable — no rounding + generous safe area (glyph smaller).
   await writeIcon("public/icon-maskable.png", 512, { radius: 0, inset: 0.56 });
+  // Notification badge — monochrome, transparent, no plate. See badgeSvg().
+  await writeBadge("public/icon-badge.png", 96);
 
   // Remove the stale blank favicon.ico so it can't shadow icon.png.
   const staleIco = resolve(ROOT, "src/app/favicon.ico");

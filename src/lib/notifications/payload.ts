@@ -25,7 +25,16 @@ export const NOTIFICATION_TAGS = {
 } as const;
 
 export const NOTIFICATION_ICON = "/icon-192.png";
-export const NOTIFICATION_BADGE = "/icon-192.png";
+
+/**
+ * The small mark shown beside the source line, not a scaled-down `icon`.
+ *
+ * Chrome and Android treat `badge` as an alpha mask and re-tint every opaque
+ * pixel, so the terracotta-plated app icon this used to point at came out as a
+ * flat tinted square with the 刻 lost inside it. `/icon-badge.png` is the glyph
+ * alone on transparency — see `badgeSvg` in `scripts/generate-icons.mjs`.
+ */
+export const NOTIFICATION_BADGE = "/icon-badge.png";
 
 export type CheckInContext =
   | { kind: "timer-running"; timerId: string; title: string; elapsedSec: number }

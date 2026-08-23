@@ -26,8 +26,10 @@
  * └──────────────────────────────────────────────────────────────────────────┘
  */
 
-const CACHE = "koku-shell-v2";
-const APP_SHELL = ["/dashboard", "/icon-192.png", "/icon-512.png"];
+const CACHE = "koku-shell-v3";
+// icon-badge.png is precached too: a notification shown while offline still
+// needs its mark, and the badge is fetched at show time, not at install time.
+const APP_SHELL = ["/dashboard", "/icon-192.png", "/icon-512.png", "/icon-badge.png"];
 const INTENT_PARAM = "koku-intent";
 const EOD_PARAM = "koku-eod";
 
