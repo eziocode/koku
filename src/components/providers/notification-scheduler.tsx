@@ -57,15 +57,10 @@ async function readLastEntryTitle(): Promise<string | null> {
   }
 }
 
-function isWeekend(now: number): boolean {
-  const day = new Date(now).getDay(); // 0 = Sunday, 6 = Saturday
-  return day === 0 || day === 6;
-}
-
 function isSuppressed(prefs: NotificationPreferences, now: number): boolean {
   if (resolveDnd(prefs.dnd, now).active) return true;
   if (prefs.quietHours.enabled && isWithinQuietHours(new Date(now), prefs.quietHours)) return true;
-  if (prefs.skipWeekends && isWeekend(now)) return true;
+  if (prefs.silentDays.length > 0 && prefs.silentDays.includes(new Date(now).getDay())) return true;
   return false;
 }
 

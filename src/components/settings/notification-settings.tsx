@@ -395,23 +395,50 @@ export function NotificationSettings() {
         </CardContent>
       </Card>
 
-      {/* ── Weekend suppression ──────────────────────────────────────────── */}
+      {/* ── Silent days ──────────────────────────────────────────────────── */}
       <Card>
         <CardHeader>
-          <CardTitle>Weekends</CardTitle>
+          <CardTitle>Silent days</CardTitle>
           <CardDescription>
-            Skip all check-in notifications on Saturday and Sunday.
+            Check-ins are skipped entirely on the selected days of the week.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <ToggleRow
-            id="skip-weekends"
-            label="No notifications on weekends"
-            description="Silences check-ins on Saturday and Sunday. DND and quiet hours still apply on weekdays."
-            checked={prefs.skipWeekends}
-            disabled={off}
-            onCheckedChange={(checked) => void patch({ skipWeekends: checked })}
-          />
+        <CardContent className="space-y-4">
+          <div className={cn("flex flex-wrap gap-2", off && "opacity-50")}>
+            {(["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const).map((label, dayIndex) => {
+              const active = prefs.silentDays.includes(dayIndex);
+              return (
+                <button
+                  key={dayIndex}
+                  type="button"
+                  disabled={off}
+                  aria-pressed={active}
+                  onClick={() => {
+                    const next = active
+                      ? prefs.silentDays.filter((d) => d !== dayIndex)
+                      : [...prefs.silentDays, dayIndex].sort((a, b) => a - b);
+                    void patch({ silentDays: next });
+                  }}
+                  className={cn(
+                    "h-10 w-12 rounded-xl border text-sm font-medium transition-colors",
+                    active
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-muted/50 text-muted-foreground hover:bg-muted",
+                    off && "pointer-events-none",
+                  )}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {prefs.silentDays.length === 0
+              ? "No days selected — notifications run every day."
+              : `Silent on: ${prefs.silentDays
+                  .map((d) => ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][d])
+                  .join(", ")}.`}
+          </p>
         </CardContent>
       </Card>
 
