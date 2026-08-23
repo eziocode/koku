@@ -107,12 +107,12 @@ const TABLE_CONFIG = {
   settings: {
     table: "settings_koku",
     toFields: (r: Record<string, unknown>) => ({
-      key: r.key ?? "",
-      value: JSON.stringify(r.value ?? null),
+      setting_key: r.key ?? "",
+      setting_value: JSON.stringify(r.value ?? null),
     }),
     fromRow: (r: Record<string, unknown>) => {
       const d = (r["settings_koku"] ?? r) as Record<string, unknown>;
-      return { key: d.key, value: tryParse(d.value as string, null) };
+      return { key: d.setting_key, value: tryParse(d.setting_value as string, null) };
     },
     sinceField: null,
   },
