@@ -1,8 +1,10 @@
 {
   "appsail": [
     {
-      "source": ".next/standalone",
-      "name": "koku"
+      "build_path": ".next/standalone",
+      "name": "koku",
+      "stack": "node24",
+      "command": "node server.js"
     }
   ]
 }
