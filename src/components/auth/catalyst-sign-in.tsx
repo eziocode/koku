@@ -22,7 +22,7 @@ function loadScript(src: string): Promise<void> {
   });
 }
 
-export function CatalystSignIn({ onSignedIn }: { onSignedIn?: () => void }) {
+export function CatalystSignIn({ onSignedIn, className }: { onSignedIn?: () => void; className?: string }) {
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<"loading" | "ready" | "fallback">("loading");
   const initialized = useRef(false);
@@ -63,7 +63,7 @@ export function CatalystSignIn({ onSignedIn }: { onSignedIn?: () => void }) {
   const isLocal = typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname);
 
   return <Dialog open={open} onOpenChange={(next) => next ? setOpen(true) : close()}>
-    <DialogTrigger asChild><Button>Sign in with Zoho</Button></DialogTrigger>
+    <DialogTrigger asChild><Button className={className}>Sign in with Zoho</Button></DialogTrigger>
     <DialogContent className="w-[calc(100%-2rem)] max-w-xl overflow-visible p-7 sm:p-8">
       <DialogHeader><DialogTitle>Sign in to Koku</DialogTitle><DialogDescription>Use your Zoho account to sync data across devices.</DialogDescription></DialogHeader>
       {status === "loading" && <p className="text-sm text-muted-foreground">Loading sign-in…</p>}

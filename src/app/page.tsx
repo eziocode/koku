@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, Bot, ChartColumnBig, Clock3, Download, Network, NotebookPen } from "lucide-react";
 
+import { CatalystSignIn } from "@/components/auth/catalyst-sign-in";
 import { Logo } from "@/components/layout/logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,8 @@ const features = [
     description: "Break down effort by day, project, and trend with elegant analytics and exports.",
   }, 
 ];
+
+const isLocalMode = process.env.NEXT_PUBLIC_LOCAL_MODE === "true";
 
 export default function Home() {
   return (
@@ -73,6 +76,7 @@ export default function Home() {
               <Button asChild size="lg" variant="outline">
                 <Link href="/settings/storage">Backup tools</Link>
               </Button>
+              {!isLocalMode && <CatalystSignIn className="h-11 px-8 text-base" />}
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
               {[
