@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
+import { InlineScript } from "@/components/inline-script";
 import { AppProviders } from "@/components/providers/app-providers";
 import { ServiceWorkerRegistrar } from "@/components/providers/service-worker-registrar";
 import { buildAccentScript } from "@/lib/appearance";
@@ -74,7 +75,7 @@ export default function RootLayout({
             terracotta flash-of-default-accent on hard refresh / tab switch.
             Runs synchronously from a localStorage cache; Dexie remains the
             source of truth and reconciles post-hydration. */}
-        <script dangerouslySetInnerHTML={{ __html: buildAccentScript() }} />
+        <InlineScript html={buildAccentScript()} />
       </head>
       <body className="min-h-screen bg-background text-foreground">
         <AppProviders>{children}</AppProviders>

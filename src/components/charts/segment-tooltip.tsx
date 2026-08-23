@@ -131,45 +131,37 @@ export interface TooltipShift {
  * The offset that keeps a tooltip on screen, flipping it to the left of the
  * cursor when it would otherwise run off the right edge.
  *
- * `rect` is the card as currently rendered, so `shift` (what is already applied)
- * is subtracted back out and the decision is always made on the card's natural
- * position — that is what makes repeated passes converge instead of ratcheting
- * the card further each time.
+ * `rect` must be the card's *natural* position — where it sits before any shift
+ * is applied. Feeding a shifted rect back in makes the result depend on its own
+ * output, which is how this ends up oscillating rather than settling.
  */
 export function getViewportShift({
   rect,
-  shift,
   viewportWidth,
   viewportHeight,
 }: {
   rect: { left: number; right: number; top: number; bottom: number; width: number };
-  shift: TooltipShift;
   viewportWidth: number;
   viewportHeight: number;
 }): TooltipShift {
-  const naturalLeft = rect.left - shift.x;
-  const naturalRight = rect.right - shift.x;
-  const naturalTop = rect.top - shift.y;
-  const naturalBottom = rect.bottom - shift.y;
-
   const rightLimit = viewportWidth - VIEWPORT_MARGIN;
   const bottomLimit = viewportHeight - VIEWPORT_MARGIN;
 
   let x = 0;
-  if (naturalRight > rightLimit) {
+  if (rect.right > rightLimit) {
     x = -(rect.width + FLIP_GAP);
     // Flipping must not push the card off the left edge instead: when there is
     // no room on either side, nudge it just far enough to fit.
-    if (naturalLeft + x < VIEWPORT_MARGIN) {
-      x = Math.min(0, rightLimit - naturalRight);
+    if (rect.left + x < VIEWPORT_MARGIN) {
+      x = Math.min(0, rightLimit - rect.right);
     }
   }
 
   let y = 0;
-  if (naturalBottom > bottomLimit) {
-    y = bottomLimit - naturalBottom;
-    if (naturalTop + y < VIEWPORT_MARGIN) {
-      y = VIEWPORT_MARGIN - naturalTop;
+  if (rect.bottom > bottomLimit) {
+    y = bottomLimit - rect.bottom;
+    if (rect.top + y < VIEWPORT_MARGIN) {
+      y = VIEWPORT_MARGIN - rect.top;
     }
   }
 
@@ -185,9 +177,12 @@ export function getViewportShift({
  * chart in a right-hand panel put it. Recharts has no viewport-aware placement,
  * so the card corrects its own position.
  *
- * Re-measured whenever Recharts moves the card (its `coordinate`), since the
- * wrapper is repositioned by style alone and nothing else about the content
- * changes.
+ * Two things keep this from looping. The measured element is the *outer* wrapper
+ * and the transform goes on the inner one: a transform does not affect layout, so
+ * the measurement is always of the natural position and never of the correction
+ * already applied. And because the outer box never changes size, Recharts' own
+ * size-based repositioning is not retriggered — that feedback loop was what blew
+ * the update depth.
  */
 function ViewportAwareTooltip({
   children,
@@ -197,37 +192,35 @@ function ViewportAwareTooltip({
   /** Where Recharts has placed the card; re-measure when it moves. */
   coordinate?: { x?: number; y?: number };
 }) {
-  const ref = useRef<HTMLDivElement | null>(null);
+  const outerRef = useRef<HTMLDivElement | null>(null);
   const [shift, setShift] = useState<TooltipShift>({ x: 0, y: 0 });
   const coordinateX = coordinate?.x ?? 0;
   const coordinateY = coordinate?.y ?? 0;
 
   useLayoutEffect(() => {
-    const element = ref.current;
+    const element = outerRef.current;
     if (!element || typeof window === "undefined") {
       return;
     }
 
     const next = getViewportShift({
       rect: element.getBoundingClientRect(),
-      shift,
       viewportWidth: window.innerWidth,
       viewportHeight: window.innerHeight,
     });
 
-    if (next.x !== shift.x || next.y !== shift.y) {
-      setShift(next);
-    }
-  }, [coordinateX, coordinateY, shift]);
+    setShift((current) => (current.x === next.x && current.y === next.y ? current : next));
+  }, [coordinateX, coordinateY]);
 
   return (
-    <div
-      ref={ref}
-      style={{
-        transform: shift.x || shift.y ? `translate(${shift.x}px, ${shift.y}px)` : undefined,
-      }}
-    >
-      {children}
+    <div ref={outerRef}>
+      <div
+        style={{
+          transform: shift.x || shift.y ? `translate(${shift.x}px, ${shift.y}px)` : undefined,
+        }}
+      >
+        {children}
+      </div>
     </div>
   );
 }

@@ -41,7 +41,13 @@ export function Topbar({ onOpenSidebar }: TopbarProps) {
               size="icon"
               onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
             >
-              {resolvedTheme === "dark" ? <SunMedium /> : <MoonStar />}
+              {/* Both icons are rendered and one is hidden by the `dark` class
+                  next-themes puts on <html>. Branching on `resolvedTheme` here
+                  instead would render the light icon on the server and the dark
+                  one after hydration — a mismatch, and a visible icon flip. */}
+              <SunMedium className="hidden dark:block" />
+              <MoonStar className="dark:hidden" />
+              <span className="sr-only">Toggle theme</span>
             </Button>
           </TooltipTrigger>
           <TooltipContent>Toggle theme</TooltipContent>
