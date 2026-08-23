@@ -2,10 +2,29 @@
 
 import { kokuDb } from "@/lib/storage/db";
 
-const SYNCABLE_TABLES = ["timeEntries", "projects", "categories", "notes", "noteLinks"] as const;
-type SyncTable = (typeof SYNCABLE_TABLES)[number];
+export const SYNCABLE_TABLES = ["timeEntries", "projects", "categories", "notes", "noteLinks"] as const;
+export type SyncTable = (typeof SYNCABLE_TABLES)[number];
 
 const LAST_SYNC_KEY = "lastSyncAt";
+
+// Cache auth check to avoid a Catalyst API call on every mutation.
+// The Catalyst SDK logs NO_ACCESS to stderr before throwing, so repeated
+// unauthenticated calls produce continuous server-side noise.
+const AUTH_CACHE_TTL_MS = 30_000;
+let authCache: { user: { id: string } | null; expiresAt: number } | null = null;
+
+async function getAuthUser(): Promise<{ id: string } | null> {
+  const now = Date.now();
+  if (authCache && authCache.expiresAt > now) return authCache.user;
+  const res = await fetch("/api/auth/me");
+  const { user } = (await res.json()) as { user: { id: string } | null };
+  authCache = { user, expiresAt: now + AUTH_CACHE_TTL_MS };
+  return user;
+}
+
+export function invalidateAuthCache() {
+  authCache = null;
+}
 
 async function getLastSyncAt(): Promise<string | null> {
   const row = await kokuDb.settings.get(LAST_SYNC_KEY);
@@ -56,9 +75,8 @@ export async function syncNow(): Promise<SyncResult> {
     return { pulled: 0, pushed: 0, error: "Offline" };
   }
 
-  // Check auth first
-  const meRes = await fetch("/api/auth/me");
-  const { user } = (await meRes.json()) as { user: { id: string } | null };
+  invalidateAuthCache();
+  const user = await getAuthUser();
   if (!user) {
     return { pulled: 0, pushed: 0, error: "Not signed in" };
   }
@@ -82,25 +100,29 @@ export async function syncNow(): Promise<SyncResult> {
 // Push a single row change immediately (call after any IndexedDB write in cloud mode)
 export async function syncRow(table: SyncTable, row: unknown): Promise<void> {
   if (!navigator.onLine) return;
+  try {
+    const user = await getAuthUser();
+    if (!user) return;
 
-  const meRes = await fetch("/api/auth/me");
-  const { user } = (await meRes.json()) as { user: { id: string } | null };
-  if (!user) return;
-
-  await fetch(`/api/sync/${table}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ rows: [row] }),
-  });
+    const res = await fetch(`/api/sync/${table}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rows: [row] }),
+    });
+    if (!res.ok) throw new Error(`Push ${table} failed: ${res.status}`);
+  } catch {
+    // Local write remains source of truth while offline or during transient auth/network failure.
+  }
 }
 
 // Delete a row from cloud
 export async function deleteRow(table: SyncTable, id: string): Promise<void> {
   if (!navigator.onLine) return;
-
-  const meRes = await fetch("/api/auth/me");
-  const { user } = (await meRes.json()) as { user: { id: string } | null };
-  if (!user) return;
-
-  await fetch(`/api/sync/${table}?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+  try {
+    const user = await getAuthUser();
+    if (!user) return;
+    await fetch(`/api/sync/${table}?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+  } catch {
+    // Full sync repairs pending deletes when user manually syncs.
+  }
 }

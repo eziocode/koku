@@ -1,0 +1,95 @@
+import { NextResponse } from "next/server";
+
+import { ADMIN_EMAIL } from "@/app/api/auth/me/route";
+import { initCatalyst, upsertRow, zcqlEscape, zcqlQuery } from "@/lib/db/catalyst-client";
+import { TABLE_CONFIG } from "@/app/api/sync/[table]/route";
+
+export const runtime = "nodejs";
+
+async function requireAdmin(request: Request) {
+  const app = initCatalyst(request);
+  const user = await app.userManagement().getCurrentUser();
+  if (user.email_id?.toLowerCase() !== ADMIN_EMAIL) return null;
+  return { app, user };
+}
+
+function getConfig(table: string) {
+  return table in TABLE_CONFIG ? TABLE_CONFIG[table as keyof typeof TABLE_CONFIG] : null;
+}
+
+export async function GET(request: Request) {
+  try {
+    const auth = await requireAdmin(request);
+    if (!auth) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+    const requested = new URL(request.url).searchParams.get("table");
+    const tables = requested ? [requested] : Object.keys(TABLE_CONFIG);
+    const data: Record<string, unknown[]> = {};
+
+    for (const table of tables) {
+      const config = getConfig(table);
+      if (!config) return NextResponse.json({ error: `Unknown table: ${table}` }, { status: 400 });
+      const rows = await zcqlQuery(auth.app, `SELECT * FROM ${config.table}`);
+      const fromRow = config.fromRow as (row: Record<string, unknown>) => Record<string, unknown>;
+      data[table] = rows.map((raw) => {
+        const nested = (raw[config.table] ?? raw) as Record<string, unknown>;
+        return { ...fromRow(raw), userId: nested.user_id ?? raw.user_id };
+      });
+    }
+
+    let users: Array<{ id: string; email: string; displayName: string }> = [];
+    try {
+      const allUsers = await auth.app.userManagement().getAllUsers();
+      users = allUsers.map((user: { user_id: string; email_id: string; first_name?: string; last_name?: string }) => ({
+        id: user.user_id,
+        email: user.email_id,
+        displayName: `${user.first_name} ${user.last_name}`.trim(),
+      }));
+    } catch {
+      // Data access remains useful when Catalyst user-list scope is unavailable.
+    }
+    return NextResponse.json({ data, users });
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const auth = await requireAdmin(request);
+    if (!auth) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const body = (await request.json()) as { table?: string; userId?: string; row?: Record<string, unknown> };
+    const config = body.table ? getConfig(body.table) : null;
+    const id = body.row?.id ?? body.row?.key;
+    if (!config || !body.userId || !id || !body.row) {
+      return NextResponse.json({ error: "table, userId, row required" }, { status: 400 });
+    }
+    await upsertRow(auth.app, config.table, body.userId, String(id), config.toFields(body.row));
+    return NextResponse.json({ saved: true });
+  } catch {
+    return NextResponse.json({ error: "Unable to update row" }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const auth = await requireAdmin(request);
+    if (!auth) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const url = new URL(request.url);
+    const tableName = url.searchParams.get("table");
+    const userId = url.searchParams.get("userId");
+    const id = url.searchParams.get("id");
+    const config = tableName ? getConfig(tableName) : null;
+    if (!config || !userId || !id) return NextResponse.json({ error: "table, userId, id required" }, { status: 400 });
+
+    const rows = await zcqlQuery(auth.app, `SELECT ROWID FROM ${config.table} WHERE id = '${zcqlEscape(id)}' AND user_id = '${zcqlEscape(userId)}'`);
+    if (rows.length) {
+      const raw = rows[0] as Record<string, unknown>;
+      const nested = raw[config.table] as Record<string, unknown> | undefined;
+      await auth.app.datastore().table(config.table).deleteRow(nested?.ROWID ?? raw.ROWID);
+    }
+    return NextResponse.json({ deleted: true });
+  } catch {
+    return NextResponse.json({ error: "Unable to delete row" }, { status: 500 });
+  }
+}

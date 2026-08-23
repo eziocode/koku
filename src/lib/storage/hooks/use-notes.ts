@@ -4,6 +4,7 @@ import { useLiveQuery } from "@/lib/storage/use-live-query";
 
 import { ensureUniqueNoteSlug, extractWikiLinks, syncNoteLinks } from "@/lib/notes";
 import { kokuDb, type Note } from "@/lib/storage/db";
+import { deleteRow, syncRow } from "@/lib/sync/sync-engine";
 
 const EMPTY_NOTES: Note[] = [];
 
@@ -69,6 +70,7 @@ export function useNotes(search?: string) {
       await kokuDb.notes.add(note);
       await syncNoteLinks(note.id, note.content);
     });
+    void syncRow("notes", note);
 
     return note;
   }
@@ -101,6 +103,7 @@ export function useNotes(search?: string) {
       await kokuDb.notes.put(nextNote);
       await syncNoteLinks(id, nextContent);
     });
+    void syncRow("notes", nextNote);
 
     return nextNote;
   }
@@ -111,6 +114,7 @@ export function useNotes(search?: string) {
       await kokuDb.noteLinks.where("targetNoteId").equals(id).delete();
       await kokuDb.notes.delete(id);
     });
+    void deleteRow("notes", id);
   }
 
   return {

@@ -3,6 +3,7 @@
 import { useLiveQuery } from "@/lib/storage/use-live-query";
 
 import { kokuDb, type TimeEntry } from "@/lib/storage/db";
+import { deleteRow, syncRow } from "@/lib/sync/sync-engine";
 import {
   createTimeEntry,
   getDurationSec,
@@ -138,11 +139,13 @@ export function useTimeEntries(filters: TimeEntryFilters = {}) {
     };
 
     await kokuDb.timeEntries.put(next);
+    void syncRow("timeEntries", next);
     return next;
   }
 
   async function deleteEntry(id: string) {
     await kokuDb.timeEntries.delete(id);
+    void deleteRow("timeEntries", id);
   }
 
   return {

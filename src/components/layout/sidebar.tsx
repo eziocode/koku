@@ -1,8 +1,9 @@
 "use client";
 
-import { GitFork, MessageSquareWarning } from "lucide-react";
+import { GitFork, MessageSquareWarning, Settings } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 
 import { Logo } from "@/components/layout/logo";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -17,6 +18,18 @@ interface SidebarProps {
 
 export function Sidebar({ open, onNavigate }: SidebarProps) {
   const pathname = usePathname();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((response) => response.json())
+      .then((body: { user?: { isAdmin?: boolean } | null }) => setIsAdmin(body.user?.isAdmin === true))
+      .catch(() => setIsAdmin(false));
+  }, []);
+
+  const navigation = isAdmin
+    ? [...appNavigation, { title: "Admin", href: "/admin", icon: Settings }]
+    : appNavigation;
 
   return (
     <aside
@@ -30,7 +43,7 @@ export function Sidebar({ open, onNavigate }: SidebarProps) {
       </div>
       <ScrollArea className="flex-1 px-4 py-4">
         <nav className="space-y-1">
-          {appNavigation.map((item) => {
+          {navigation.map((item) => {
             const Icon = item.icon;
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (

@@ -4,7 +4,7 @@ import { initCatalyst, zcqlQuery, zcqlEscape, upsertRow } from "@/lib/db/catalys
 export const runtime = "nodejs";
 
 // Map client camelCase table keys → Catalyst table names + field transforms
-const TABLE_CONFIG = {
+export const TABLE_CONFIG = {
   timeEntries: {
     table: "time_entries_koku",
     toFields: (r: Record<string, unknown>) => ({

@@ -2,6 +2,7 @@ import { format } from "date-fns";
 
 import { kokuDb, type Note } from "@/lib/storage/db";
 import { slugify } from "@/lib/utils";
+import { syncRow } from "@/lib/sync/sync-engine";
 
 function walkText(value: unknown): string {
   if (!value) {
@@ -183,6 +184,7 @@ export async function persistQuickNote(
     await kokuDb.notes.add(note);
     await syncNoteLinks(note.id, note.content);
   });
+  void syncRow("notes", note);
 
   return note;
 }

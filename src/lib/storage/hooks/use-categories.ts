@@ -3,6 +3,7 @@
 import { useLiveQuery } from "@/lib/storage/use-live-query";
 
 import { kokuDb, type Category } from "@/lib/storage/db";
+import { deleteRow, syncRow } from "@/lib/sync/sync-engine";
 
 const EMPTY_CATEGORIES: Category[] = [];
 
@@ -27,6 +28,7 @@ export function useCategories() {
     };
 
     await kokuDb.categories.add(category);
+    void syncRow("categories", category);
     return category;
   }
 
@@ -35,6 +37,8 @@ export function useCategories() {
     patch: Partial<Omit<Category, "id" | "createdAt">>,
   ) {
     await kokuDb.categories.update(id, patch);
+    const updated = await kokuDb.categories.get(id);
+    if (updated) void syncRow("categories", updated);
   }
 
   async function deleteCategory(id: string) {
@@ -42,6 +46,7 @@ export function useCategories() {
       await kokuDb.timeEntries.where("categoryId").equals(id).modify({ categoryId: null });
       await kokuDb.categories.delete(id);
     });
+    void deleteRow("categories", id);
   }
 
   return {

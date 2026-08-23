@@ -3,6 +3,7 @@
 import { useLiveQuery } from "@/lib/storage/use-live-query";
 
 import { kokuDb, type Project } from "@/lib/storage/db";
+import { deleteRow, syncRow } from "@/lib/sync/sync-engine";
 
 const EMPTY_PROJECTS: Project[] = [];
 
@@ -29,6 +30,7 @@ export function useProjects() {
     };
 
     await kokuDb.projects.add(project);
+    void syncRow("projects", project);
     return project;
   }
 
@@ -37,6 +39,8 @@ export function useProjects() {
     patch: Partial<Omit<Project, "id" | "createdAt">>,
   ) {
     await kokuDb.projects.update(id, patch);
+    const updated = await kokuDb.projects.get(id);
+    if (updated) void syncRow("projects", updated);
   }
 
   async function deleteProject(id: string) {
@@ -44,6 +48,7 @@ export function useProjects() {
       await kokuDb.timeEntries.where("projectId").equals(id).modify({ projectId: null });
       await kokuDb.projects.delete(id);
     });
+    void deleteRow("projects", id);
   }
 
   return {

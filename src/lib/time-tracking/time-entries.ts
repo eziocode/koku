@@ -1,4 +1,5 @@
 import { kokuDb, type TimeEntry } from "@/lib/storage/db";
+import { syncRow } from "@/lib/sync/sync-engine";
 
 /**
  * Framework-free time-entry writes.
@@ -43,5 +44,6 @@ export async function createTimeEntry(data: CreateTimeEntryInput): Promise<TimeE
   };
 
   await kokuDb.timeEntries.add(entry);
+  void syncRow("timeEntries", entry);
   return entry;
 }
