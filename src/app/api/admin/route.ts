@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 
-import { ADMIN_EMAIL } from "@/app/api/auth/me/route";
+import { ADMIN_EMAIL } from "@/lib/auth/constants";
 import { initCatalyst, upsertRow, zcqlEscape, zcqlQuery } from "@/lib/db/catalyst-client";
-import { TABLE_CONFIG } from "@/app/api/sync/[table]/route";
+import { TABLE_CONFIG } from "@/lib/sync/table-config";
 import { extractCatalystRowId } from "@/lib/admin-data";
 
 export const runtime = "nodejs";

@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { initCatalyst, zcqlQuery } from "@/lib/db/catalyst-client";
+import { ADMIN_EMAIL } from "@/lib/auth/constants";
 
 export const runtime = "nodejs";
-
-export const ADMIN_EMAIL = "aswin.kg@zohocorp.com";
 
 export async function GET(request: Request): Promise<NextResponse> {
   try {

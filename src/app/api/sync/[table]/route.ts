@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { initCatalyst, zcqlQuery, zcqlEscape, upsertRow } from "@/lib/db/catalyst-client";
+import { TABLE_CONFIG, type TableKey } from "@/lib/sync/table-config";
 
 export const runtime = "nodejs";
 
-// Map client camelCase table keys → Catalyst table names + field transforms
-export const TABLE_CONFIG = {
+/* Map client camelCase table keys → Catalyst table names + field transforms.
+   Kept in lib/sync/table-config so Next route exports remain valid. */
+/*
   timeEntries: {
     table: "time_entries_koku",
     toFields: (r: Record<string, unknown>) => ({
@@ -117,13 +119,7 @@ export const TABLE_CONFIG = {
     sinceField: null,
   },
 } as const;
-
-type TableKey = keyof typeof TABLE_CONFIG;
-
-function tryParse<T>(str: string | undefined | null, fallback: T): T {
-  if (!str) return fallback;
-  try { return JSON.parse(str) as T; } catch { return fallback; }
-}
+*/
 
 async function getCurrentUser(request: Request) {
   try {
