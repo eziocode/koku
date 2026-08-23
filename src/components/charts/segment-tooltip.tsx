@@ -1,6 +1,7 @@
 "use client";
 
 import { format } from "date-fns";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { AssignmentBadge, StatusBadge } from "@/components/charts/status-badge";
 import { Badge } from "@/components/ui/badge";
@@ -113,15 +114,135 @@ export function DayTooltipCard({ label, segments, activeSegmentId }: DayTooltipC
   );
 }
 
+/** Keep this much clear of the window edge. */
+const VIEWPORT_MARGIN = 8;
+/**
+ * How far to flip past the cursor: twice the chart's `Tooltip offset`, so a card
+ * flipped to the left sits the same distance from the cursor as on the right.
+ */
+const FLIP_GAP = 56;
+
+export interface TooltipShift {
+  x: number;
+  y: number;
+}
+
+/**
+ * The offset that keeps a tooltip on screen, flipping it to the left of the
+ * cursor when it would otherwise run off the right edge.
+ *
+ * `rect` is the card as currently rendered, so `shift` (what is already applied)
+ * is subtracted back out and the decision is always made on the card's natural
+ * position — that is what makes repeated passes converge instead of ratcheting
+ * the card further each time.
+ */
+export function getViewportShift({
+  rect,
+  shift,
+  viewportWidth,
+  viewportHeight,
+}: {
+  rect: { left: number; right: number; top: number; bottom: number; width: number };
+  shift: TooltipShift;
+  viewportWidth: number;
+  viewportHeight: number;
+}): TooltipShift {
+  const naturalLeft = rect.left - shift.x;
+  const naturalRight = rect.right - shift.x;
+  const naturalTop = rect.top - shift.y;
+  const naturalBottom = rect.bottom - shift.y;
+
+  const rightLimit = viewportWidth - VIEWPORT_MARGIN;
+  const bottomLimit = viewportHeight - VIEWPORT_MARGIN;
+
+  let x = 0;
+  if (naturalRight > rightLimit) {
+    x = -(rect.width + FLIP_GAP);
+    // Flipping must not push the card off the left edge instead: when there is
+    // no room on either side, nudge it just far enough to fit.
+    if (naturalLeft + x < VIEWPORT_MARGIN) {
+      x = Math.min(0, rightLimit - naturalRight);
+    }
+  }
+
+  let y = 0;
+  if (naturalBottom > bottomLimit) {
+    y = bottomLimit - naturalBottom;
+    if (naturalTop + y < VIEWPORT_MARGIN) {
+      y = VIEWPORT_MARGIN - naturalTop;
+    }
+  }
+
+  return { x, y };
+}
+
+/**
+ * Flips the tooltip to the other side of the cursor when it would run off screen.
+ *
+ * The chart sets `allowEscapeViewBox`, which is what lets a tall tooltip show
+ * beside a bar near the panel edge — but it also means Recharts will happily
+ * place the card past the window edge, which is where the rightmost columns of a
+ * chart in a right-hand panel put it. Recharts has no viewport-aware placement,
+ * so the card corrects its own position.
+ *
+ * Re-measured whenever Recharts moves the card (its `coordinate`), since the
+ * wrapper is repositioned by style alone and nothing else about the content
+ * changes.
+ */
+function ViewportAwareTooltip({
+  children,
+  coordinate,
+}: {
+  children: ReactNode;
+  /** Where Recharts has placed the card; re-measure when it moves. */
+  coordinate?: { x?: number; y?: number };
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [shift, setShift] = useState<TooltipShift>({ x: 0, y: 0 });
+  const coordinateX = coordinate?.x ?? 0;
+  const coordinateY = coordinate?.y ?? 0;
+
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element || typeof window === "undefined") {
+      return;
+    }
+
+    const next = getViewportShift({
+      rect: element.getBoundingClientRect(),
+      shift,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    });
+
+    if (next.x !== shift.x || next.y !== shift.y) {
+      setShift(next);
+    }
+  }, [coordinateX, coordinateY, shift]);
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        transform: shift.x || shift.y ? `translate(${shift.x}px, ${shift.y}px)` : undefined,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 /** Recharts-compatible tooltip wrapper. Reads all of a day's logs from payload. */
 export function RechartsSegmentTooltip({
   active,
   payload,
+  coordinate,
   activeSegmentId,
   showFullDay = false,
 }: {
   active?: boolean;
   payload?: Array<{ payload?: unknown; dataKey?: string | number }>;
+  coordinate?: { x?: number; y?: number };
   activeSegmentId?: string | null;
   showFullDay?: boolean;
 }) {
@@ -146,10 +267,12 @@ export function RechartsSegmentTooltip({
       : segments;
 
   return (
-    <DayTooltipCard
-      label={row?.label ?? ""}
-      segments={tooltipSegments.length ? tooltipSegments : segments}
-      activeSegmentId={targetedSegmentId}
-    />
+    <ViewportAwareTooltip coordinate={coordinate}>
+      <DayTooltipCard
+        label={row?.label ?? ""}
+        segments={tooltipSegments.length ? tooltipSegments : segments}
+        activeSegmentId={targetedSegmentId}
+      />
+    </ViewportAwareTooltip>
   );
 }
