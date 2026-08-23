@@ -57,12 +57,16 @@ async function readLastEntryTitle(): Promise<string | null> {
   }
 }
 
-function isSuppressed(prefs: NotificationPreferences, now: number): boolean {
-  if (resolveDnd(prefs.dnd, now).active) {
-    return true;
-  }
+function isWeekend(now: number): boolean {
+  const day = new Date(now).getDay(); // 0 = Sunday, 6 = Saturday
+  return day === 0 || day === 6;
+}
 
-  return prefs.quietHours.enabled && isWithinQuietHours(new Date(now), prefs.quietHours);
+function isSuppressed(prefs: NotificationPreferences, now: number): boolean {
+  if (resolveDnd(prefs.dnd, now).active) return true;
+  if (prefs.quietHours.enabled && isWithinQuietHours(new Date(now), prefs.quietHours)) return true;
+  if (prefs.skipWeekends && isWeekend(now)) return true;
+  return false;
 }
 
 /**

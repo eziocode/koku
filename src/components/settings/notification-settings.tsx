@@ -395,6 +395,26 @@ export function NotificationSettings() {
         </CardContent>
       </Card>
 
+      {/* ── Weekend suppression ──────────────────────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Weekends</CardTitle>
+          <CardDescription>
+            Skip all check-in notifications on Saturday and Sunday.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ToggleRow
+            id="skip-weekends"
+            label="No notifications on weekends"
+            description="Silences check-ins on Saturday and Sunday. DND and quiet hours still apply on weekdays."
+            checked={prefs.skipWeekends}
+            disabled={off}
+            onCheckedChange={(checked) => void patch({ skipWeekends: checked })}
+          />
+        </CardContent>
+      </Card>
+
       {/* ── Breaks ───────────────────────────────────────────────────────── */}
       <Card>
         <CardHeader>

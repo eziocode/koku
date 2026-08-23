@@ -74,6 +74,8 @@ export interface NotificationPreferences {
     /** Minutes after the notification fires before timers are stopped automatically. */
     gracePeriodMinutes: number;
   };
+  /** Skip all check-in notifications on Saturday and Sunday. */
+  skipWeekends: boolean;
 }
 
 export const NOTIFICATION_DEFAULTS: NotificationPreferences = {
@@ -101,6 +103,7 @@ export const NOTIFICATION_DEFAULTS: NotificationPreferences = {
     logoffTime: "18:00",
     gracePeriodMinutes: 15,
   },
+  skipWeekends: false,
 };
 
 /* ─── Schema ──────────────────────────────────────────────────────────────── */
@@ -170,6 +173,7 @@ export const notificationPreferencesSchema = z
         gracePeriodMinutes: z.number().int().min(5).max(60).catch(NOTIFICATION_DEFAULTS.endOfDay.gracePeriodMinutes),
       })
       .catch(NOTIFICATION_DEFAULTS.endOfDay),
+    skipWeekends: z.boolean().catch(false),
   })
   .catch(NOTIFICATION_DEFAULTS);
 

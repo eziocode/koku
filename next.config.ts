@@ -4,11 +4,12 @@ const isDev = process.env.NODE_ENV !== "production";
 
 const contentSecurityPolicy = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
-  "font-src 'self'",
+  `script-src 'self' 'unsafe-inline' https://static.zohocdn.com${isDev ? " 'unsafe-eval'" : ""}`,
+  "style-src 'self' 'unsafe-inline' https://static.zohocdn.com",
+  "img-src 'self' data: blob: https://static.zohocdn.com",
+  "font-src 'self' https://static.zohocdn.com",
   `connect-src 'self' https:${isDev ? " ws: wss:" : ""}`,
+  "frame-src 'self' https://accounts.zoho.com",
   "worker-src 'self'",
   "manifest-src 'self'",
   "object-src 'none'",

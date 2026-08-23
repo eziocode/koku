@@ -7,6 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "@/components/ui/toast";
 import { kokuDb, type AiKey, type AppSetting, type Category, type Note, type NoteLink, type Project, type TimeEntry } from "@/lib/storage/db";
+import { syncNow } from "@/lib/sync/sync-engine";
+
+const isLocalMode = process.env.NEXT_PUBLIC_LOCAL_MODE === "true";
 
 interface BackupPayload {
   version: number;
@@ -74,6 +77,7 @@ interface StorageCounts {
 export function StorageSettingsManager() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [counts, setCounts] = useState<StorageCounts | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
     async function loadCounts() {
@@ -89,6 +93,24 @@ export function StorageSettingsManager() {
     }
     loadCounts();
   }, []);
+
+  async function handleSync() {
+    setSyncing(true);
+    try {
+      const result = await syncNow();
+      if (result.error) {
+        toast.error(result.error === "Not signed in"
+          ? "Sign in with Zoho first to sync."
+          : result.error);
+      } else {
+        toast.success(`Sync complete — pushed ${result.pushed}, pulled ${result.pulled} rows.`);
+      }
+    } catch {
+      toast.error("Sync failed.");
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   async function handleExport() {
     const payload: BackupPayload = {
@@ -284,21 +306,38 @@ export function StorageSettingsManager() {
           </CardContent>
         </Card>
 
-        <Card className="opacity-70">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              Zoho WorkDrive
-              <Badge variant="secondary" className="rounded-full text-xs">Coming soon</Badge>
-            </CardTitle>
-            <CardDescription>Backup to your Zoho WorkDrive folder.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Direct integration with Zoho WorkDrive for seamless backup within the Zoho ecosystem.
-            </p>
-            <Button variant="secondary" disabled>Connect WorkDrive</Button>
-          </CardContent>
-        </Card>
+        {isLocalMode ? (
+          <Card className="opacity-70">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                Catalyst Sync
+                <Badge variant="secondary" className="rounded-full text-xs">Cloud only</Badge>
+              </CardTitle>
+              <CardDescription>Sync data across devices via Zoho Catalyst.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Enable cloud mode (set <code className="rounded bg-muted px-1 py-0.5 text-xs font-mono">LOCAL_MODE=false</code>) and sign in with Zoho to enable cross-device sync.
+              </p>
+              <Button variant="secondary" disabled>Sync now</Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardHeader>
+              <CardTitle>Catalyst Sync</CardTitle>
+              <CardDescription>Sync your data across devices via Zoho Catalyst.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Pushes all local records to Catalyst and pulls any remote changes. Requires a Zoho sign-in.
+              </p>
+              <Button onClick={handleSync} disabled={syncing}>
+                {syncing ? "Syncing…" : "Sync now"}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );
