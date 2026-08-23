@@ -43,8 +43,7 @@ Colours for these come from `STATUS_COLORS` in `theme.ts` (via `getStatusColor`)
 and are shared by `<StatusBadge>`, `<AssignmentBadge>`, the chart, and the pie
 legend.
 
-**Running logs** render with a moving shimmer overlay + pulsing outline in the
-bar, a spinning icon and pulsing dot in the `<StatusBadge>`, and a live dot in the
+**Running logs** render with a pulsing outline in the bar, a spinning icon and pulsing dot in the `<StatusBadge>`, and a live dot in the
 legend. All live animations respect `prefers-reduced-motion`.
 
 **Unassigned logs** get a dashed outline in the bar and the neutral colour, so

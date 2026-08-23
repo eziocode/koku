@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { ChartEmpty } from "@/components/charts/chart-states";
@@ -11,7 +11,7 @@ import { toStackedRows, type SegmentedDay, type StackedRow, type WorkLogSegment 
 
 /**
  * Custom bar shape that rounds only the topmost non-empty segment of each day's
- * stack, marks running logs with an animated shimmer + live outline, and gives
+ * stack, marks running logs with a pulsing live outline, and gives
  * unassigned logs a dashed outline so they read differently from assigned work.
  */
 function RoundedSegment(props: {
@@ -70,24 +70,10 @@ function RoundedSegment(props: {
         strokeDasharray={isUnassigned ? "3 3" : undefined}
       />
       {isRunning ? (
-        <>
-          {/* Live shimmer overlay for the running segment. */}
-          <foreignObject x={x} y={y} width={width} height={height} pointerEvents="none">
-            <div
-              className="koku-live-shimmer h-full w-full"
-              style={{ borderRadius: isTop ? `${r}px ${r}px 0 0` : 0 }}
-            />
-          </foreignObject>
-          {/* Pulsing outline to signal the active state. */}
-          <path
-            d={path}
-            fill="none"
-            stroke={fill}
-            strokeWidth={2}
-            className="koku-live-shimmer"
-            opacity={0.9}
-          />
-        </>
+        // One pulsing outline, nothing layered inside the bar: the running
+        // segment re-renders every second as its duration ticks up, so anything
+        // heavier here repaints continuously and reads as stutter.
+        <path d={path} fill="none" stroke={fill} strokeWidth={2} className="koku-live-outline" />
       ) : null}
     </g>
   );
@@ -109,7 +95,7 @@ const TINY_SEGMENT_TOOLTIP_HEIGHT = 12;
  *
  * Each day is a column; each work log within that day is a differently coloured
  * stacked segment whose height is proportional to its duration. Running logs
- * shimmer with a live indicator, unassigned logs get a dashed outline, and
+ * carry a pulsing outline, unassigned logs get a dashed outline, and
  * hovering a column shows a rich tooltip listing every log for that day.
  */
 export function SegmentedBarChart({
@@ -120,12 +106,20 @@ export function SegmentedBarChart({
   emptyDescription,
 }: SegmentedBarChartProps) {
   const { rows, maxSegments } = useMemo(() => toStackedRows(days), [days]);
+  // Bars grow in once, on mount. Leaving the animation on makes every live-timer
+  // tick replay it, so the whole chart appears to lurch once a second.
+  const [animateBars, setAnimateBars] = useState(true);
   const [hoveredSegment, setHoveredSegment] = useState<{
     id: string;
     showFullDay: boolean;
   } | null>(null);
 
   const hasData = useMemo(() => days.some((day) => day.segments.length > 0), [days]);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => setAnimateBars(false), CHART_TOKENS.animationDuration);
+    return () => clearTimeout(timeout);
+  }, []);
 
   if (!hasData) {
     return <ChartEmpty height={height} title={emptyTitle} description={emptyDescription} />;
@@ -171,6 +165,7 @@ export function SegmentedBarChart({
                 key={dataKey}
                 dataKey={dataKey}
                 stackId="day"
+                isAnimationActive={animateBars}
                 animationDuration={CHART_TOKENS.animationDuration}
                 shape={(shapeProps: object) => (
                   <RoundedSegment

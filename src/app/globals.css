@@ -143,15 +143,6 @@ body {
     }
   }
 
-  @keyframes koku-shimmer {
-    0% {
-      background-position: -160% 0;
-    }
-    100% {
-      background-position: 160% 0;
-    }
-  }
-
   @keyframes koku-ring {
     0% {
       box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 55%, transparent);
@@ -174,16 +165,25 @@ body {
     animation: koku-pulse 1.6s ease-in-out infinite, koku-ring 1.6s ease-out infinite;
   }
 
-  /* Moving shimmer overlay applied to a running chart segment. */
-  .koku-live-shimmer {
-    background-image: linear-gradient(
-      100deg,
-      transparent 20%,
-      color-mix(in srgb, white 45%, transparent) 50%,
-      transparent 80%
-    );
-    background-size: 200% 100%;
-    animation: koku-shimmer 1.8s linear infinite;
+  /* Live outline for the running chart segment.
+
+     Deliberately just a stroke fade: the previous treatment layered a
+     `background-position` shimmer inside an SVG `foreignObject`, which repaints
+     the whole segment every frame and restarts on each per-second re-render.
+     Animating `stroke-opacity` composites cheaply and survives re-renders. */
+  @keyframes koku-live-stroke {
+    0%,
+    100% {
+      stroke-opacity: 0.35;
+    }
+    50% {
+      stroke-opacity: 0.95;
+    }
+  }
+
+  .koku-live-outline {
+    animation: koku-live-stroke 2s ease-in-out infinite;
+    will-change: stroke-opacity;
   }
 
   /* ─── Breathing marker ────────────────────────────────────────────────── */
@@ -208,7 +208,7 @@ body {
 
   @media (prefers-reduced-motion: reduce) {
     .koku-live-dot,
-    .koku-live-shimmer,
+    .koku-live-outline,
     .koku-breathe {
       animation: none;
     }

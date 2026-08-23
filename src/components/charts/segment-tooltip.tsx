@@ -2,6 +2,7 @@
 
 import { format } from "date-fns";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 import { AssignmentBadge, StatusBadge } from "@/components/charts/status-badge";
 import { Badge } from "@/components/ui/badge";
@@ -117,72 +118,67 @@ export function DayTooltipCard({ label, segments, activeSegmentId }: DayTooltipC
 /** Keep this much clear of the window edge. */
 const VIEWPORT_MARGIN = 8;
 /**
- * How far to flip past the cursor: twice the chart's `Tooltip offset`, so a card
+ * How far to flip past the anchor: twice the chart's `Tooltip offset`, so a card
  * flipped to the left sits the same distance from the cursor as on the right.
  */
 const FLIP_GAP = 56;
 
-export interface TooltipShift {
-  x: number;
-  y: number;
+export interface TooltipPosition {
+  left: number;
+  top: number;
 }
 
 /**
- * The offset that keeps a tooltip on screen, flipping it to the left of the
- * cursor when it would otherwise run off the right edge.
+ * Viewport coordinates for the tooltip card, given where Recharts anchored it.
  *
- * `rect` must be the card's *natural* position — where it sits before any shift
- * is applied. Feeding a shifted rect back in makes the result depend on its own
- * output, which is how this ends up oscillating rather than settling.
+ * Flips to the left of the anchor when the card would run off the right edge, and
+ * lifts it when it would run off the bottom. When there is no room on either side
+ * it is nudged just far enough to fit, since a clipped card beats an off-screen
+ * one. Pure so the placement rules are testable without a DOM.
  */
-export function getViewportShift({
-  rect,
+export function getTooltipPosition({
+  anchor,
+  size,
   viewportWidth,
   viewportHeight,
 }: {
-  rect: { left: number; right: number; top: number; bottom: number; width: number };
+  anchor: { x: number; y: number };
+  size: { width: number; height: number };
   viewportWidth: number;
   viewportHeight: number;
-}): TooltipShift {
+}): TooltipPosition {
   const rightLimit = viewportWidth - VIEWPORT_MARGIN;
   const bottomLimit = viewportHeight - VIEWPORT_MARGIN;
 
-  let x = 0;
-  if (rect.right > rightLimit) {
-    x = -(rect.width + FLIP_GAP);
-    // Flipping must not push the card off the left edge instead: when there is
-    // no room on either side, nudge it just far enough to fit.
-    if (rect.left + x < VIEWPORT_MARGIN) {
-      x = Math.min(0, rightLimit - rect.right);
+  let left = anchor.x;
+  if (left + size.width > rightLimit) {
+    left = anchor.x - FLIP_GAP - size.width;
+    if (left < VIEWPORT_MARGIN) {
+      left = Math.max(VIEWPORT_MARGIN, rightLimit - size.width);
     }
   }
 
-  let y = 0;
-  if (rect.bottom > bottomLimit) {
-    y = bottomLimit - rect.bottom;
-    if (rect.top + y < VIEWPORT_MARGIN) {
-      y = VIEWPORT_MARGIN - rect.top;
-    }
+  let top = anchor.y;
+  if (top + size.height > bottomLimit) {
+    top = Math.max(VIEWPORT_MARGIN, bottomLimit - size.height);
   }
 
-  return { x, y };
+  return { left, top };
 }
 
 /**
- * Flips the tooltip to the other side of the cursor when it would run off screen.
+ * Places the tooltip card in a `document.body` portal, positioned by hand.
  *
- * The chart sets `allowEscapeViewBox`, which is what lets a tall tooltip show
- * beside a bar near the panel edge — but it also means Recharts will happily
- * place the card past the window edge, which is where the rightmost columns of a
- * chart in a right-hand panel put it. Recharts has no viewport-aware placement,
- * so the card corrects its own position.
+ * Recharts renders its tooltip inside the chart container, so a card next to a
+ * bar at the panel's edge is clipped by the card's `overflow-hidden` and by its
+ * bounds — `allowEscapeViewBox` moves the element but cannot escape an ancestor's
+ * overflow. Portalling to the body with `position: fixed` does escape it, at the
+ * cost of positioning the card ourselves.
  *
- * Two things keep this from looping. The measured element is the *outer* wrapper
- * and the transform goes on the inner one: a transform does not affect layout, so
- * the measurement is always of the natural position and never of the correction
- * already applied. And because the outer box never changes size, Recharts' own
- * size-based repositioning is not retriggered — that feedback loop was what blew
- * the update depth.
+ * Recharts still renders the (empty, zero-size) anchor in place, which is what
+ * tells us where it wanted the card: the anchor's own position already includes
+ * the chart's `offset`. Because the anchor never changes size, none of this feeds
+ * back into Recharts' own placement.
  */
 function ViewportAwareTooltip({
   children,
@@ -192,36 +188,55 @@ function ViewportAwareTooltip({
   /** Where Recharts has placed the card; re-measure when it moves. */
   coordinate?: { x?: number; y?: number };
 }) {
-  const outerRef = useRef<HTMLDivElement | null>(null);
-  const [shift, setShift] = useState<TooltipShift>({ x: 0, y: 0 });
+  const anchorRef = useRef<HTMLDivElement | null>(null);
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const [position, setPosition] = useState<TooltipPosition | null>(null);
   const coordinateX = coordinate?.x ?? 0;
   const coordinateY = coordinate?.y ?? 0;
 
   useLayoutEffect(() => {
-    const element = outerRef.current;
-    if (!element || typeof window === "undefined") {
+    const anchor = anchorRef.current;
+    const card = cardRef.current;
+    if (!anchor || !card) {
       return;
     }
 
-    const next = getViewportShift({
-      rect: element.getBoundingClientRect(),
+    const anchorRect = anchor.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+    const next = getTooltipPosition({
+      anchor: { x: anchorRect.left, y: anchorRect.top },
+      size: { width: cardRect.width, height: cardRect.height },
       viewportWidth: window.innerWidth,
       viewportHeight: window.innerHeight,
     });
 
-    setShift((current) => (current.x === next.x && current.y === next.y ? current : next));
+    setPosition((current) =>
+      current && current.left === next.left && current.top === next.top ? current : next,
+    );
   }, [coordinateX, coordinateY]);
 
   return (
-    <div ref={outerRef}>
-      <div
-        style={{
-          transform: shift.x || shift.y ? `translate(${shift.x}px, ${shift.y}px)` : undefined,
-        }}
-      >
-        {children}
-      </div>
-    </div>
+    <>
+      <div ref={anchorRef} style={{ width: 0, height: 0 }} />
+      {createPortal(
+        <div
+          ref={cardRef}
+          style={{
+            position: "fixed",
+            left: position?.left ?? 0,
+            top: position?.top ?? 0,
+            zIndex: 60,
+            pointerEvents: "none",
+            // Hidden for the single layout pass that measures it, so the card is
+            // never painted at the unpositioned origin.
+            visibility: position ? "visible" : "hidden",
+          }}
+        >
+          {children}
+        </div>,
+        document.body,
+      )}
+    </>
   );
 }
 

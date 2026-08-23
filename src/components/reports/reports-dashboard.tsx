@@ -293,7 +293,7 @@ export function ReportsDashboard() {
 
       <ChartCard
         title="Daily activity"
-        description="Each block is a single work log, stacked by day. Running logs shimmer live; unassigned logs are outlined. Hover for details, click to open that day."
+        description="Each block is a single work log, stacked by day. Running logs pulse; unassigned logs are outlined. Hover for details, click to open that day."
         footer={legendItems.length ? <ChartLegend items={legendItems} /> : undefined}
       >
         <SegmentedBarChart
