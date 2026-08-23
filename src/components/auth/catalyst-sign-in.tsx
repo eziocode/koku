@@ -64,11 +64,11 @@ export function CatalystSignIn({ onSignedIn }: { onSignedIn?: () => void }) {
 
   return <Dialog open={open} onOpenChange={(next) => next ? setOpen(true) : close()}>
     <DialogTrigger asChild><Button>Sign in with Zoho</Button></DialogTrigger>
-    <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
+    <DialogContent className="w-[calc(100%-2rem)] max-w-xl overflow-visible p-7 sm:p-8">
       <DialogHeader><DialogTitle>Sign in to Koku</DialogTitle><DialogDescription>Use your Zoho account to sync data across devices.</DialogDescription></DialogHeader>
       {status === "loading" && <p className="text-sm text-muted-foreground">Loading sign-in…</p>}
       {status === "fallback" ? isLocal ? <p className="text-sm text-muted-foreground">Catalyst auth unavailable in local development. Deploy to AppSail to test sign-in.</p> : <Button asChild><a href="/__catalyst/auth/login">Continue to Zoho sign-in</a></Button> : null}
-      <div id={LOGIN_DIV_ID} className="w-full overflow-hidden" />
+      <div id={LOGIN_DIV_ID} className="catalyst-login-shell w-full" />
     </DialogContent>
   </Dialog>;
 }

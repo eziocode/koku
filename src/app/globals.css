@@ -116,6 +116,22 @@ body {
 }
 
 @layer utilities {
+  /* Catalyst injects its own login form. Keep it inside auth dialog without
+     creating a second scroll area or letting its default width overflow. */
+  .catalyst-login-shell {
+    min-height: 19rem;
+    overflow: visible;
+  }
+
+  .catalyst-login-shell iframe,
+  .catalyst-login-shell > * {
+    max-width: 100%;
+  }
+
+  .catalyst-login-shell iframe {
+    height: 19rem !important;
+  }
+
   .koku-surface {
     background-image:
       radial-gradient(circle at top, color-mix(in srgb, var(--color-primary) 8%, transparent), transparent 28rem),
