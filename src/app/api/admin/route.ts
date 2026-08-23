@@ -9,8 +9,16 @@ export const runtime = "nodejs";
 async function requireAdmin(request: Request) {
   const app = initCatalyst(request);
   const user = await app.userManagement().getCurrentUser();
-  if (user.email_id?.toLowerCase() !== ADMIN_EMAIL) return null;
-  return { app, user };
+  const isOwner = user.email_id?.toLowerCase() === ADMIN_EMAIL;
+  if (isOwner) return { app, user, isOwner };
+
+  const adminRows = await zcqlQuery(app, "SELECT setting_key FROM settings_koku");
+  const isDelegatedAdmin = adminRows.some((row) => {
+    const tableRow = (row.settings_koku ?? row) as Record<string, unknown>;
+    return tableRow.setting_key === `admin_user:${user.user_id}`;
+  });
+  if (!isDelegatedAdmin) return null;
+  return { app, user, isOwner };
 }
 
 function getConfig(table: string) {
@@ -48,9 +56,47 @@ export async function GET(request: Request) {
     } catch {
       // Data access remains useful when Catalyst user-list scope is unavailable.
     }
-    return NextResponse.json({ data, users });
+    const adminRows = await zcqlQuery(auth.app, "SELECT setting_key FROM settings_koku");
+    const delegatedAdminIds = adminRows.flatMap((row) => {
+      const tableRow = (row.settings_koku ?? row) as Record<string, unknown>;
+      const key = String(tableRow.setting_key ?? "");
+      return key.startsWith("admin_user:") ? [key.slice("admin_user:".length)] : [];
+    });
+    const adminIds = new Set([auth.user.user_id, ...delegatedAdminIds]);
+    const admins = users.filter((user) => adminIds.has(user.id));
+    return NextResponse.json({ data, users, admins, canManageAdmins: auth.isOwner });
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const auth = await requireAdmin(request);
+    if (!auth) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (!auth.isOwner) return NextResponse.json({ error: "Owner admin required" }, { status: 403 });
+
+    const body = (await request.json()) as { action?: "add" | "remove"; userId?: string };
+    if (!body.action || !body.userId || body.userId === auth.user.user_id) {
+      return NextResponse.json({ error: "Valid action and userId required" }, { status: 400 });
+    }
+    const key = `admin_user:${body.userId}`;
+    if (body.action === "add") {
+      await upsertRow(auth.app, "settings_koku", auth.user.user_id, key, {
+        setting_key: key,
+        setting_value: JSON.stringify({ userId: body.userId, addedAt: new Date().toISOString() }),
+      });
+    } else {
+      const rows = await zcqlQuery(auth.app, `SELECT ROWID FROM settings_koku WHERE setting_key = '${zcqlEscape(key)}' AND user_id = '${zcqlEscape(auth.user.user_id)}'`);
+      if (rows.length) {
+        const raw = rows[0] as Record<string, unknown>;
+        const nested = raw.settings_koku as Record<string, unknown> | undefined;
+        await auth.app.datastore().table("settings_koku").deleteRow(nested?.ROWID ?? raw.ROWID);
+      }
+    }
+    return NextResponse.json({ saved: true });
+  } catch {
+    return NextResponse.json({ error: "Unable to update admin users" }, { status: 500 });
   }
 }
 

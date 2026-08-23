@@ -3,6 +3,7 @@
 import { useCallback } from "react";
 
 import { kokuDb } from "@/lib/storage/db";
+import { syncRow } from "@/lib/sync/sync-engine";
 import { useLiveQuery } from "@/lib/storage/use-live-query";
 import {
   parseSetting,
@@ -67,7 +68,9 @@ export function useTypedSetting<K extends SettingKey>(key: K) {
 
   const setValue = useCallback(
     async (next: SettingValue<K>) => {
-      await kokuDb.settings.put({ key, value: next });
+      const nextSetting = { key, value: next };
+      await kokuDb.settings.put(nextSetting);
+      void syncRow("settings", nextSetting);
     },
     [key],
   );
@@ -83,18 +86,23 @@ export function useTypedSetting<K extends SettingKey>(key: K) {
    */
   const patchValue = useCallback(
     async (patch: DeepPartial<SettingValue<K>>) => {
+      let nextSetting: { key: K; value: SettingValue<K> } | null = null;
       await kokuDb.transaction("rw", kokuDb.settings, async () => {
         const existing = await kokuDb.settings.get(key);
         const current = parseSetting(key, existing?.value);
         const merged = parseSetting(key, mergeDeep(current, patch));
-        await kokuDb.settings.put({ key, value: merged });
+        nextSetting = { key, value: merged };
+        await kokuDb.settings.put(nextSetting);
       });
+      if (nextSetting) void syncRow("settings", nextSetting);
     },
     [key],
   );
 
   const reset = useCallback(async () => {
-    await kokuDb.settings.put({ key, value: SETTING_DEFAULTS[key] });
+    const nextSetting = { key, value: SETTING_DEFAULTS[key] };
+    await kokuDb.settings.put(nextSetting);
+    void syncRow("settings", nextSetting);
   }, [key]);
 
   return { value, setValue, patchValue, reset };

@@ -1,4 +1,4 @@
-import { kokuDb, type TimeEntry } from "@/lib/storage/db";
+import { kokuDb, type Category, type TimeEntry } from "@/lib/storage/db";
 import { syncRow } from "@/lib/sync/sync-engine";
 
 /**
@@ -27,6 +27,30 @@ export function getDurationSec(startAt: string, endAt?: string | null): number |
   }
 
   return Math.max(0, Math.floor((Date.parse(endAt) - Date.parse(startAt)) / 1000));
+}
+
+/** Return shared system category, creating it on first break log. */
+export async function ensureCategory(name: string, color = "#8b5cf6"): Promise<Category> {
+  const existing = await kokuDb.categories.where("name").equals(name).first();
+  if (existing) return existing;
+
+  const category: Category = {
+    id: name === "Break" ? "system-break" : crypto.randomUUID(),
+    name,
+    color,
+    createdAt: new Date().toISOString(),
+  };
+
+  try {
+    await kokuDb.categories.add(category);
+    void syncRow("categories", category);
+    return category;
+  } catch {
+    // Another tab may have created same category concurrently.
+    const concurrent = await kokuDb.categories.where("name").equals(name).first();
+    if (concurrent) return concurrent;
+    throw new Error(`Unable to create category: ${name}`);
+  }
 }
 
 export async function createTimeEntry(data: CreateTimeEntryInput): Promise<TimeEntry> {

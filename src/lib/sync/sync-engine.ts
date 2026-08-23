@@ -2,7 +2,7 @@
 
 import { kokuDb } from "@/lib/storage/db";
 
-export const SYNCABLE_TABLES = ["timeEntries", "projects", "categories", "notes", "noteLinks"] as const;
+export const SYNCABLE_TABLES = ["timeEntries", "projects", "categories", "notes", "noteLinks", "settings"] as const;
 export type SyncTable = (typeof SYNCABLE_TABLES)[number];
 
 const LAST_SYNC_KEY = "lastSyncAt";

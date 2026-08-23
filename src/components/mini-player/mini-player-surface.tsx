@@ -13,7 +13,7 @@ import { BREAK_TAG } from "@/lib/notifications/settings";
 import { useNotificationPreferences } from "@/lib/notifications/use-notification-preferences";
 import { getActiveTimerElapsedSec, useTimerStore } from "@/lib/stores/timer-store";
 import { useSecondTick } from "@/lib/stores/use-ticker";
-import { createTimeEntry } from "@/lib/time-tracking/time-entries";
+import { createTimeEntry, ensureCategory } from "@/lib/time-tracking/time-entries";
 import { stopTimerAndPersist } from "@/lib/time-tracking/stop-timer";
 import { cn, formatDuration } from "@/lib/utils";
 
@@ -137,16 +137,16 @@ export function MiniPlayerSurface({ pipWindow }: MiniPlayerSurfaceProps) {
     const elapsedSec = getBreakElapsedSec(activeBreak, tickNow);
 
     try {
-      if (elapsedSec >= 60) {
-        await createTimeEntry({
-          title: activeBreak.label,
-          startAt: activeBreak.startedAt,
-          endAt: new Date(tickNow).toISOString(),
-          durationSec: elapsedSec,
-          tags: [BREAK_TAG],
-          notes: activeBreak.notes ?? null,
-        });
-      }
+      const breakCategory = await ensureCategory("Break");
+      await createTimeEntry({
+        title: activeBreak.label,
+        categoryId: breakCategory.id,
+        startAt: activeBreak.startedAt,
+        endAt: new Date(tickNow).toISOString(),
+        durationSec: elapsedSec,
+        tags: [BREAK_TAG],
+        notes: activeBreak.notes ?? null,
+      });
 
       finishBreak("completed", { autoResume: prefs.breaks.autoResume });
       announce("Break ended.");

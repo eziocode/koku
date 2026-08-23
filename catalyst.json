@@ -3,6 +3,7 @@
     {
       "build_path": ".next/standalone",
       "name": "koku",
+      "source": ".",
       "stack": "node24",
       "command": "node server.js"
     }

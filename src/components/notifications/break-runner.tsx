@@ -11,7 +11,7 @@ import { useLeaderStatus } from "@/lib/notifications/use-leader";
 import { useNotificationPreferences } from "@/lib/notifications/use-notification-preferences";
 import { useTimerStore } from "@/lib/stores/timer-store";
 import { useSecondTick } from "@/lib/stores/use-ticker";
-import { createTimeEntry } from "@/lib/time-tracking/time-entries";
+import { createTimeEntry, ensureCategory } from "@/lib/time-tracking/time-entries";
 
 /**
  * Finalises a break when its time is up. Renders nothing.
@@ -59,8 +59,10 @@ export function BreakRunner() {
       );
 
       try {
+        const breakCategory = await ensureCategory("Break");
         await createTimeEntry({
           title: activeBreak.label,
+          categoryId: breakCategory.id,
           startAt: activeBreak.startedAt,
           endAt: endedAt,
           durationSec: elapsedSec,
