@@ -23,6 +23,11 @@ import { useProjects } from "@/lib/storage/hooks/use-projects";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
 import type { SegmentSourceEntry } from "@/lib/charts/segments";
 import { getActiveTimerElapsedSec, useTimerStore } from "@/lib/stores/timer-store";
+import {
+  entryTouchesDay,
+  getEntrySecondsOnDay,
+  getLookbackStart,
+} from "@/lib/time-tracking/day-slices";
 import { formatDuration } from "@/lib/utils";
 
 /** Tags whose entries are records, not work: excluded from every work total. */
@@ -36,12 +41,16 @@ export function DashboardClient() {
   const todayEnd = endOfDay(today);
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
   const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
+  const todayKey = format(today, "yyyy-MM-dd");
+  // Both windows reach back past their own start: a log that began earlier and
+  // crossed midnight into the window is indexed under its old `startAt`, so a
+  // window-bounded query would miss the hours it contributes here.
   const { entries: todayEntries } = useTimeEntries({
-    from: today.toISOString(),
+    from: getLookbackStart(new Date()).toISOString(),
     to: todayEnd.toISOString(),
   });
   const { entries: weekEntries } = useTimeEntries({
-    from: weekStart.toISOString(),
+    from: getLookbackStart(startOfWeek(new Date(), { weekStartsOn: 1 })).toISOString(),
     to: weekEnd.toISOString(),
   });
   const { entries: allEntries } = useTimeEntries();
@@ -76,15 +85,36 @@ export function DashboardClient() {
   );
 
   // Breaks are logged as real entries so they can be audited on /log, but they
-  // are not work — counting them here would inflate today's total.
-  const totalTodaySeconds = todayEntries.reduce(
-    (sum, entry) => (hasExcludedTag(entry, WORK_EXCLUDED_TAGS) ? sum : sum + (entry.durationSec || 0)),
-    0,
-  );
-  const totalTodayBreakSeconds = todayEntries.reduce(
-    (sum, entry) => (hasExcludedTag(entry, WORK_EXCLUDED_TAGS) ? sum + (entry.durationSec || 0) : sum),
-    0,
-  );
+  // are not work — counting them here would inflate today's total. Each log only
+  // contributes the seconds it spent *on today*, so a timer left running
+  // overnight cannot push a single day past 24 h.
+  const { todaySessionCount, totalTodaySeconds, totalTodayBreakSeconds } = useMemo(() => {
+    let sessions = 0;
+    let work = 0;
+    let breaks = 0;
+
+    for (const entry of todayEntries) {
+      // The query reaches back before today, so older logs that never touch it
+      // must not be counted as today's sessions.
+      if (!entryTouchesDay(entry, todayKey)) {
+        continue;
+      }
+      sessions += 1;
+      const seconds = getEntrySecondsOnDay(entry, todayKey);
+      if (hasExcludedTag(entry, WORK_EXCLUDED_TAGS)) {
+        breaks += seconds;
+      } else {
+        work += seconds;
+      }
+    }
+
+    return {
+      todaySessionCount: sessions,
+      totalTodaySeconds: work,
+      totalTodayBreakSeconds: breaks,
+    };
+  }, [todayEntries, todayKey]);
+
   const weekDays = useMemo(
     () =>
       buildSegmentedDays({
@@ -166,7 +196,7 @@ export function DashboardClient() {
         <Card className="minimal-panel">
           <CardHeader>
             <CardDescription>Entries today</CardDescription>
-            <CardTitle className="text-3xl tabular-nums">{todayEntries.length}</CardTitle>
+            <CardTitle className="text-3xl tabular-nums">{todaySessionCount}</CardTitle>
           </CardHeader>
         </Card>
         <Card className="minimal-panel">

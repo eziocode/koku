@@ -1,6 +1,6 @@
 "use client";
 
-import { format, isValid, parseISO } from "date-fns";
+import { eachDayOfInterval, format, isValid, parseISO } from "date-fns";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
@@ -26,6 +26,7 @@ import { exportToCSV, exportToJSON, exportToPDF, exportToXLSX } from "@/lib/expo
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
+import { getEntrySecondsInDays, getLookbackStart } from "@/lib/time-tracking/day-slices";
 import { formatDuration } from "@/lib/utils";
 
 const chartLoader = () => <ChartLoading />;
@@ -88,7 +89,10 @@ export function ReportsDashboard() {
   }, [monthStart, monthEnd, filters.from, filters.to]);
 
   const { entries } = useTimeEntries({
-    from: range.from,
+    // Reach back before the window: a log that began earlier and crossed midnight
+    // into it is indexed under its old `startAt`. `buildSegmentedDays` clips the
+    // extra days away, so nothing outside the month reaches the chart.
+    from: getLookbackStart(new Date(range.from)).toISOString(),
     to: range.to,
     projectIds: filters.projectIds.length ? filters.projectIds : undefined,
     categoryIds: filters.categoryIds.length ? filters.categoryIds : undefined,
@@ -124,14 +128,18 @@ export function ReportsDashboard() {
 
   // Reported separately rather than dropped: hiding break time entirely reads as
   // missing data, whereas labelling it answers "where did the rest of the day go".
-  const breakSeconds = useMemo(
-    () =>
-      entries.reduce(
-        (sum, entry) => (hasExcludedTag(entry, WORK_EXCLUDED_TAGS) ? sum + (entry.durationSec || 0) : sum),
-        0,
-      ),
-    [entries],
-  );
+  const breakSeconds = useMemo(() => {
+    // Counted per day like every other total here, so a break spanning midnight —
+    // or one pulled in by the lookback — only contributes its in-month hours.
+    const monthKeys = new Set(
+      eachDayOfInterval({ start: monthStart, end: monthEnd }).map((date) => format(date, "yyyy-MM-dd")),
+    );
+    return entries.reduce(
+      (sum, entry) =>
+        hasExcludedTag(entry, WORK_EXCLUDED_TAGS) ? sum + getEntrySecondsInDays(entry, monthKeys) : sum,
+      0,
+    );
+  }, [entries, monthStart, monthEnd]);
 
   const projectBreakdown = useMemo(() => toProjectBreakdown(segmentedDays), [segmentedDays]);
   const statusBreakdown = useMemo(

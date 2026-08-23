@@ -280,7 +280,7 @@ export function NoteEditorShell({ noteId }: NoteEditorShellProps) {
                   <p className="mt-1 text-sm text-muted-foreground">/{linkedNote.slug}</p>
                 </Link>
               )) : (
-                <p className="text-sm text-muted-foreground">Create <Badge>[[wiki-links]]</Badge> in the editor to connect notes.</p>
+                <div className="text-sm text-muted-foreground">Create <Badge>[[wiki-links]]</Badge> in the editor to connect notes.</div>
               )}
             </CardContent>
           </Card>

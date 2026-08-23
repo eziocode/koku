@@ -310,3 +310,114 @@ test("hasExcludedTag is inert with an empty exclusion list", () => {
     true,
   );
 });
+
+/* ─── Logs crossing midnight ──────────────────────────────────────────────── */
+
+function localIso(value: string) {
+  return new Date(value).toISOString();
+}
+
+test("a log crossing midnight is split so no day exceeds 24 h", () => {
+  const days = buildSegmentedDays({
+    entries: [
+      entry({
+        id: "runaway",
+        projectId: "p1",
+        startAt: localIso("2026-08-21T09:00:00"),
+        endAt: localIso("2026-08-23T00:00:00"),
+        durationSec: 39 * 3600,
+      }),
+    ],
+    projectMap,
+  });
+
+  assert.deepEqual(days.map((day) => day.key), ["2026-08-21", "2026-08-22"]);
+  assert.equal(days[0].totalSeconds, 15 * 3600);
+  assert.equal(days[1].totalSeconds, 24 * 3600);
+  for (const day of days) {
+    assert.ok(day.totalSeconds <= 24 * 3600, `${day.key} over 24 h`);
+  }
+});
+
+test("split segments keep the entry id and are flagged as partial", () => {
+  const days = buildSegmentedDays({
+    entries: [
+      entry({
+        id: "runaway",
+        startAt: localIso("2026-08-21T22:00:00"),
+        endAt: localIso("2026-08-22T02:00:00"),
+        durationSec: 4 * 3600,
+      }),
+    ],
+    projectMap,
+  });
+
+  const [first, second] = [days[0].segments[0], days[1].segments[0]];
+  assert.notEqual(first.id, second.id, "ids must stay unique per day");
+  assert.equal(first.entryId, "runaway");
+  assert.equal(second.entryId, "runaway");
+  assert.equal(first.continuesNextDay, true);
+  assert.equal(first.continuedFromPreviousDay, false);
+  assert.equal(second.continuedFromPreviousDay, true);
+  assert.ok(first.isPartial && second.isPartial);
+});
+
+test("only the current day of a live timer is running", () => {
+  const days = buildSegmentedDays({
+    entries: [
+      entry({
+        id: "live",
+        status: "running",
+        startAt: localIso("2026-08-21T22:00:00"),
+        endAt: null,
+        durationSec: 6 * 3600,
+      }),
+    ],
+    projectMap,
+  });
+
+  assert.equal(days[0].hasRunning, false);
+  assert.equal(days[0].segments[0].status, "completed");
+  assert.equal(days[1].hasRunning, true);
+  assert.equal(days[1].segments[0].status, "running");
+});
+
+test("an interval clips the part of a log that falls outside the window", () => {
+  const days = buildSegmentedDays({
+    entries: [
+      entry({
+        id: "spill",
+        startAt: localIso("2026-08-21T22:00:00"),
+        endAt: localIso("2026-08-22T04:00:00"),
+        durationSec: 6 * 3600,
+      }),
+    ],
+    projectMap,
+    interval: {
+      start: new Date("2026-08-21T00:00:00"),
+      end: new Date("2026-08-21T23:59:59.999"),
+    },
+  });
+
+  assert.deepEqual(days.map((day) => day.key), ["2026-08-21"]);
+  assert.equal(days[0].totalSeconds, 2 * 3600);
+});
+
+test("project breakdown attributes split hours to the same project once per day", () => {
+  const days = buildSegmentedDays({
+    entries: [
+      entry({
+        id: "spill",
+        projectId: "p1",
+        startAt: localIso("2026-08-21T22:00:00"),
+        endAt: localIso("2026-08-22T02:00:00"),
+        durationSec: 4 * 3600,
+      }),
+    ],
+    projectMap,
+  });
+
+  const breakdown = toProjectBreakdown(days);
+  assert.equal(breakdown.length, 1);
+  assert.equal(breakdown[0].seconds, 4 * 3600);
+});

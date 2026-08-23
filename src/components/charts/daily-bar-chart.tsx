@@ -28,6 +28,7 @@ export function DailyBarChart({ data }: DailyBarChartProps) {
         ? [
             {
               id: `${point.label}-${index}`,
+              entryId: `${point.label}-${index}`,
               title: point.label,
               description: null,
               projectId: null,
@@ -41,6 +42,9 @@ export function DailyBarChart({ data }: DailyBarChartProps) {
               tags: [],
               status: "completed" as const,
               assignment: "unassigned" as const,
+              isPartial: false,
+              continuedFromPreviousDay: false,
+              continuesNextDay: false,
             },
           ]
         : [],

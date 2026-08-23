@@ -9,6 +9,7 @@
 import { eachDayOfInterval, format } from "date-fns";
 
 import { getSegmentVariantColor, resolveEntryColor } from "@/lib/charts/theme";
+import { splitEntryAcrossDays, type EntryDaySlice } from "@/lib/time-tracking/day-slices";
 
 /**
  * Derived lifecycle status for a work log. koku's `TimeEntry` has no explicit
@@ -25,7 +26,10 @@ export type AssignmentState = "assigned" | "unassigned";
 
 /** A single work-log segment within a stacked day column. */
 export interface WorkLogSegment {
+  /** Unique within the chart. Suffixed with the day for entries split at midnight. */
   id: string;
+  /** The `TimeEntry` this segment came from — stable across day slices, unlike `id`. */
+  entryId: string;
   title: string;
   description: string | null;
   projectId: string | null;
@@ -39,6 +43,12 @@ export interface WorkLogSegment {
   tags: string[];
   status: WorkLogStatus;
   assignment: AssignmentState;
+  /** True when the entry crosses midnight, so this is one day's slice of it. */
+  isPartial: boolean;
+  /** The entry started before this day. */
+  continuedFromPreviousDay: boolean;
+  /** The entry runs past the end of this day. */
+  continuesNextDay: boolean;
 }
 
 /** One day's worth of segments, ready for a stacked bar column. */
@@ -121,24 +131,35 @@ export function deriveStatus(entry: SegmentSourceEntry): WorkLogStatus {
 function toSegment(
   entry: SegmentSourceEntry,
   projectMap: ProjectLookup,
-  categoryMap?: CategoryLookup,
+  categoryMap: CategoryLookup | undefined,
+  slice: EntryDaySlice,
 ): WorkLogSegment {
   const project = entry.projectId ? projectMap.get(entry.projectId) : undefined;
   const categoryName =
     categoryMap && entry.categoryId ? categoryMap.get(entry.categoryId)?.name ?? null : null;
-  const durationSec = Math.max(0, entry.durationSec ?? 0);
-  const status = deriveStatus(entry);
+  const durationSec = Math.max(0, slice.durationSec);
+  const isPartial = !(slice.isFirst && slice.isLast);
+  // Only the day a live timer is currently in is still running; the days it has
+  // already crossed are finished work with a real end time.
+  const status: WorkLogStatus = (() => {
+    const base = deriveStatus(entry);
+    if (base !== "running" || slice.isLast) {
+      return base;
+    }
+    return durationSec > 0 ? "completed" : "pending";
+  })();
 
   return {
-    id: entry.id,
+    id: isPartial ? `${entry.id}::${slice.dayKey}` : entry.id,
+    entryId: entry.id,
     title: entry.title,
     description: entry.notes ?? null,
     projectId: entry.projectId ?? null,
     projectName: project?.name ?? "Unassigned",
     categoryName,
     color: resolveEntryColor({ projectColor: project?.color, projectId: entry.projectId }),
-    startAt: entry.startAt,
-    endAt: entry.endAt ?? null,
+    startAt: slice.startAt,
+    endAt: slice.endAt,
     durationSec,
     // Running logs have no committed duration yet; give them a minimum visible
     // height so their live segment is always distinguishable in the stack.
@@ -146,6 +167,9 @@ function toSegment(
     tags: entry.tags ?? [],
     status,
     assignment: entry.projectId ? "assigned" : "unassigned",
+    isPartial,
+    continuedFromPreviousDay: !slice.isFirst,
+    continuesNextDay: !slice.isLast,
   };
 }
 
@@ -153,6 +177,11 @@ function toSegment(
  * Buckets entries into ordered days, each carrying its ordered work-log
  * segments. Days with no entries are still emitted when an `interval` is
  * supplied, so the axis stays continuous.
+ *
+ * Entries crossing midnight are split, so an `interval` also *clips*: the part of
+ * a log that falls outside the window is left out rather than tacked onto a day
+ * beyond the axis. Callers wanting the leading edge of a boundary-crossing log
+ * must fetch a little before `interval.start`.
  */
 export function buildSegmentedDays({
   entries,
@@ -184,6 +213,10 @@ export function buildSegmentedDays({
     return day;
   };
 
+  const intervalKeys = interval
+    ? new Set(eachDayOfInterval(interval).map((date) => format(date, "yyyy-MM-dd")))
+    : null;
+
   if (interval) {
     for (const date of eachDayOfInterval(interval)) {
       ensureDay(date);
@@ -196,16 +229,19 @@ export function buildSegmentedDays({
     .sort((a, b) => a.startAt.localeCompare(b.startAt));
 
   for (const entry of sorted) {
-    const date = new Date(entry.startAt);
-    if (Number.isNaN(date.getTime())) {
-      continue;
-    }
-    const day = ensureDay(date);
-    const segment = toSegment(entry, projectMap, categoryMap);
-    day.segments.push(segment);
-    day.totalSeconds += segment.durationSec;
-    if (segment.status === "running") {
-      day.hasRunning = true;
+    // An entry that crosses midnight lands on every day it covers, each day
+    // holding only the seconds worked in it.
+    for (const slice of splitEntryAcrossDays(entry)) {
+      if (intervalKeys && !intervalKeys.has(slice.dayKey)) {
+        continue;
+      }
+      const day = ensureDay(slice.dayStart);
+      const segment = toSegment(entry, projectMap, categoryMap, slice);
+      day.segments.push(segment);
+      day.totalSeconds += segment.durationSec;
+      if (segment.status === "running") {
+        day.hasRunning = true;
+      }
     }
   }
 
