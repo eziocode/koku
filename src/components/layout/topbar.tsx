@@ -63,7 +63,7 @@ export function Topbar({ onOpenSidebar }: TopbarProps) {
           <DropdownMenuItem asChild>
             <Link href="/settings/account">
               <UserCircle2 className="h-4 w-4" />
-              Local profile
+              Profile
             </Link>
           </DropdownMenuItem>
           <DropdownMenuItem asChild>

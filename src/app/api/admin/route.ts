@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { ADMIN_EMAIL } from "@/lib/auth/constants";
 import { initCatalyst, upsertRow, zcqlEscape, zcqlQuery } from "@/lib/db/catalyst-client";
 import { TABLE_CONFIG } from "@/lib/sync/table-config";
-import { extractCatalystRowId } from "@/lib/admin-data";
+import { calculateAdminStats, extractCatalystRowId } from "@/lib/admin-data";
 
 export const runtime = "nodejs";
 
@@ -65,7 +65,12 @@ export async function GET(request: Request) {
     });
     const adminIds = new Set([auth.user.user_id, ...delegatedAdminIds]);
     const admins = users.filter((user) => adminIds.has(user.id));
-    return NextResponse.json({ data, users, admins, canManageAdmins: auth.isOwner });
+    const stats: Record<string, ReturnType<typeof calculateAdminStats>> = {};
+    for (const user of users) {
+      const userRows = Object.entries(data).flatMap(([table, rows]) => rows.filter((row) => String((row as Record<string, unknown>).userId) === user.id).map((row) => ({ ...(row as Record<string, unknown>), table })));
+      stats[user.id] = calculateAdminStats(userRows);
+    }
+    return NextResponse.json({ data, users, admins, stats, canManageAdmins: auth.isOwner });
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { ArrowRight, Bot, ChartColumnBig, Clock3, Download, Network, NotebookPen } from "lucide-react";
 
 import { CatalystSignIn } from "@/components/auth/catalyst-sign-in";
@@ -6,6 +9,7 @@ import { Logo } from "@/components/layout/logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { syncWithConflictPrompt } from "@/lib/sync/sync-engine";
 
 const features = [
   {
@@ -38,6 +42,20 @@ const features = [
 const isLocalMode = process.env.NEXT_PUBLIC_LOCAL_MODE === "true";
 
 export default function Home() {
+  const [signedIn, setSignedIn] = useState<boolean | null>(isLocalMode ? false : null);
+  useEffect(() => {
+    if (isLocalMode) return;
+    fetch("/api/auth/me", { cache: "no-store" })
+      .then((response) => response.json() as Promise<{ user?: unknown | null }>)
+      .then((body) => setSignedIn(Boolean(body.user)))
+      .catch(() => setSignedIn(false));
+  }, []);
+
+  async function afterSignIn() {
+    setSignedIn(true);
+    try { await syncWithConflictPrompt(); } catch { /* dashboard can retry from storage settings */ }
+  }
+
   return (
     <div className="relative overflow-hidden bg-background text-foreground">
       <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(192,57,43,0.14),_transparent_35%),radial-gradient(circle_at_bottom_right,_rgba(231,76,60,0.12),_transparent_28%)]" />
@@ -69,14 +87,14 @@ export default function Home() {
             <div className="flex flex-col gap-3 sm:flex-row">
               <Button asChild size="lg" className="group">
                 <Link href="/dashboard">
-                  Start locally
+                  {signedIn ? "Continue to dashboard" : "Start locally"}
                   <ArrowRight className="transition-transform group-hover:translate-x-0.5" />
                 </Link>
               </Button>
               <Button asChild size="lg" variant="outline">
                 <Link href="/settings/storage">Backup tools</Link>
               </Button>
-              {!isLocalMode && <CatalystSignIn className="h-11 px-8 text-base" />}
+              {!isLocalMode && !signedIn && <CatalystSignIn onSignedIn={() => void afterSignIn()} className="h-11 px-8 text-base" />}
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
               {[

@@ -1,6 +1,39 @@
 export type AdminRow = Record<string, unknown>;
 
 export type AdminUser = { id: string; email: string; displayName: string };
+export interface AdminStats {
+  totalTrackedDuration: number;
+  timeEntryCount: number;
+  activeDays: number;
+  firstActivity: string | null;
+  latestActivity: string | null;
+  projectCount: number;
+  categoryCount: number;
+  noteCount: number;
+}
+
+export function calculateAdminStats(rows: AdminRow[]): AdminStats {
+  const entries = rows.filter((row) => row.table === "timeEntries");
+  const projects = rows.filter((row) => row.table === "projects");
+  const categories = rows.filter((row) => row.table === "categories");
+  const notes = rows.filter((row) => row.table === "notes");
+  const dates = new Set<string>();
+  const activity: string[] = [];
+  let duration = 0;
+  for (const row of entries) {
+    const seconds = Number(row.durationSec);
+    if (Number.isFinite(seconds) && seconds >= 0) duration += seconds;
+    const date = row.startAt ?? row.createdAt;
+    if (date) { const parsed = new Date(String(date)); if (!Number.isNaN(parsed.getTime())) { dates.add(parsed.toISOString().slice(0, 10)); activity.push(parsed.toISOString()); } }
+  }
+  for (const row of notes) for (const value of [row.createdAt, row.updatedAt]) {
+    if (!value) continue;
+    const parsed = new Date(String(value));
+    if (!Number.isNaN(parsed.getTime())) activity.push(parsed.toISOString());
+  }
+  activity.sort();
+  return { totalTrackedDuration: duration, timeEntryCount: entries.length, activeDays: dates.size, firstActivity: activity[0] ?? null, latestActivity: activity.at(-1) ?? null, projectCount: projects.length, categoryCount: categories.length, noteCount: notes.length };
+}
 
 export function extractCatalystRowId(raw: AdminRow, table?: string): string | number | null {
   const nested = table && raw[table] && typeof raw[table] === "object"

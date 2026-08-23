@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "@/components/ui/toast";
 import { kokuDb, type AiKey, type AppSetting, type Category, type Note, type NoteLink, type Project, type TimeEntry } from "@/lib/storage/db";
-import { syncNow } from "@/lib/sync/sync-engine";
+import { syncWithConflictPrompt } from "@/lib/sync/sync-engine";
 
 const isLocalMode = process.env.NEXT_PUBLIC_LOCAL_MODE === "true";
 
@@ -97,7 +97,7 @@ export function StorageSettingsManager() {
   async function handleSync() {
     setSyncing(true);
     try {
-      const result = await syncNow();
+      const result = await syncWithConflictPrompt();
       if (result.error) {
         toast.error(result.error === "Not signed in"
           ? "Sign in with Zoho first to sync."

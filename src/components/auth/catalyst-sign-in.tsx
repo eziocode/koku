@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { syncWithConflictPrompt } from "@/lib/sync/sync-engine";
 
 const LOGIN_DIV_ID = "catalyst-login-container";
 
@@ -51,7 +52,11 @@ export function CatalystSignIn({ onSignedIn, className }: { onSignedIn?: () => v
         try {
           const response = await fetch("/api/auth/me", { cache: "no-store" });
           const body = await response.json() as { user?: unknown | null };
-          if (body.user) { clearInterval(poll); close(); onSignedInRef.current?.(); }
+          if (body.user) {
+            clearInterval(poll); close();
+            try { await syncWithConflictPrompt(); } catch { /* user can retry from storage settings */ }
+            onSignedInRef.current?.();
+          }
         } catch { /* Keep login open while auth callback settles. */ }
       }, 700);
     }

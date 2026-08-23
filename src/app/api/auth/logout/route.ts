@@ -2,8 +2,11 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-export async function POST(request: Request): Promise<NextResponse> {
+function logoutRedirect(request: Request): NextResponse {
   const origin = new URL(request.url).origin;
-  // Catalyst clears its own session cookie on this endpoint
-  return NextResponse.redirect(`${origin}/__catalyst/auth/logout`);
+  // Catalyst clears session, then returns browser to homepage.
+  return NextResponse.redirect(`${origin}/__catalyst/auth/logout?redirect_uri=${encodeURIComponent(`${origin}/`)}`);
 }
+
+export async function GET(request: Request): Promise<NextResponse> { return logoutRedirect(request); }
+export async function POST(request: Request): Promise<NextResponse> { return logoutRedirect(request); }
