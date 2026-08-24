@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LazyScrollList } from "@/components/ui/lazy-scroll-list";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { useNotes } from "@/lib/storage/hooks/use-notes";
@@ -273,15 +274,21 @@ export function NoteEditorShell({ noteId }: NoteEditorShellProps) {
               <CardTitle>Linked notes</CardTitle>
               <CardDescription>Connections surfaced from wiki links in this note.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
-              {note.linkedNotes.length ? note.linkedNotes.map((linkedNote) => (
-                <Link key={linkedNote.id} href={`/notes?id=${linkedNote.id}`} className="block rounded-2xl border border-border bg-muted/30 p-4 transition-colors hover:bg-muted">
-                  <p className="font-medium text-foreground">{linkedNote.title}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">/{linkedNote.slug}</p>
-                </Link>
-              )) : (
-                <div className="text-sm text-muted-foreground">Create <Badge>[[wiki-links]]</Badge> in the editor to connect notes.</div>
-              )}
+            <CardContent>
+              <LazyScrollList
+                items={note.linkedNotes}
+                getKey={(linkedNote) => linkedNote.id}
+                pageSize={8}
+                className="h-80"
+                moreLabel="Load more links"
+                empty={<div className="text-sm text-muted-foreground">Create <Badge>[[wiki-links]]</Badge> in the editor to connect notes.</div>}
+                renderItem={(linkedNote) => (
+                  <Link href={`/notes?id=${linkedNote.id}`} className="block rounded-2xl border border-border bg-muted/30 p-4 transition-colors hover:bg-muted">
+                    <p className="font-medium text-foreground">{linkedNote.title}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">/{linkedNote.slug}</p>
+                  </Link>
+                )}
+              />
             </CardContent>
           </Card>
         </div>

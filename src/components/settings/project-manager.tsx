@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LazyScrollList } from "@/components/ui/lazy-scroll-list";
 import { toast } from "@/components/ui/toast";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
@@ -189,9 +190,16 @@ export function ProjectManager() {
             </Dialog>
           </div>
 
-          <div className="grid gap-4">
-            {projects.map((project) => (
-              <Card key={project.id}>
+          <LazyScrollList
+            items={projects}
+            getKey={(project) => project.id}
+            pageSize={10}
+            className="h-[40rem]"
+            listClassName="space-y-4"
+            moreLabel="Load more projects"
+            empty={<p className="text-sm text-muted-foreground">No projects yet.</p>}
+            renderItem={(project) => (
+              <Card>
                 <CardHeader>
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -216,8 +224,8 @@ export function ProjectManager() {
                   </Button>
                 </CardContent>
               </Card>
-            ))}
-          </div>
+            )}
+          />
         </div>
 
         <div className="space-y-5">
@@ -240,9 +248,16 @@ export function ProjectManager() {
             </Dialog>
           </div>
 
-          <div className="grid gap-4">
-            {categories.map((category) => (
-              <Card key={category.id}>
+          <LazyScrollList
+            items={categories}
+            getKey={(category) => category.id}
+            pageSize={10}
+            className="h-[40rem]"
+            listClassName="space-y-4"
+            moreLabel="Load more categories"
+            empty={<p className="text-sm text-muted-foreground">No categories yet.</p>}
+            renderItem={(category) => (
+              <Card>
                 <CardHeader>
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -265,8 +280,8 @@ export function ProjectManager() {
                   </Button>
                 </CardContent>
               </Card>
-            ))}
-          </div>
+            )}
+          />
         </div>
       </div>
     </div>

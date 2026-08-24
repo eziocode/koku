@@ -7,6 +7,7 @@ import { EntryForm } from "@/components/time-tracker/entry-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { LazyScrollList } from "@/components/ui/lazy-scroll-list";
 import { toast } from "@/components/ui/toast";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
 import { formatDuration } from "@/lib/utils";
@@ -54,9 +55,16 @@ export function DailyGrid({ entries }: DailyGridProps) {
   }
 
   return (
-    <div className="space-y-4">
-      {entries.map((entry) => (
-        <div key={entry.id} className="rounded-3xl border border-border bg-card p-5 shadow-sm">
+    <LazyScrollList
+      items={entries}
+      getKey={(entry) => entry.id}
+      pageSize={12}
+      className="h-[42rem]"
+      listClassName="space-y-4"
+      moreLabel="Load more entries"
+      empty={<p className="text-sm text-muted-foreground">No time entries yet for this day.</p>}
+      renderItem={(entry) => (
+        <div className="rounded-3xl border border-border bg-card p-5 shadow-sm">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-3">
@@ -118,7 +126,7 @@ export function DailyGrid({ entries }: DailyGridProps) {
             </div>
           </div>
         </div>
-      ))}
-    </div>
+      )}
+    />
   );
 }

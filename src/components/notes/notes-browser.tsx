@@ -1,7 +1,7 @@
 "use client";
 
 import { CalendarDays, Grid2X2, List, Search, SlidersHorizontal, Trash2 } from "lucide-react";
-import { useRef, useMemo, useState } from "react";
+import { useEffect, useRef, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
@@ -17,11 +17,15 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LazyScrollList } from "@/components/ui/lazy-scroll-list";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "@/components/ui/toast";
 import { useNotes } from "@/lib/storage/hooks/use-notes";
 
 type CreatedDateFilter = "all" | "today" | "yesterday" | "week" | "month" | "exact";
+type NoteView = "grid" | "list";
+
+const NOTE_VIEW_STORAGE_KEY = "koku.notes.view";
 
 function dateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -46,9 +50,31 @@ export function NotesBrowser() {
   const [activeTag, setActiveTag] = useState<string>("all");
   const [createdDateFilter, setCreatedDateFilter] = useState<CreatedDateFilter>("all");
   const [createdDate, setCreatedDate] = useState("");
-  const [view, setView] = useState<"grid" | "list">("grid");
+  const [view, setView] = useState<NoteView>("grid");
   const { notes, createNote, deleteNote } = useNotes();
   const tags = useMemo(() => Array.from(new Set(notes.flatMap((note) => note.tags))).sort(), [notes]);
+
+  useEffect(() => {
+    try {
+      const savedView = window.localStorage.getItem(NOTE_VIEW_STORAGE_KEY);
+      if (savedView === "grid" || savedView === "list") {
+        // Keep server/client first render identical; restore persisted mode after hydration.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setView(savedView);
+      }
+    } catch {
+      // Storage can be unavailable in private/restricted browser contexts.
+    }
+  }, []);
+
+  function changeView(nextView: NoteView) {
+    setView(nextView);
+    try {
+      window.localStorage.setItem(NOTE_VIEW_STORAGE_KEY, nextView);
+    } catch {
+      // Keep in-memory mode when storage is unavailable.
+    }
+  }
 
   const [createOpen, setCreateOpen] = useState(false);
   const [newTitle, setNewTitle] = useState("");
@@ -255,53 +281,63 @@ export function NotesBrowser() {
               </PopoverContent>
             </Popover>
             <div className="flex rounded-lg border p-1" aria-label="Note view">
-              <Button variant={view === "grid" ? "secondary" : "ghost"} size="icon" aria-label="Grid view" onClick={() => setView("grid")}><Grid2X2 /></Button>
-              <Button variant={view === "list" ? "secondary" : "ghost"} size="icon" aria-label="List view" onClick={() => setView("list")}><List /></Button>
+              <Button variant={view === "grid" ? "secondary" : "ghost"} size="icon" aria-label="Grid view" onClick={() => changeView("grid")}><Grid2X2 /></Button>
+              <Button variant={view === "list" ? "secondary" : "ghost"} size="icon" aria-label="List view" onClick={() => changeView("list")}><List /></Button>
             </div>
             <Button onClick={openCreateDialog}>Create new note</Button>
           </div>
         </div>
 
-        {notesByDate.length ? notesByDate.map(([day, dayNotes]) => (
-          <section key={day} className="space-y-3">
-            <h2 className="text-sm font-semibold text-muted-foreground">{createdDateFilter === "all" ? "Updated " : "Created "}{new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { dateStyle: "full" })}</h2>
-            <div className={view === "grid" ? "grid gap-4 md:grid-cols-2 xl:grid-cols-3" : "space-y-2"}>
-              {dayNotes.map((note) => (
-                <div key={note.id} className="group relative">
-                  <button type="button" className="w-full text-left" onClick={() => router.push(`/notes?id=${note.id}`)}>
-                    {view === "grid" ? (
-                      <Card className="h-full transition-transform hover:-translate-y-1 hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5">
-                        <CardHeader>
-                          <CardTitle>{note.title}</CardTitle>
-                          <CardDescription>Updated {new Date(note.updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-3">
-                          <div className="flex flex-wrap gap-2">
-                            {note.tags.length ? note.tags.map((tag) => <Badge key={tag}>{tag}</Badge>) : <Badge variant="outline">No tags</Badge>}
-                          </div>
-                          <p className="text-sm text-muted-foreground">/{note.slug}</p>
-                        </CardContent>
-                      </Card>
-                    ) : (
-                      <Card className="transition-colors hover:border-primary/20 hover:bg-muted/20">
-                        <CardContent className="flex min-h-12 items-center gap-3 px-4 py-2.5 pr-12">
-                          <CardTitle className="min-w-0 flex-1 truncate text-base">{note.title}</CardTitle>
-                          <div className="hidden max-w-[40%] gap-1 overflow-hidden sm:flex">
-                            {note.tags.length ? note.tags.map((tag) => <Badge key={tag} className="shrink-0">{tag}</Badge>) : <Badge variant="outline" className="shrink-0">No tags</Badge>}
-                          </div>
-                          <CardDescription className="shrink-0">{new Date(note.updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</CardDescription>
-                        </CardContent>
-                      </Card>
-                    )}
-                  </button>
-                  <button type="button" aria-label="Delete note" onClick={(e) => { e.stopPropagation(); setDeleteTarget({ id: note.id, title: note.title }); }} className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-lg border border-border bg-card opacity-0 shadow-sm transition-opacity group-hover:opacity-100 hover:border-destructive hover:text-destructive">
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </section>
-        )) : <p className="text-sm text-muted-foreground">No notes found.</p>}
+        <LazyScrollList
+          key={`${view}-${activeTag}-${createdDateFilter}-${createdDate}-${search}`}
+          items={notesByDate}
+          getKey={([day]) => day}
+          pageSize={6}
+          className="h-[44rem]"
+          listClassName="space-y-6"
+          moreLabel="Load more dates"
+          empty={<p className="text-sm text-muted-foreground">No notes found.</p>}
+          renderItem={([day, dayNotes]) => (
+            <section className="space-y-3">
+              <h2 className="text-sm font-semibold text-muted-foreground">{createdDateFilter === "all" ? "Updated " : "Created "}{new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { dateStyle: "full" })}</h2>
+              <div className={view === "grid" ? "grid gap-4 md:grid-cols-2 xl:grid-cols-3" : "space-y-2"}>
+                {dayNotes.map((note) => (
+                  <div key={note.id} className="group relative">
+                    <button type="button" className="w-full text-left" onClick={() => router.push(`/notes?id=${note.id}`)}>
+                      {view === "grid" ? (
+                        <Card className="h-full transition-transform hover:-translate-y-1 hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5">
+                          <CardHeader>
+                            <CardTitle>{note.title}</CardTitle>
+                            <CardDescription>Updated {new Date(note.updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</CardDescription>
+                          </CardHeader>
+                          <CardContent className="space-y-3">
+                            <div className="flex flex-wrap gap-2">
+                              {note.tags.length ? note.tags.map((tag) => <Badge key={tag}>{tag}</Badge>) : <Badge variant="outline">No tags</Badge>}
+                            </div>
+                            <p className="text-sm text-muted-foreground">/{note.slug}</p>
+                          </CardContent>
+                        </Card>
+                      ) : (
+                        <Card className="transition-colors hover:border-primary/20 hover:bg-muted/20">
+                          <CardContent className="flex min-h-12 items-center gap-3 px-4 py-2.5 pr-12">
+                            <CardTitle className="min-w-0 flex-1 truncate text-base">{note.title}</CardTitle>
+                            <div className="hidden max-w-[40%] gap-1 overflow-hidden sm:flex">
+                              {note.tags.length ? note.tags.map((tag) => <Badge key={tag} className="shrink-0">{tag}</Badge>) : <Badge variant="outline" className="shrink-0">No tags</Badge>}
+                            </div>
+                            <CardDescription className="shrink-0">{new Date(note.updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</CardDescription>
+                          </CardContent>
+                        </Card>
+                      )}
+                    </button>
+                    <button type="button" aria-label="Delete note" onClick={(e) => { e.stopPropagation(); setDeleteTarget({ id: note.id, title: note.title }); }} className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-lg border border-border bg-card opacity-0 shadow-sm transition-opacity group-hover:opacity-100 hover:border-destructive hover:text-destructive">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+        />
       </div>
     </div>
   );

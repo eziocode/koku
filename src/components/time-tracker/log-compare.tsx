@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
+import { LazyScrollList } from "@/components/ui/lazy-scroll-list";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
@@ -45,27 +46,30 @@ function ComparePanel({ date, label }: ComparePanelProps) {
       {pieData.length > 0 && (
         <Card><CardHeader><CardTitle className="text-base">By project</CardTitle></CardHeader><CardContent><ProjectPieChart data={pieData} /></CardContent></Card>
       )}
-      <div className="space-y-2">
-        {joinedEntries.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">No entries for this day.</div>
-        ) : (
-          joinedEntries.map((entry) => (
-            <div key={entry.id} className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 space-y-1">
-                  <p className="truncate font-medium text-foreground">{entry.title}</p>
-                  <p className="text-xs text-muted-foreground">{format(new Date(entry.startAt), "HH:mm")}{entry.endAt ? " – " + format(new Date(entry.endAt), "HH:mm") : " • Running"}</p>
-                  <div className="flex flex-wrap gap-1">
-                    {entry.project && <Badge variant="outline" className="text-xs" style={{ borderColor: entry.project.color, color: entry.project.color }}>{entry.project.name}</Badge>}
-                    {entry.category && <Badge variant="secondary" className="text-xs">{entry.category.name}</Badge>}
-                  </div>
+      <LazyScrollList
+        items={joinedEntries}
+        getKey={(entry) => entry.id}
+        pageSize={8}
+        className="h-[32rem]"
+        listClassName="space-y-2"
+        moreLabel="Load more entries"
+        empty={<div className="rounded-2xl border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">No entries for this day.</div>}
+        renderItem={(entry) => (
+          <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 space-y-1">
+                <p className="truncate font-medium text-foreground">{entry.title}</p>
+                <p className="text-xs text-muted-foreground">{format(new Date(entry.startAt), "HH:mm")}{entry.endAt ? " – " + format(new Date(entry.endAt), "HH:mm") : " • Running"}</p>
+                <div className="flex flex-wrap gap-1">
+                  {entry.project && <Badge variant="outline" className="text-xs" style={{ borderColor: entry.project.color, color: entry.project.color }}>{entry.project.name}</Badge>}
+                  {entry.category && <Badge variant="secondary" className="text-xs">{entry.category.name}</Badge>}
                 </div>
-                <span className="shrink-0 text-sm font-semibold text-foreground">{formatDuration(entry.durationSec ?? 0)}</span>
               </div>
+              <span className="shrink-0 text-sm font-semibold text-foreground">{formatDuration(entry.durationSec ?? 0)}</span>
             </div>
-          ))
+          </div>
         )}
-      </div>
+      />
       <p className="text-center text-xs text-muted-foreground">Side {label} — {format(parsedDate, "d MMM yyyy")}</p>
     </div>
   );

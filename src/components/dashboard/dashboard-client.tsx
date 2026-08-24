@@ -10,6 +10,7 @@ import { SegmentedBarChart } from "@/components/charts/segmented-bar-chart";
 import { Timer } from "@/components/time-tracker/timer";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { LazyScrollList } from "@/components/ui/lazy-scroll-list";
 import {
   buildSegmentedDays,
   hasExcludedTag,
@@ -158,7 +159,7 @@ export function DashboardClient() {
   );
 
   const recentEntries = useMemo(
-    () => allEntries.slice(0, 5).map((entry) => ({
+    () => allEntries.map((entry) => ({
       ...entry,
       project: entry.projectId ? projectMap.get(entry.projectId) || null : null,
       category: entry.categoryId ? categoryMap.get(entry.categoryId) || null : null,
@@ -228,13 +229,16 @@ export function DashboardClient() {
           <CardTitle>Recent time entries</CardTitle>
           <CardDescription>Your latest captured sessions.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {recentEntries.length ? (
-            recentEntries.map((entry) => (
-              <div
-                key={entry.id}
-                className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-background/55 p-4 sm:flex-row sm:items-center sm:justify-between"
-              >
+        <CardContent>
+          <LazyScrollList
+            items={recentEntries}
+            getKey={(entry) => entry.id}
+            pageSize={8}
+            className="h-[28rem]"
+            moreLabel="Load more entries"
+            empty={<p className="text-sm text-muted-foreground">No recent entries yet.</p>}
+            renderItem={(entry) => (
+              <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-background/55 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="font-medium text-foreground">{entry.title}</p>
                   <p className="text-sm text-muted-foreground">
@@ -242,14 +246,10 @@ export function DashboardClient() {
                     {entry.category ? ` • ${entry.category.name}` : ""}
                   </p>
                 </div>
-                <div className="text-sm font-semibold tabular-nums text-foreground">
-                  {formatDuration(entry.durationSec || 0)}
-                </div>
+                <div className="text-sm font-semibold tabular-nums text-foreground">{formatDuration(entry.durationSec || 0)}</div>
               </div>
-            ))
-          ) : (
-            <p className="text-sm text-muted-foreground">No recent entries yet.</p>
-          )}
+            )}
+          />
         </CardContent>
       </Card>
     </div>
