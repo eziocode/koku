@@ -39,13 +39,6 @@ function rowId(raw: Record<string, unknown>, tableName: string): string | number
   return typeof value === "string" || typeof value === "number" ? value : null;
 }
 
-function rowTime(raw: Record<string, unknown>, tableName: string): number {
-  const row = nestedRow(raw, tableName);
-  const value = row.MODIFIEDTIME ?? row.modifiedtime ?? row.CREATEDTIME ?? row.createdtime;
-  const parsed = value ? Date.parse(String(value)) : Number.NaN;
-  return Number.isNaN(parsed) ? 0 : parsed;
-}
-
 /** Upsert one logical row and self-heal duplicate rows left by older writes. */
 export async function upsertRow(
   app: CatalystApp,
@@ -56,7 +49,7 @@ export async function upsertRow(
 ): Promise<void> {
   const existing = await zcqlQuery(
     app,
-    `SELECT * FROM ${tableName} WHERE id = '${zcqlEscape(id)}' AND user_id = '${zcqlEscape(userId)}'`,
+    `SELECT ROWID FROM ${tableName} WHERE id = '${zcqlEscape(id)}' AND user_id = '${zcqlEscape(userId)}'`,
   );
 
   const table = app.datastore().table(tableName);
@@ -65,8 +58,10 @@ export async function upsertRow(
     await table.insertRow({ id, user_id: userId, ...fields });
     return;
   }
+  // Catalyst returns matching rows in stable insertion order here; last row is
+  // newest for legacy duplicates. Keep it, then remove older copies.
   const indexed = existing.map((raw, index) => ({ raw: raw as Record<string, unknown>, index }));
-  indexed.sort((a, b) => rowTime(b.raw, tableName) - rowTime(a.raw, tableName) || b.index - a.index);
+  indexed.sort((a, b) => b.index - a.index);
   const keep = rowId(indexed[0].raw, tableName);
   if (keep === null) throw new Error(`Existing ${tableName} row has no ROWID`);
   await table.updateRow({ ROWID: keep, ...fields });
