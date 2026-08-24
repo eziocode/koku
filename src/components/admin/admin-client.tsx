@@ -26,10 +26,12 @@ type ConfirmAction =
 
 function ConfirmDialog({
   action,
+  busy,
   onConfirm,
   onCancel,
 }: {
   action: ConfirmAction | null;
+  busy: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -53,16 +55,16 @@ function ConfirmDialog({
   const isDestructive = action.type === "removeAdmin" || action.type === "deleteGroup";
 
   return (
-    <Dialog open onOpenChange={(open) => { if (!open) onCancel(); }}>
+    <Dialog open onOpenChange={(open) => { if (!open && !busy) onCancel(); }}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button variant="outline" onClick={onCancel}>Cancel</Button>
-          <Button variant={isDestructive ? "destructive" : "default"} onClick={onConfirm}>
-            {confirmLabel}
+          <Button variant="outline" onClick={onCancel} disabled={busy}>Cancel</Button>
+          <Button variant={isDestructive ? "destructive" : "default"} onClick={onConfirm} disabled={busy}>
+            {busy ? "Working…" : confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -83,6 +85,7 @@ export function AdminClient() {
   const [newAdminId, setNewAdminId] = useState("");
   const [loading, setLoading] = useState(true);
   const [pendingAction, setPendingAction] = useState<ConfirmAction | null>(null);
+  const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
     void fetch("/api/auth/me")
@@ -156,10 +159,15 @@ export function AdminClient() {
   async function handleConfirm() {
     if (!pendingAction) return;
     const action = pendingAction;
-    setPendingAction(null);
-    if (action.type === "removeAdmin") await execChangeAdmin("remove", action.userId);
-    else if (action.type === "addAdmin") await execChangeAdmin("add", action.userId);
-    else if (action.type === "deleteGroup") await execDeleteGroup(action.group);
+    setConfirming(true);
+    try {
+      if (action.type === "removeAdmin") await execChangeAdmin("remove", action.userId);
+      else if (action.type === "addAdmin") await execChangeAdmin("add", action.userId);
+      else if (action.type === "deleteGroup") await execDeleteGroup(action.group);
+    } finally {
+      setConfirming(false);
+      setPendingAction(null);
+    }
   }
 
   const filteredUsers = users.filter((user) =>
@@ -183,6 +191,7 @@ export function AdminClient() {
     <div className="space-y-8">
       <ConfirmDialog
         action={pendingAction}
+        busy={confirming}
         onConfirm={() => void handleConfirm()}
         onCancel={() => setPendingAction(null)}
       />

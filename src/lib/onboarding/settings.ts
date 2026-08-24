@@ -12,7 +12,9 @@ import { z } from "zod";
  * rest of koku's settings do.
  */
 export interface OnboardingState {
-  version: 1;
+  version: 1 | 2;
+  /** When the user supplied a non-empty display name. */
+  displayNameSetAt: string | null;
   /** When the recurring check-in explainer was acknowledged. */
   checkInIntroSeenAt: string | null;
   /**
@@ -25,19 +27,29 @@ export interface OnboardingState {
    * an unconfigured one through.
    */
   endOfDaySetAt: string | null;
+  /** When the user explicitly chose week-off days, including no days. */
+  weekOffSetAt: string | null;
+  /** When notification permission and reminder cadence were configured. */
+  notificationsSetAt: string | null;
 }
 
 export const ONBOARDING_DEFAULTS: OnboardingState = {
-  version: 1,
+  version: 2,
+  displayNameSetAt: null,
   checkInIntroSeenAt: null,
   endOfDaySetAt: null,
+  weekOffSetAt: null,
+  notificationsSetAt: null,
 };
 
 export const onboardingStateSchema = z
   .object({
-    version: z.literal(1).catch(1),
+    version: z.union([z.literal(1), z.literal(2)]).catch(2),
+    displayNameSetAt: z.string().nullable().catch(null),
     checkInIntroSeenAt: z.string().nullable().catch(null),
     endOfDaySetAt: z.string().nullable().catch(null),
+    weekOffSetAt: z.string().nullable().catch(null),
+    notificationsSetAt: z.string().nullable().catch(null),
   })
   .catch(ONBOARDING_DEFAULTS);
 

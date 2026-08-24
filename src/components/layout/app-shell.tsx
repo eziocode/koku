@@ -5,8 +5,7 @@ import { ReactNode, useState } from "react";
 import { CommandPalette } from "@/components/layout/command-palette";
 import { MiniPlayerProvider } from "@/components/mini-player/mini-player-provider";
 import { NotificationCenter } from "@/components/notifications/notification-center";
-import { CheckInIntro } from "@/components/onboarding/check-in-intro";
-import { EndOfDaySetup } from "@/components/onboarding/end-of-day-setup";
+import { WelcomeSetup } from "@/components/onboarding/welcome-setup";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { cn } from "@/lib/utils";
@@ -27,12 +26,9 @@ export function AppShell({ children }: AppShellProps) {
       {/* Portals the floating mini player into its Picture-in-Picture window.
           Mounted here, not in AppProviders, so it never runs on the marketing root. */}
       <MiniPlayerProvider />
-      {/* One-time explainer for the recurring check-in. Shown here rather than in
-          AppProviders so it can never greet a visitor on the marketing root. */}
-      {/* Mandatory: blocks until the user supplies a logoff time. Rendered before
-          CheckInIntro, which waits on the same answer. */}
-      <EndOfDaySetup />
-      <CheckInIntro />
+      {/* Mandatory first-run setup. It stays route-aware so settings remain
+          usable when the user follows one of its direct setup links. */}
+      <WelcomeSetup />
       <Sidebar open={sidebarOpen} onNavigate={() => setSidebarOpen(false)} />
       {sidebarOpen ? (
         <button
