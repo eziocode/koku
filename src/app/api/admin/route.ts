@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { initCatalyst, upsertRow, zcqlEscape, zcqlQuery } from "@/lib/db/catalyst-client";
 import { TABLE_CONFIG } from "@/lib/sync/table-config";
 import { deleteAdminGroup, getAdminGroups, getAdminKeys, isOwnerUser, saveAdminGroup, setAdmin, type AdminGroup } from "@/lib/auth/user-registry";
-import { calculateAdminStats, extractCatalystRowId, type AdminPresence } from "@/lib/admin-data";
+import { adminUserFromDetails, calculateAdminStats, extractCatalystRowId, type AdminPresence, type AdminUser } from "@/lib/admin-data";
 
 export const runtime = "nodejs";
 
@@ -43,16 +43,38 @@ export async function GET(request: Request) {
       });
     }
 
-    let users: Array<{ id: string; email: string; displayName: string }> = [];
+    const usersById = new Map<string, AdminUser>();
+    // Row owners are authoritative. Bulk user listing can omit users or fail for
+    // delegated admins, while per-user lookup still resolves each stored user_id.
+    const rowUserIds = new Set(
+      Object.values(data).flatMap((rows) => rows.map((row) => String((row as Record<string, unknown>).userId ?? "").trim()).filter(Boolean)),
+    );
+    rowUserIds.add(String(auth.user.user_id));
     try {
       const allUsers = await auth.app.userManagement().getAllUsers();
-      users = allUsers.map((user: { user_id: string; email_id: string; first_name?: string; last_name?: string }) => ({
-        id: user.user_id,
-        email: user.email_id,
-        displayName: `${user.first_name} ${user.last_name}`.trim(),
-      }));
+      for (const user of allUsers) {
+        const mapped = adminUserFromDetails(user);
+        if (mapped) usersById.set(mapped.id, mapped);
+      }
     } catch {
-      // Data access remains useful when Catalyst user-list scope is unavailable.
+      // Per-user lookup below still works when bulk user-list scope unavailable.
+    }
+    await Promise.all([...rowUserIds].map(async (userId) => {
+      try {
+        const mapped = adminUserFromDetails(await auth.app.userManagement().getUserDetails(userId));
+        if (mapped) usersById.set(mapped.id, mapped);
+      } catch {
+        // Keep row visible with ID fallback if identity lookup unavailable.
+      }
+    }));
+    const users = [...rowUserIds, ...usersById.keys()].filter((id, index, all) => all.indexOf(id) === index).map((id) => usersById.get(id) ?? {
+      id,
+      email: id,
+      displayName: "",
+    });
+    // Include users returned by bulk listing even when they have no rows.
+    for (const user of usersById.values()) {
+      if (!users.some((item) => item.id === user.id)) users.push(user);
     }
     const delegatedAdminIds = (await getAdminKeys(auth.app)).map((key) => key.slice("admin_user:".length));
     const adminIds = new Set([auth.user.user_id, ...delegatedAdminIds]);

@@ -2,6 +2,21 @@ export type AdminRow = Record<string, unknown>;
 
 export type AdminUser = { id: string; email: string; displayName: string };
 export type AdminGroup = { id: string; name: string; userIds: string[] };
+export type CatalystUserDetails = {
+  user_id?: string | number;
+  email_id?: string;
+  first_name?: string;
+  last_name?: string;
+};
+
+/** Map Catalyst user detail response to identity used by admin UI. */
+export function adminUserFromDetails(details: CatalystUserDetails): AdminUser | null {
+  const id = String(details.user_id ?? "").trim();
+  if (!id) return null;
+  const email = String(details.email_id ?? "").trim();
+  const displayName = `${details.first_name ?? ""} ${details.last_name ?? ""}`.trim();
+  return { id, email, displayName };
+}
 export interface AdminStats {
   totalTrackedDuration: number;
   timeEntryCount: number;

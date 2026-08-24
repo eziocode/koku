@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dashboardForRange, extractCatalystRowId, formatDate, formatDuration, getPresenceStatus, groupRowsByUser, plainTextToTiptap, tiptapToPlainText } from "@/lib/admin-data";
+import { adminUserFromDetails, dashboardForRange, extractCatalystRowId, formatDate, formatDuration, getPresenceStatus, groupRowsByUser, plainTextToTiptap, tiptapToPlainText } from "@/lib/admin-data";
 
 test("extracts nested and top-level Catalyst ROWID safely", () => {
   assert.equal(extractCatalystRowId({ notes_koku: { ROWID: 42 } }, "notes_koku"), 42);
@@ -17,6 +17,13 @@ test("converts TipTap content to readable plain text", () => {
 test("groups users and counts rows, including zero-record users", () => {
   const users = [{ id: "1", email: "one@example.com", displayName: "One" }, { id: "2", email: "two@example.com", displayName: "Two" }];
   assert.deepEqual(groupRowsByUser([{ userId: "1" }, { userId: "1" }], users).map((group) => [group.user.id, group.count]), [["1", 2], ["2", 0]]);
+});
+
+test("maps Catalyst user details by user ID", () => {
+  assert.deepEqual(adminUserFromDetails({ user_id: "u2", email_id: "two@example.com", first_name: "Two", last_name: "User" }), {
+    id: "u2", email: "two@example.com", displayName: "Two User",
+  });
+  assert.equal(adminUserFromDetails({ email_id: "missing@example.com" }), null);
 });
 
 test("formats durations and invalid dates without throwing", () => {
