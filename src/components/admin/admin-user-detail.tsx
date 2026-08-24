@@ -34,6 +34,7 @@ type DetailResponse = {
   presence?: AdminPresence;
 };
 type CacheValue = { rows: AdminRow[]; nextCursor: string | null; dashboard?: DashboardData };
+type ReportResponse = { rows: AdminRow[]; nextCursor: string | null };
 
 function dayShift(day: string, amount: number) {
   const date = new Date(day + "T12:00:00");
@@ -62,6 +63,25 @@ async function localNotesForDay(date: string): Promise<AdminRow[]> {
     .map((n) => ({ ...n, table: "notes" } as AdminRow));
 }
 
+async function localReportRows(start: string, end: string): Promise<AdminRow[]> {
+  const [entries, notes] = await Promise.all([
+    kokuDb.timeEntries.toArray(),
+    kokuDb.notes.toArray(),
+  ]);
+  const from = `${start}T00:00:00`;
+  const until = `${end}T23:59:59.999`;
+  return [
+    ...entries.filter((row) => row.startAt >= from && row.startAt <= until).map((row) => ({ ...row, table: "timeEntries" } as AdminRow)),
+    ...notes.filter((row) => row.updatedAt >= from && row.updatedAt <= until).map((row) => ({ ...row, table: "notes" } as AdminRow)),
+  ].sort((a, b) => String(b.startAt ?? b.updatedAt).localeCompare(String(a.startAt ?? a.updatedAt)));
+}
+
+function daysBetween(start: string, end: string) {
+  const days: string[] = [];
+  for (let day = start; day <= end; day = dayShift(day, 1)) days.push(day);
+  return days;
+}
+
 async function localFirstActivity(): Promise<string | null> {
   const oldest = await kokuDb.timeEntries.orderBy("startAt").first();
   return oldest?.startAt ? oldest.startAt.slice(0, 10) : null;
@@ -78,9 +98,15 @@ export function AdminUserDetail({ userId }: { userId: string }) {
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [presence, setPresence] = useState<AdminPresence>();
 
-  const [rangeDays, setRangeDays] = useState(30);
+  const [rangeStart, setRangeStart] = useState(dayShift(today, -29));
   const [rangeEnd, setRangeEnd] = useState(today);
   const [selectedDay, setSelectedDay] = useState(today);
+
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportRows, setReportRows] = useState<AdminRow[]>([]);
+  const [reportCursor, setReportCursor] = useState<string | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportLoadingMore, setReportLoadingMore] = useState(false);
 
   const [logs, setLogs] = useState<AdminRow[]>([]);
   const [logCursor, setLogCursor] = useState<string | null>(null);
@@ -98,12 +124,36 @@ export function AdminUserDetail({ userId }: { userId: string }) {
 
   const cache = useRef(new Map<string, CacheValue>());
   const requestVersion = useRef(0);
+  const isOwnProfile = currentUserId !== null && currentUserId === userId;
 
-  const start = useMemo(() => {
-    const date = new Date(rangeEnd + "T12:00:00");
-    date.setDate(date.getDate() - rangeDays + 1);
-    return date.toISOString().slice(0, 10);
-  }, [rangeEnd, rangeDays]);
+  const start = rangeStart;
+
+  const reportDays = useMemo(() => daysBetween(rangeStart, rangeEnd), [rangeEnd, rangeStart]);
+
+  const loadReport = useCallback(async (cursor?: string | null) => {
+    const loadingMore = Boolean(cursor);
+    if (loadingMore) setReportLoadingMore(true); else setReportLoading(true);
+    try {
+      let value: ReportResponse;
+      if (isOwnProfile) {
+        const all = await localReportRows(rangeStart, rangeEnd);
+        const offset = Number(cursor ?? 0);
+        value = { rows: all.slice(offset, offset + 50), nextCursor: offset + 50 < all.length ? String(offset + 50) : null };
+      } else {
+        const response = await fetch(`/api/admin?userId=${encodeURIComponent(userId)}&table=all&start=${rangeStart}&end=${rangeEnd}&limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`, { cache: "no-store" });
+        if (!response.ok) throw new Error("Unable to load report");
+        value = (await response.json()) as ReportResponse;
+      }
+      setReportRows((old) => cursor ? [...old, ...value.rows] : value.rows);
+      setReportCursor(value.nextCursor);
+      setReportOpen(true);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to load report");
+    } finally {
+      setReportLoading(false);
+      setReportLoadingMore(false);
+    }
+  }, [isOwnProfile, rangeEnd, rangeStart, userId]);
 
   useEffect(() => {
     void fetch("/api/auth/me")
@@ -117,8 +167,6 @@ export function AdminUserDetail({ userId }: { userId: string }) {
         setAuthChecked(true);
       });
   }, []);
-
-  const isOwnProfile = currentUserId !== null && currentUserId === userId;
 
   const fetchTable = useCallback(
     async (
@@ -163,7 +211,7 @@ export function AdminUserDetail({ userId }: { userId: string }) {
 
       return result;
     },
-    [rangeEnd, start, userId],
+    [rangeEnd, setDashboard, setEarliestDataDate, setPresence, setSummary, setUser, start, userId],
   );
 
   const localDashboardForSelectedDay = useCallback(async () => {
@@ -242,7 +290,7 @@ export function AdminUserDetail({ userId }: { userId: string }) {
         }
       }
     },
-    [fetchTable, isOwnProfile, localDashboardForSelectedDay, rangeEnd, selectedDay, start],
+    [fetchTable, isOwnProfile, localDashboardForSelectedDay, rangeEnd, selectedDay, setDashboard, setDayLoading, setLoading, setLogCursor, setLogs, setNoDataConfirmed, setNoteCursor, setNotes, start],
   );
 
   useEffect(() => {
@@ -366,17 +414,30 @@ export function AdminUserDetail({ userId }: { userId: string }) {
         </div>
       </div>
 
-      {/* Range controls */}
+      {/* Explicit date range */}
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm text-muted-foreground">Range</span>
-        {[7, 30, 90].map((value) => (
-          <Button key={value} size="sm" variant={rangeDays === value ? "default" : "outline"} onClick={() => setRangeDays(value)}>
-            {value} days
-          </Button>
-        ))}
-        <Input aria-label="Stats range end" type="date" value={rangeEnd}
+        <label className="text-sm text-muted-foreground" htmlFor="report-start">From</label>
+        <Input id="report-start" aria-label="Report start date" type="date" value={rangeStart}
+          onChange={(e) => setRangeStart(e.target.value)} className="w-40" />
+        <label className="text-sm text-muted-foreground" htmlFor="report-end">To</label>
+        <Input id="report-end" aria-label="Report end date" type="date" value={rangeEnd}
           onChange={(e) => setRangeEnd(e.target.value)} className="w-40" />
+        <Button onClick={() => void loadReport()} disabled={reportLoading || rangeStart > rangeEnd}>
+          {reportLoading ? "Loading report…" : "View full report"}
+        </Button>
       </div>
+
+      {reportOpen && (
+        <FullRangeReport
+          days={reportDays}
+          rows={reportRows}
+          loading={reportLoading}
+          hasMore={!!reportCursor}
+          loadingMore={reportLoadingMore}
+          onMore={() => void loadReport(reportCursor)}
+          onClose={() => setReportOpen(false)}
+        />
+      )}
 
       {/* Day navigator */}
       <div className="flex items-center justify-between rounded-xl border p-3">
@@ -500,6 +561,69 @@ export function AdminUserDetail({ userId }: { userId: string }) {
         </div>
       }
     </div>
+  );
+}
+
+function FullRangeReport({
+  days,
+  rows,
+  loading,
+  hasMore,
+  loadingMore,
+  onMore,
+  onClose,
+}: {
+  days: string[];
+  rows: AdminRow[];
+  loading: boolean;
+  hasMore: boolean;
+  loadingMore: boolean;
+  onMore: () => void;
+  onClose: () => void;
+}) {
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const byDay = new Map<string, AdminRow[]>();
+  rows.forEach((row) => {
+    const value = row.startAt ?? row.updatedAt ?? row.createdAt;
+    const day = value ? String(value).slice(0, 10) : "unknown";
+    byDay.set(day, [...(byDay.get(day) ?? []), row]);
+  });
+  useEffect(() => {
+    if (!hasMore || !sentinelRef.current || loadingMore) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting) onMore();
+    }, { threshold: 0.1 });
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, onMore]);
+  return (
+    <Card>
+      <CardHeader className="flex-row items-center justify-between space-y-0">
+        <CardTitle>Full report by date</CardTitle>
+        <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
+      </CardHeader>
+      <CardContent>
+        {loading ? <Skeleton className="h-20 rounded-lg" /> : (
+          <div className="max-h-[70vh] space-y-5 overflow-y-auto pr-2">
+            {days.map((day) => {
+              const dayRows = byDay.get(day) ?? [];
+              return (
+                <section key={day} className="space-y-2">
+                  <h3 className="border-b pb-1 text-sm font-semibold">{new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { dateStyle: "full" })}</h3>
+                  {dayRows.length ? dayRows.map((row, index) => (
+                    <div key={String(row.id ?? `${day}-${index}`)} className="rounded-lg border p-3 text-sm">
+                      <p className="font-medium">{String(row.title ?? (row.table === "notes" ? "Untitled note" : "Untitled work"))}</p>
+                      {row.table === "notes" ? <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">{tiptapToPlainText(row.content).trim() || "No text"}</p> : <p className="mt-1 text-xs text-muted-foreground">{formatDuration(row.durationSec)}</p>}
+                    </div>
+                  )) : <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">No content for this day.</p>}
+                </section>
+              );
+            })}
+            {hasMore && <div ref={sentinelRef} className="py-2 text-center"><Button variant="outline" size="sm" onClick={onMore} disabled={loadingMore}>{loadingMore ? "Loading more…" : "Load more"}</Button></div>}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

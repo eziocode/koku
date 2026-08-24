@@ -40,6 +40,17 @@ export function NotesBrowser() {
     [activeTag, notes],
   );
 
+  const notesByDate = useMemo(() => {
+    const groups = new Map<string, typeof filteredNotes>();
+    [...filteredNotes]
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .forEach((note) => {
+        const day = note.updatedAt.slice(0, 10);
+        groups.set(day, [...(groups.get(day) ?? []), note]);
+      });
+    return [...groups.entries()];
+  }, [filteredNotes]);
+
   function openCreateDialog() {
     setNewTitle("");
     setCreateOpen(true);
@@ -154,38 +165,34 @@ export function NotesBrowser() {
           ))}
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {filteredNotes.map((note) => (
-            <div key={note.id} className="group relative">
-              <button type="button" className="w-full text-left" onClick={() => router.push(`/notes?id=${note.id}`)}>
-                <Card className="h-full transition-transform hover:-translate-y-1 hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5">
-                  <CardHeader>
-                    <CardTitle>{note.title}</CardTitle>
-                    <CardDescription>Updated {new Date(note.updatedAt).toLocaleDateString()}</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="flex flex-wrap gap-2">
-                      {note.tags.length ? note.tags.map((tag) => <Badge key={tag}>{tag}</Badge>) : <Badge variant="outline">No tags</Badge>}
-                    </div>
-                    <p className="text-sm text-muted-foreground">/{note.slug}</p>
-                  </CardContent>
-                </Card>
-              </button>
-              {/* Delete button — appears on hover */}
-              <button
-                type="button"
-                aria-label="Delete note"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setDeleteTarget({ id: note.id, title: note.title });
-                }}
-                className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-lg border border-border bg-card opacity-0 shadow-sm transition-opacity group-hover:opacity-100 hover:border-destructive hover:text-destructive"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
+        {notesByDate.length ? notesByDate.map(([day, dayNotes]) => (
+          <section key={day} className="space-y-3">
+            <h2 className="text-sm font-semibold text-muted-foreground">{new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { dateStyle: "full" })}</h2>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {dayNotes.map((note) => (
+                <div key={note.id} className="group relative">
+                  <button type="button" className="w-full text-left" onClick={() => router.push(`/notes?id=${note.id}`)}>
+                    <Card className="h-full transition-transform hover:-translate-y-1 hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5">
+                      <CardHeader>
+                        <CardTitle>{note.title}</CardTitle>
+                        <CardDescription>Updated {new Date(note.updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="flex flex-wrap gap-2">
+                          {note.tags.length ? note.tags.map((tag) => <Badge key={tag}>{tag}</Badge>) : <Badge variant="outline">No tags</Badge>}
+                        </div>
+                        <p className="text-sm text-muted-foreground">/{note.slug}</p>
+                      </CardContent>
+                    </Card>
+                  </button>
+                  <button type="button" aria-label="Delete note" onClick={(e) => { e.stopPropagation(); setDeleteTarget({ id: note.id, title: note.title }); }} className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-lg border border-border bg-card opacity-0 shadow-sm transition-opacity group-hover:opacity-100 hover:border-destructive hover:text-destructive">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </section>
+        )) : <p className="text-sm text-muted-foreground">No notes found.</p>}
       </div>
     </div>
   );

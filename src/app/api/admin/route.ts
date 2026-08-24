@@ -51,8 +51,22 @@ export async function GET(request: Request) {
         const rows = await zcqlQuery(auth.app, `SELECT * FROM ${config.table} WHERE user_id = '${zcqlEscape(userId)}'`);
         data[table] = rows.map((raw) => ({ ...config.fromRow(raw), userId }));
       }
-      const allRows = Object.entries(data).flatMap(([table, rows]) => rows.map((row) => ({ ...row, table })));
+      const allRows: AdminRow[] = Object.entries(data).flatMap(([table, rows]) => rows.map((row) => ({ ...row, table })));
       const table = requested && requested !== "summary" ? requested : "timeEntries";
+      if (table === "all") {
+        const start = params.get("start"); const end = params.get("end");
+        const from = start ? Date.parse(`${start}T00:00:00`) : Number.NEGATIVE_INFINITY;
+        const until = end ? Date.parse(`${end}T23:59:59.999`) : Number.POSITIVE_INFINITY;
+        const scoped = allRows.filter((row) => {
+          const field = row.table === "timeEntries" ? row.startAt : row.table === "notes" ? row.updatedAt : row.createdAt;
+          const value = Date.parse(String(field ?? row.createdAt ?? ""));
+          return Number.isFinite(value) && value >= from && value <= until;
+        }).sort((a, b) => String(b.startAt ?? b.updatedAt ?? b.createdAt).localeCompare(String(a.startAt ?? a.updatedAt ?? a.createdAt)));
+        const limit = Math.min(Math.max(Number(params.get("limit") ?? 50) || 50, 1), 100);
+        const offset = Math.max(Number(params.get("cursor") ?? 0) || 0, 0);
+        const rows = scoped.slice(offset, offset + limit);
+        return NextResponse.json({ user, rows, nextCursor: offset + rows.length < scoped.length ? String(offset + rows.length) : null });
+      }
       if (!getConfig(table)) return NextResponse.json({ error: `Unknown table: ${table}` }, { status: 400 });
       const start = params.get("start"); const end = params.get("end");
       const from = start ? Date.parse(`${start}T00:00:00`) : Number.NEGATIVE_INFINITY;

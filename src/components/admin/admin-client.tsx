@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable react-hooks/set-state-in-effect */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Pencil, Shield, Trash2, UserPlus, UserRoundMinus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -262,13 +262,10 @@ export function AdminClient() {
                     {filteredUsers.filter((user) => !groups.some((group) => group.userIds.includes(user.id))).length}
                   </Badge>
                 </div>
-                <div className="grid gap-3 md:grid-cols-2">
-                  {filteredUsers
-                    .filter((user) => !groups.some((group) => group.userIds.includes(user.id)))
-                    .map((user) => (
-                      <UserCard key={user.id} user={user} onOpen={(id) => router.push(`/admin/users/${encodeURIComponent(id)}`)} />
-                    ))}
-                </div>
+                <LazyUserGrid
+                  users={filteredUsers.filter((user) => !groups.some((group) => group.userIds.includes(user.id)))}
+                  onOpen={(id) => router.push(`/admin/users/${encodeURIComponent(id)}`)}
+                />
               </div>
             </>
           )}
@@ -337,6 +334,37 @@ function UserCard({ user, onOpen }: { user: AdminUser; onOpen: (id: string) => v
   );
 }
 
+function LazyUserGrid({ users, onOpen }: { users: AdminUser[]; onOpen: (id: string) => void }) {
+  const pageSize = 24;
+  const [visibleCount, setVisibleCount] = useState(pageSize);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const userKey = users.map((user) => user.id).join("|");
+
+  useEffect(() => {
+    setVisibleCount(pageSize);
+  }, [userKey]);
+
+  const hasMore = visibleCount < users.length;
+  useEffect(() => {
+    if (!hasMore || !sentinelRef.current) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting) setVisibleCount((count) => Math.min(count + pageSize, users.length));
+    }, { threshold: 0.1 });
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [hasMore, users.length]);
+
+  return (
+    <div className="max-h-[32rem] overflow-y-auto rounded-lg pr-1">
+      <div className="grid gap-3 md:grid-cols-2">
+        {users.slice(0, visibleCount).map((user) => <UserCard key={user.id} user={user} onOpen={onOpen} />)}
+      </div>
+      {hasMore ? <div ref={sentinelRef} className="py-3 text-center text-xs text-muted-foreground">Loading more users…</div> : null}
+      {!users.length ? <p className="py-4 text-sm text-muted-foreground">No matching users.</p> : null}
+    </div>
+  );
+}
+
 function GroupSection({
   group,
   users,
@@ -402,9 +430,7 @@ function GroupSection({
           <div className="flex justify-end"><Button size="sm" onClick={() => void save()}>Save</Button></div>
         </div>
       ) : null}
-      <div className="grid gap-3 md:grid-cols-2">
-        {members.map((user) => <UserCard key={user.id} user={user} onOpen={onOpen} />)}
-      </div>
+      <LazyUserGrid users={members} onOpen={onOpen} />
       {!members.length ? <p className="text-sm text-muted-foreground">No matching members.</p> : null}
     </section>
   );

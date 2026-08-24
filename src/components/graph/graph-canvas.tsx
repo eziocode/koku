@@ -127,6 +127,30 @@ export function GraphCanvas({
       labelWeight: "500",
       labelDensity: 0.6,
       labelRenderedSizeThreshold: 6,
+      // Sigma's default hover renderer uses a white label bubble. In dark
+      // mode that bubble plus white label makes hovered text disappear.
+      defaultDrawNodeHover: (context, data, settings) => {
+        const label = data.label;
+        if (!label) return;
+        const labelSize = settings.labelSize;
+        const width = context.measureText(label).width + 12;
+        const height = labelSize + 8;
+        context.save();
+        context.fillStyle = isDark ? "#0f172a" : "#ffffff";
+        context.strokeStyle = isDark ? "#475569" : "#cbd5e1";
+        context.lineWidth = 1;
+        context.shadowColor = isDark ? "rgba(0,0,0,.55)" : "rgba(15,23,42,.18)";
+        context.shadowBlur = 8;
+        context.beginPath();
+        context.roundRect(data.x + data.size + 2, data.y - height / 2, width, height, 5);
+        context.fill();
+        context.stroke();
+        context.shadowBlur = 0;
+        context.fillStyle = isDark ? "#f8fafc" : "#0f172a";
+        context.font = `${settings.labelWeight} ${labelSize}px ${settings.labelFont}`;
+        context.fillText(label, data.x + data.size + 8, data.y + labelSize / 3);
+        context.restore();
+      },
       defaultEdgeColor: withAlpha(edgeBase, 0.28),
       zIndex: true,
       minCameraRatio: 0.05,
