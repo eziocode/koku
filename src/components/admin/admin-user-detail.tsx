@@ -24,6 +24,7 @@ import {
 } from "@/lib/admin-data";
 import { kokuDb } from "@/lib/storage/db";
 import { syncNow } from "@/lib/sync/sync-engine";
+import { exportToCSV, exportToXLSX } from "@/lib/export";
 
 type DetailResponse = {
   user: AdminUser;
@@ -40,6 +41,11 @@ function dayShift(day: string, amount: number) {
   const date = new Date(day + "T12:00:00");
   date.setDate(date.getDate() + amount);
   return date.toISOString().slice(0, 10);
+}
+
+function localToday() {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 async function localEntriesForDay(date: string): Promise<AdminRow[]> {
@@ -89,7 +95,7 @@ async function localFirstActivity(): Promise<string | null> {
 
 export function AdminUserDetail({ userId }: { userId: string }) {
   const router = useRouter();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localToday();
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -121,6 +127,7 @@ export function AdminUserDetail({ userId }: { userId: string }) {
   const [syncing, setSyncing] = useState(false);
   const [noDataConfirmed, setNoDataConfirmed] = useState(false);
   const [earliestDataDate, setEarliestDataDate] = useState<string | null>(null);
+  const reportWindow = useRef<Window | null>(null);
 
   const cache = useRef(new Map<string, CacheValue>());
   const requestVersion = useRef(0);
@@ -134,6 +141,11 @@ export function AdminUserDetail({ userId }: { userId: string }) {
     const loadingMore = Boolean(cursor);
     if (loadingMore) setReportLoadingMore(true); else setReportLoading(true);
     try {
+      if (!cursor && typeof window !== "undefined") {
+        reportWindow.current = window.open("", "koku-full-report");
+        reportWindow.current?.document.write("<title>Loading Koku report…</title><main style='font:16px system-ui;padding:32px'>Loading report…</main>");
+        reportWindow.current?.document.close();
+      }
       let value: ReportResponse;
       if (isOwnProfile) {
         const all = await localReportRows(rangeStart, rangeEnd);
@@ -147,6 +159,16 @@ export function AdminUserDetail({ userId }: { userId: string }) {
       setReportRows((old) => cursor ? [...old, ...value.rows] : value.rows);
       setReportCursor(value.nextCursor);
       setReportOpen(true);
+      if (!cursor && reportWindow.current) {
+        const daySet = new Map<string, AdminRow[]>();
+        value.rows.forEach((row) => { const key = String(row.startAt ?? row.updatedAt ?? row.createdAt ?? "").slice(0, 10); daySet.set(key, [...(daySet.get(key) ?? []), row]); });
+        const missing = daysBetween(rangeStart, rangeEnd).filter((day) => !daySet.has(day));
+        const missingText = missing.length ? `<section><h2>No records</h2><p>${missing.join(", ")}</p></section>` : "";
+        const cards = [...daySet.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([day, dayRows]) => `<section><h2>${new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { dateStyle: "full" })}</h2>${dayRows.map((row) => `<article><strong>${String(row.title ?? (row.table === "notes" ? "Untitled note" : "Untitled work"))}</strong><p>${row.table === "notes" ? tiptapToPlainText(row.content).trim() || "No text" : `${formatDuration(row.durationSec)} · ${String(row.projectId ?? "Unassigned")}`}</p></article>`).join("")}</section>`).join("");
+        reportWindow.current.document.open();
+        reportWindow.current.document.write(`<title>Koku report · ${rangeStart} to ${rangeEnd}</title><style>body{font:14px system-ui;max-width:980px;margin:0 auto;padding:32px;color:#20201e;background:#faf9f6}h1{font-size:30px}h2{border-bottom:1px solid #ddd6ce;padding-bottom:8px;margin-top:28px}article{background:white;border:1px solid #e5e0da;border-radius:10px;padding:12px;margin:8px 0}p{color:#6a665f;white-space:pre-wrap}</style><h1>Full activity report</h1><p>${rangeStart} → ${rangeEnd}</p>${missingText}${cards}`);
+        reportWindow.current.document.close();
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to load report");
     } finally {
@@ -417,11 +439,11 @@ export function AdminUserDetail({ userId }: { userId: string }) {
       {/* Explicit date range */}
       <div className="flex flex-wrap items-center gap-2">
         <label className="text-sm text-muted-foreground" htmlFor="report-start">From</label>
-        <Input id="report-start" aria-label="Report start date" type="date" value={rangeStart}
-          onChange={(e) => setRangeStart(e.target.value)} className="w-40" />
+        <Input id="report-start" aria-label="Report start date" type="date" max={today} value={rangeStart}
+          onChange={(e) => setRangeStart(e.target.value > today ? today : e.target.value)} className="w-40" />
         <label className="text-sm text-muted-foreground" htmlFor="report-end">To</label>
-        <Input id="report-end" aria-label="Report end date" type="date" value={rangeEnd}
-          onChange={(e) => setRangeEnd(e.target.value)} className="w-40" />
+        <Input id="report-end" aria-label="Report end date" type="date" max={today} value={rangeEnd}
+          onChange={(e) => setRangeEnd(e.target.value > today ? today : e.target.value)} className="w-40" />
         <Button onClick={() => void loadReport()} disabled={reportLoading || rangeStart > rangeEnd}>
           {reportLoading ? "Loading report…" : "View full report"}
         </Button>
@@ -435,6 +457,8 @@ export function AdminUserDetail({ userId }: { userId: string }) {
           hasMore={!!reportCursor}
           loadingMore={reportLoadingMore}
           onMore={() => void loadReport(reportCursor)}
+          onExportCSV={() => void exportAdminReport(reportRows, "csv")}
+          onExportXLSX={() => void exportAdminReport(reportRows, "xlsx")}
           onClose={() => setReportOpen(false)}
         />
       )}
@@ -446,8 +470,8 @@ export function AdminUserDetail({ userId }: { userId: string }) {
           title={olderDayDisabled ? "No older data available" : undefined}>
           Older day
         </Button>
-        <Input aria-label="Selected day" type="date" value={selectedDay}
-          onChange={(e) => setSelectedDay(e.target.value)} className="w-40" />
+        <Input aria-label="Selected day" type="date" max={today} value={selectedDay}
+          onChange={(e) => setSelectedDay(e.target.value > today ? today : e.target.value)} className="w-40" />
         <Button variant="outline" size="sm" disabled={selectedDay >= today}
           onClick={() => setSelectedDay(dayShift(selectedDay, 1))}>
           Newer day
@@ -564,6 +588,21 @@ export function AdminUserDetail({ userId }: { userId: string }) {
   );
 }
 
+async function exportAdminReport(rows: AdminRow[], format: "csv" | "xlsx") {
+  const clean = rows.map((row) => ({
+    Date: new Date(String(row.startAt ?? row.updatedAt ?? row.createdAt)).toLocaleDateString(),
+    Time: new Date(String(row.startAt ?? row.updatedAt ?? row.createdAt)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    Type: row.table === "notes" ? "Note" : "Time log",
+    Title: String(row.title ?? (row.table === "notes" ? "Untitled note" : "Untitled work")),
+    Project: String(row.projectId ?? "Unassigned"),
+    Duration: row.table === "notes" ? "" : formatDuration(row.durationSec),
+    Tags: Array.isArray(row.tags) ? row.tags.map(String).join(", ") : "",
+    Content: row.table === "notes" ? tiptapToPlainText(row.content).trim() : String(row.notes ?? ""),
+  }));
+  if (format === "csv") await exportToCSV(clean, "koku-admin-report.csv");
+  else await exportToXLSX(clean.map((row) => ({ title: row.Title, startAt: `${row.Date} ${row.Time}`, endAt: null, durationSec: null, projectName: row.Project, categoryName: row.Type, tags: row.Tags ? row.Tags.split(", ") : [], notes: row.Content, createdAt: `${row.Date} ${row.Time}` })), "koku-admin-report.xlsx");
+}
+
 function FullRangeReport({
   days,
   rows,
@@ -571,6 +610,8 @@ function FullRangeReport({
   hasMore,
   loadingMore,
   onMore,
+  onExportCSV,
+  onExportXLSX,
   onClose,
 }: {
   days: string[];
@@ -579,6 +620,8 @@ function FullRangeReport({
   hasMore: boolean;
   loadingMore: boolean;
   onMore: () => void;
+  onExportCSV: () => void;
+  onExportXLSX: () => void;
   onClose: () => void;
 }) {
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -600,12 +643,20 @@ function FullRangeReport({
     <Card>
       <CardHeader className="flex-row items-center justify-between space-y-0">
         <CardTitle>Full report by date</CardTitle>
-        <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={onExportCSV}>CSV</Button>
+          <Button variant="outline" size="sm" onClick={onExportXLSX}>XLSX</Button>
+          <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
+        </div>
       </CardHeader>
       <CardContent>
         {loading ? <Skeleton className="h-20 rounded-lg" /> : (
           <div className="max-h-[70vh] space-y-5 overflow-y-auto pr-2">
-            {days.map((day) => {
+            {(() => {
+              const missing = days.filter((day) => !byDay.has(day));
+              return missing.length ? <section className="rounded-lg border border-dashed p-3"><h3 className="text-sm font-semibold">No records on {missing.length} date{missing.length === 1 ? "" : "s"}</h3><p className="mt-1 text-xs text-muted-foreground">{missing.join(", ")}</p></section> : null;
+            })()}
+            {days.filter((day) => byDay.has(day)).map((day) => {
               const dayRows = byDay.get(day) ?? [];
               return (
                 <section key={day} className="space-y-2">
@@ -615,7 +666,7 @@ function FullRangeReport({
                       <p className="font-medium">{String(row.title ?? (row.table === "notes" ? "Untitled note" : "Untitled work"))}</p>
                       {row.table === "notes" ? <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">{tiptapToPlainText(row.content).trim() || "No text"}</p> : <p className="mt-1 text-xs text-muted-foreground">{formatDuration(row.durationSec)}</p>}
                     </div>
-                  )) : <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">No content for this day.</p>}
+                  )) : null}
                 </section>
               );
             })}

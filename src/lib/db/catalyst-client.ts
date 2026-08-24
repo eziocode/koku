@@ -1,3 +1,13 @@
+// Catalyst SDK 3.4 still reads deprecated `util.isArray` on Node 24+.
+// Replace property before SDK loads; behavior stays identical, warning gone.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const nodeUtil = require("node:util") as typeof import("node:util");
+Object.defineProperty(nodeUtil, "isArray", {
+  configurable: true,
+  writable: true,
+  value: Array.isArray,
+});
+
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const catalyst = require("zcatalyst-sdk-node");
 

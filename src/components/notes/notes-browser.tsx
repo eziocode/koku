@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, Trash2 } from "lucide-react";
+import { CalendarDays, Grid2X2, List, Search, Trash2 } from "lucide-react";
 import { useRef, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -24,7 +24,8 @@ export function NotesBrowser() {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [activeTag, setActiveTag] = useState<string>("all");
-  const { notes, createNote, deleteNote } = useNotes(search);
+  const [view, setView] = useState<"grid" | "list">("grid");
+  const { notes, createNote, deleteNote } = useNotes();
   const tags = useMemo(() => Array.from(new Set(notes.flatMap((note) => note.tags))).sort(), [notes]);
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -35,10 +36,14 @@ export function NotesBrowser() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const filteredNotes = useMemo(
-    () => notes.filter((note) => activeTag === "all" || note.tags.includes(activeTag)),
-    [activeTag, notes],
-  );
+  const filteredNotes = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return notes.filter((note) => {
+      const matchesTag = activeTag === "all" || note.tags.includes(activeTag);
+      const matchesSearch = !query || `${note.title} ${note.tags.join(" ")}`.toLowerCase().includes(query);
+      return matchesTag && matchesSearch;
+    });
+  }, [activeTag, notes, search]);
 
   const notesByDate = useMemo(() => {
     const groups = new Map<string, typeof filteredNotes>();
@@ -153,26 +158,29 @@ export function NotesBrowser() {
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search notes by title or tag" className="pl-9" />
           </div>
-          <Button onClick={openCreateDialog}>Create new note</Button>
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-lg border p-1" aria-label="Note view">
+              <Button variant={view === "grid" ? "secondary" : "ghost"} size="icon" aria-label="Grid view" onClick={() => setView("grid")}><Grid2X2 /></Button>
+              <Button variant={view === "list" ? "secondary" : "ghost"} size="icon" aria-label="List view" onClick={() => setView("list")}><List /></Button>
+            </div>
+            <Button onClick={openCreateDialog}>Create new note</Button>
+          </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Button variant={activeTag === "all" ? "default" : "outline"} size="sm" onClick={() => setActiveTag("all")}>All</Button>
-          {tags.map((tag) => (
-            <Button key={tag} variant={activeTag === tag ? "default" : "outline"} size="sm" onClick={() => setActiveTag(tag)}>
-              {tag}
-            </Button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-muted/20 p-3">
+          <span className="mr-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground"><CalendarDays className="h-4 w-4" />Browse by tag</span>
+          <Button variant={activeTag === "all" ? "default" : "outline"} size="sm" onClick={() => setActiveTag("all")}>All notes <span className="opacity-70">{notes.length}</span></Button>
+          {tags.map((tag) => <Button key={tag} variant={activeTag === tag ? "default" : "outline"} size="sm" onClick={() => setActiveTag(tag)}>{tag} <span className="opacity-70">{notes.filter((note) => note.tags.includes(tag)).length}</span></Button>)}
         </div>
 
         {notesByDate.length ? notesByDate.map(([day, dayNotes]) => (
           <section key={day} className="space-y-3">
             <h2 className="text-sm font-semibold text-muted-foreground">{new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { dateStyle: "full" })}</h2>
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className={view === "grid" ? "grid gap-4 md:grid-cols-2 xl:grid-cols-3" : "space-y-2"}>
               {dayNotes.map((note) => (
                 <div key={note.id} className="group relative">
                   <button type="button" className="w-full text-left" onClick={() => router.push(`/notes?id=${note.id}`)}>
-                    <Card className="h-full transition-transform hover:-translate-y-1 hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5">
+                    <Card className={view === "grid" ? "h-full transition-transform hover:-translate-y-1 hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5" : "transition-colors hover:border-primary/20 hover:bg-muted/20"}>
                       <CardHeader>
                         <CardTitle>{note.title}</CardTitle>
                         <CardDescription>Updated {new Date(note.updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</CardDescription>

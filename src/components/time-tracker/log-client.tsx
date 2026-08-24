@@ -31,7 +31,9 @@ function getValidDateParam(value: string | null, fallback: Date) {
   }
 
   const parsed = parseISO(`${value}T00:00:00`);
-  return isValid(parsed) ? value : format(fallback, "yyyy-MM-dd");
+  if (!isValid(parsed)) return format(fallback, "yyyy-MM-dd");
+  const today = startOfDay(new Date());
+  return parsed > today ? format(today, "yyyy-MM-dd") : value;
 }
 
 function getManualEntryDefaults(selectedDate: Date) {

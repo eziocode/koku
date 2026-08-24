@@ -59,6 +59,8 @@ export function DatePicker({
           mode="single"
           selected={selected}
           onSelect={handleSelect}
+          disabled={{ after: new Date() }}
+          toDate={new Date()}
           initialFocus
           defaultMonth={selected}
         />
