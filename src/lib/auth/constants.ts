@@ -1,1 +1,1 @@
-export const ADMIN_EMAIL = "aswin.kg@zohocorp.com";
+export const OWNER_KEY = "admin_owner";

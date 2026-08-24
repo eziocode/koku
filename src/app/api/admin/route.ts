@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 
-import { ADMIN_EMAIL } from "@/lib/auth/constants";
 import { initCatalyst, upsertRow, zcqlEscape, zcqlQuery } from "@/lib/db/catalyst-client";
 import { TABLE_CONFIG } from "@/lib/sync/table-config";
-import { deleteAdminGroup, getAdminGroups, getAdminKeys, saveAdminGroup, setAdmin, type AdminGroup } from "@/lib/auth/user-registry";
+import { deleteAdminGroup, getAdminGroups, getAdminKeys, isOwnerUser, saveAdminGroup, setAdmin, type AdminGroup } from "@/lib/auth/user-registry";
 import { calculateAdminStats, extractCatalystRowId, type AdminPresence } from "@/lib/admin-data";
 
 export const runtime = "nodejs";
@@ -11,7 +10,7 @@ export const runtime = "nodejs";
 async function requireAdmin(request: Request) {
   const app = initCatalyst(request);
   const user = await app.userManagement().getCurrentUser();
-  const isOwner = user.email_id?.toLowerCase() === ADMIN_EMAIL;
+  const isOwner = await isOwnerUser(app, user.user_id);
   if (isOwner) return { app, user, isOwner };
 
   const isDelegatedAdmin = (await getAdminKeys(app)).includes(`admin_user:${user.user_id}`);
@@ -80,7 +79,7 @@ export async function GET(request: Request) {
       stats[user.id] = calculateAdminStats(userRows);
     }
     const groups = auth.isOwner ? await getAdminGroups(auth.app) : [];
-    return NextResponse.json({ data, users, admins, groups, stats, presence, canManageAdmins: auth.isOwner });
+    return NextResponse.json({ data, users, admins, groups, stats, presence, ownerUserId: auth.user.user_id, canManageAdmins: auth.isOwner });
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
