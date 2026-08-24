@@ -13,6 +13,7 @@ import { toast } from "@/components/ui/toast";
 import {
   formatDate,
   formatDuration,
+  dashboardForRange,
   getPresenceStatus,
   tiptapToPlainText,
   type AdminPresence,
@@ -32,7 +33,7 @@ type DetailResponse = {
   dashboard: DashboardData;
   presence?: AdminPresence;
 };
-type CacheValue = { rows: AdminRow[]; nextCursor: string | null };
+type CacheValue = { rows: AdminRow[]; nextCursor: string | null; dashboard?: DashboardData };
 
 function dayShift(day: string, amount: number) {
   const date = new Date(day + "T12:00:00");
@@ -147,7 +148,7 @@ export function AdminUserDetail({ userId }: { userId: string }) {
       if (!response.ok) throw new Error("Unable to load user detail");
 
       const value = (await response.json()) as DetailResponse;
-      const result = { rows: value.rows, nextCursor: value.nextCursor };
+      const result = { rows: value.rows, nextCursor: value.nextCursor, dashboard: value.dashboard };
       cache.current.set(key, result);
 
       if (updateMeta) {
@@ -165,6 +166,23 @@ export function AdminUserDetail({ userId }: { userId: string }) {
     [rangeEnd, start, userId],
   );
 
+  const localDashboardForSelectedDay = useCallback(async () => {
+    const [entries, dayNotes, projects] = await Promise.all([
+      localEntriesForDay(selectedDay),
+      localNotesForDay(selectedDay),
+      kokuDb.projects.toArray(),
+    ]);
+    return dashboardForRange(
+      [
+        ...entries,
+        ...dayNotes,
+        ...projects.map((project) => ({ ...project, table: "projects" } as AdminRow)),
+      ],
+      `${selectedDay}T00:00:00`,
+      `${selectedDay}T23:59:59.999`,
+    );
+  }, [selectedDay]);
+
   const load = useCallback(
     async (force = false) => {
       const version = ++requestVersion.current;
@@ -175,6 +193,7 @@ export function AdminUserDetail({ userId }: { userId: string }) {
       setLogCursor(null);
       setNotes([]);
       setNoteCursor(null);
+      setDashboard(null);
 
       try {
         const statsPromise = fetchTable("timeEntries", null, force, start, rangeEnd, true);
@@ -205,6 +224,11 @@ export function AdminUserDetail({ userId }: { userId: string }) {
         }
         setDayLoading(false);
         await statsPromise;
+        const selectedDashboard = isOwnProfile
+          ? await localDashboardForSelectedDay()
+          : (await fetchTable("timeEntries", null, force, selectedDay, selectedDay)).dashboard;
+        if (version !== requestVersion.current) return;
+        setDashboard(selectedDashboard ?? null);
       } catch (error) {
         if (version === requestVersion.current) {
           toast.error(
@@ -218,7 +242,7 @@ export function AdminUserDetail({ userId }: { userId: string }) {
         }
       }
     },
-    [fetchTable, isOwnProfile, rangeEnd, selectedDay, start],
+    [fetchTable, isOwnProfile, localDashboardForSelectedDay, rangeEnd, selectedDay, start],
   );
 
   useEffect(() => {
