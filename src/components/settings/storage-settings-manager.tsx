@@ -105,8 +105,8 @@ export function StorageSettingsManager() {
       } else {
         toast.success(`Sync complete — pushed ${result.pushed}, pulled ${result.pulled} rows.`);
       }
-    } catch {
-      toast.error("Sync failed.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Sync failed.");
     } finally {
       setSyncing(false);
     }

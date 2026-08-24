@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { initCatalyst, zcqlQuery, zcqlEscape, upsertRow } from "@/lib/db/catalyst-client";
-import { TABLE_CONFIG, type TableKey } from "@/lib/sync/table-config";
+import { TABLE_CONFIG, type TableKey, validateSyncRow } from "@/lib/sync/table-config";
 
 export const runtime = "nodejs";
 
@@ -167,22 +167,47 @@ export async function POST(
   const { table } = await context.params;
   if (!(table in TABLE_CONFIG)) return NextResponse.json({ error: "Unknown table" }, { status: 400 });
 
-  const config = TABLE_CONFIG[table as TableKey];
-  const body = (await request.json()) as { rows?: unknown[] };
+  const tableKey = table as TableKey;
+  const config = TABLE_CONFIG[tableKey];
+  let body: { rows?: unknown[] };
+  try {
+    body = (await request.json()) as { rows?: unknown[] };
+  } catch {
+    return NextResponse.json({ error: "Request body must be valid JSON." }, { status: 400 });
+  }
   const rows = body.rows;
   if (!Array.isArray(rows) || rows.length === 0) return NextResponse.json({ synced: 0 });
 
-  let synced = 0;
+  const syncedIds: string[] = [];
+  const errors: { rowId: string | null; error: string }[] = [];
   for (const row of rows) {
-    const r = row as Record<string, unknown>;
-    const id = String(r.id ?? r.key ?? "");
-    if (!id) continue;
-    const fields = config.toFields(r);
-    await upsertRow(auth.app, config.table, auth.userId, id, fields);
-    synced += 1;
+    const validation = validateSyncRow(tableKey, row);
+    if (!validation.ok) {
+      errors.push({ rowId: null, error: validation.error });
+      continue;
+    }
+
+    try {
+      const fields = config.toFields(validation.row);
+      await upsertRow(auth.app, config.table, auth.userId, validation.id, fields);
+      syncedIds.push(validation.id);
+    } catch (error) {
+      console.error("Sync upsert failed", {
+        table: tableKey,
+        rowId: validation.id,
+        error,
+      });
+      errors.push({
+        rowId: validation.id,
+        error: `Unable to push ${tableKey} row ${validation.id}.`,
+      });
+    }
   }
 
-  return NextResponse.json({ synced });
+  const payload = { synced: syncedIds.length, syncedIds, errors };
+  return NextResponse.json(payload, {
+    status: errors.length === 0 ? 200 : syncedIds.length > 0 ? 207 : 502,
+  });
 }
 
 // DELETE /api/sync/[table]?id=xxx — remove row
@@ -201,17 +226,24 @@ export async function DELETE(
   const id = url.searchParams.get("id");
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
-  // Get ROWID first then delete
-  const existing = await zcqlQuery(
-    auth.app,
-    `SELECT ROWID FROM ${config.table} WHERE id = '${zcqlEscape(id)}' AND user_id = '${zcqlEscape(auth.userId)}'`,
-  );
+  try {
+    const existing = await zcqlQuery(
+      auth.app,
+      `SELECT ROWID FROM ${config.table} WHERE id = '${zcqlEscape(id)}' AND user_id = '${zcqlEscape(auth.userId)}'`,
+    );
 
-  if (existing.length > 0) {
-    const raw = existing[0] as Record<string, unknown>;
-    const nested = raw[config.table] as Record<string, unknown> | undefined;
-    const rowId = (nested?.ROWID ?? raw.ROWID) as string | number;
-    await auth.app.datastore().table(config.table).deleteRow(rowId);
+    if (existing.length > 0) {
+      const raw = existing[0] as Record<string, unknown>;
+      const nested = raw[config.table] as Record<string, unknown> | undefined;
+      const rowId = (nested?.ROWID ?? raw.ROWID) as string | number;
+      await auth.app.datastore().table(config.table).deleteRow(rowId);
+    }
+  } catch (error) {
+    console.error("Sync delete failed", { table, rowId: id, error });
+    return NextResponse.json(
+      { error: `Unable to delete ${table} row ${id}.` },
+      { status: 502 },
+    );
   }
 
   return NextResponse.json({ deleted: true });
