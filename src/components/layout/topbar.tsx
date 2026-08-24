@@ -2,6 +2,7 @@
 
 import { Menu, MoonStar, Settings, SunMedium, UserCircle2 } from "lucide-react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
 
 import { DndPill } from "@/components/notifications/dnd-pill";
@@ -22,6 +23,16 @@ interface TopbarProps {
 
 export function Topbar({ onOpenSidebar }: TopbarProps) {
   const { setTheme, resolvedTheme } = useTheme();
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((body: { user?: { email?: string } | null }) => {
+        setUserEmail(body.user?.email ?? null);
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border/70 bg-background/75 px-4 backdrop-blur-xl sm:px-6">
@@ -34,6 +45,11 @@ export function Topbar({ onOpenSidebar }: TopbarProps) {
       </div>
       {/* Renders nothing unless do-not-disturb is on. */}
       <DndPill />
+      {userEmail ? (
+        <span className="hidden max-w-[180px] truncate text-xs text-muted-foreground sm:block">
+          {userEmail}
+        </span>
+      ) : null}
       <ManualSync />
       <TooltipProvider>
         <Tooltip>
