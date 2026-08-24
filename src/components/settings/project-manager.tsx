@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/toast";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
+import { getUnusedItemColor } from "@/lib/storage/item-colors";
 
 interface ProjectRecord {
   id: string;
@@ -28,14 +29,16 @@ interface CategoryRecord {
 
 function ProjectEditor({
   project,
+  suggestedColor,
   onSaved,
 }: {
   project?: ProjectRecord;
+  suggestedColor: string;
   onSaved: () => void;
 }) {
   const { createProject, updateProject } = useProjects();
   const [name, setName] = useState(project?.name || "");
-  const [color, setColor] = useState(project?.color || "#c0392b");
+  const [color, setColor] = useState(project?.color ?? suggestedColor);
   const [hourlyRate, setHourlyRate] = useState(project?.hourlyRate?.toString() || "");
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -86,14 +89,16 @@ function ProjectEditor({
 
 function CategoryEditor({
   category,
+  suggestedColor,
   onSaved,
 }: {
   category?: CategoryRecord;
+  suggestedColor: string;
   onSaved: () => void;
 }) {
   const { createCategory, updateCategory } = useCategories();
   const [name, setName] = useState(category?.name || "");
-  const [color, setColor] = useState(category?.color || "#e74c3c");
+  const [color, setColor] = useState(category?.color ?? suggestedColor);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -179,7 +184,7 @@ export function ProjectManager() {
                   <DialogTitle>{editingProject ? "Edit project" : "Create project"}</DialogTitle>
                   <DialogDescription>Capture billing details and color coding for your work.</DialogDescription>
                 </DialogHeader>
-                <ProjectEditor project={editingProject || undefined} onSaved={() => setProjectDialogOpen(false)} />
+                <ProjectEditor key={`${projectDialogOpen}-${editingProject?.id ?? "new"}`} project={editingProject || undefined} suggestedColor={getUnusedItemColor(projects, categories)} onSaved={() => setProjectDialogOpen(false)} />
               </DialogContent>
             </Dialog>
           </div>
@@ -230,7 +235,7 @@ export function ProjectManager() {
                   <DialogTitle>{editingCategory ? "Edit category" : "Create category"}</DialogTitle>
                   <DialogDescription>Use categories to group similar kinds of work.</DialogDescription>
                 </DialogHeader>
-                <CategoryEditor category={editingCategory || undefined} onSaved={() => setCategoryDialogOpen(false)} />
+                <CategoryEditor key={`${categoryDialogOpen}-${editingCategory?.id ?? "new"}`} category={editingCategory || undefined} suggestedColor={getUnusedItemColor(projects, categories)} onSaved={() => setCategoryDialogOpen(false)} />
               </DialogContent>
             </Dialog>
           </div>

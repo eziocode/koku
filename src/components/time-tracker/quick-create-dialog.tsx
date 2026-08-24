@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/toast";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
+import { getUnusedItemColor } from "@/lib/storage/item-colors";
 
 /* ─── Project ──────────────────────────────────────────────────────────────── */
 
@@ -29,11 +30,20 @@ export function QuickCreateProjectDialog({
   onOpenChange,
   onCreated,
 }: QuickCreateProjectDialogProps) {
-  const { createProject } = useProjects();
+  const { projects, createProject } = useProjects();
+  const { categories } = useCategories();
   const [name, setName] = useState("");
-  const [color, setColor] = useState("#c0392b");
+  const [color, setColor] = useState(() => getUnusedItemColor(projects, categories));
   const [hourlyRate, setHourlyRate] = useState("");
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    // Reset suggestion whenever dialog opens; saved records may have changed while closed.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (open) setColor(getUnusedItemColor(projects, categories));
+    // Open transition is intentional; latest arrays are captured on each reopen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -48,7 +58,6 @@ export function QuickCreateProjectDialog({
       onCreated(project.id);
       onOpenChange(false);
       setName("");
-      setColor("#c0392b");
       setHourlyRate("");
     } catch {
       toast.error("Unable to create project.");
@@ -121,10 +130,19 @@ export function QuickCreateCategoryDialog({
   onOpenChange,
   onCreated,
 }: QuickCreateCategoryDialogProps) {
-  const { createCategory } = useCategories();
+  const { projects } = useProjects();
+  const { categories, createCategory } = useCategories();
   const [name, setName] = useState("");
-  const [color, setColor] = useState("#e74c3c");
+  const [color, setColor] = useState(() => getUnusedItemColor(projects, categories));
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    // Reset suggestion whenever dialog opens; saved records may have changed while closed.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (open) setColor(getUnusedItemColor(projects, categories));
+    // Open transition is intentional; latest arrays are captured on each reopen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -135,7 +153,6 @@ export function QuickCreateCategoryDialog({
       onCreated(category.id);
       onOpenChange(false);
       setName("");
-      setColor("#e74c3c");
     } catch {
       toast.error("Unable to create category.");
     } finally {
