@@ -6,6 +6,7 @@ import { ReactNode } from "react";
 import { AppearanceProvider } from "@/components/providers/appearance-provider";
 import { CloudSyncBootstrap } from "@/components/providers/cloud-sync-bootstrap";
 import { NotificationProvider } from "@/components/providers/notification-provider";
+import { PresenceHeartbeat } from "@/components/providers/presence-heartbeat";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { Toaster } from "@/components/ui/toaster";
@@ -26,6 +27,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
     >
       <QueryProvider>
         <CloudSyncBootstrap />
+        <PresenceHeartbeat />
         <AppearanceProvider>
           <NotificationProvider>
             {children}

@@ -4,7 +4,7 @@ import { ADMIN_EMAIL } from "@/lib/auth/constants";
 import { initCatalyst, upsertRow, zcqlEscape, zcqlQuery } from "@/lib/db/catalyst-client";
 import { TABLE_CONFIG } from "@/lib/sync/table-config";
 import { getAdminKeys, setAdmin } from "@/lib/auth/user-registry";
-import { calculateAdminStats, extractCatalystRowId } from "@/lib/admin-data";
+import { calculateAdminStats, extractCatalystRowId, type AdminPresence } from "@/lib/admin-data";
 
 export const runtime = "nodejs";
 
@@ -29,7 +29,8 @@ export async function GET(request: Request) {
     if (!auth) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const requested = new URL(request.url).searchParams.get("table");
-    const tables = requested ? [requested] : Object.keys(TABLE_CONFIG);
+    const tables = requested ? [requested] : Object.keys(TABLE_CONFIG).filter((table) => table !== "settings");
+    if (tables.includes("settings")) return NextResponse.json({ error: "Settings are internal" }, { status: 400 });
     const data: Record<string, unknown[]> = {};
 
     for (const table of tables) {
@@ -57,12 +58,24 @@ export async function GET(request: Request) {
     const delegatedAdminIds = (await getAdminKeys(auth.app)).map((key) => key.slice("admin_user:".length));
     const adminIds = new Set([auth.user.user_id, ...delegatedAdminIds]);
     const admins = users.filter((user) => adminIds.has(user.id));
+    const presence: Record<string, AdminPresence> = {};
+    try {
+      const settings = await zcqlQuery(auth.app, `SELECT * FROM ${TABLE_CONFIG.settings.table}`);
+      for (const raw of settings) {
+        const nested = (raw[TABLE_CONFIG.settings.table] ?? raw) as Record<string, unknown>;
+        if (nested.setting_key !== "adminPresence" || typeof nested.setting_value !== "string" || !nested.user_id) continue;
+        try {
+          const value = JSON.parse(nested.setting_value) as AdminPresence;
+          if (typeof value.seenAt === "string" && typeof value.visible === "boolean" && typeof value.focused === "boolean") presence[String(nested.user_id)] = value;
+        } catch { /* corrupt operational metadata is ignored */ }
+      }
+    } catch { /* presence is optional operational metadata */ }
     const stats: Record<string, ReturnType<typeof calculateAdminStats>> = {};
     for (const user of users) {
       const userRows = Object.entries(data).flatMap(([table, rows]) => rows.filter((row) => String((row as Record<string, unknown>).userId) === user.id).map((row) => ({ ...(row as Record<string, unknown>), table })));
       stats[user.id] = calculateAdminStats(userRows);
     }
-    return NextResponse.json({ data, users, admins, stats, canManageAdmins: auth.isOwner });
+    return NextResponse.json({ data, users, admins, stats, presence, canManageAdmins: auth.isOwner });
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
