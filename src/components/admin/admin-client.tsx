@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
-import { dashboardForRange, formatDate, formatDuration, getPresenceStatus, groupRowsByUser, plainTextToTiptap, tiptapToPlainText, type AdminPresence, type AdminRow, type AdminStats, type AdminUser } from "@/lib/admin-data";
+import { dashboardForRange, formatDate, formatDuration, getPresenceStatus, groupRowsByUser, plainTextToTiptap, tiptapToPlainText, type AdminGroup, type AdminPresence, type AdminRow, type AdminStats, type AdminUser } from "@/lib/admin-data";
 
 const TABLES = ["timeEntries", "projects", "categories", "notes", "noteLinks"] as const;
 type Table = (typeof TABLES)[number];
@@ -29,6 +29,7 @@ export function AdminClient() {
   const [table, setTable] = useState<Table>("timeEntries");
   const [data, setData] = useState<Record<string, AdminRow[]>>({});
   const [users, setUsers] = useState<AdminUser[]>([]); const [admins, setAdmins] = useState<AdminUser[]>([]);
+  const [groups, setGroups] = useState<AdminGroup[]>([]);
   const [canManageAdmins, setCanManageAdmins] = useState(false); const [selectedUser, setSelectedUser] = useState<string | null>(null);
   const [stats, setStats] = useState<Record<string, AdminStats>>({});
   const [presence, setPresence] = useState<Record<string, AdminPresence>>({}); const [mode, setMode] = useState<"analytics" | "edit">("analytics");
@@ -37,20 +38,23 @@ export function AdminClient() {
 
   useEffect(() => { fetch("/api/auth/me").then(async (response) => { const body = await response.json() as { user?: { isAdmin?: boolean } | null }; setAccess(body.user?.isAdmin ? "allowed" : "denied"); }).catch(() => setAccess("denied")); }, []);
   async function load() {
-    setLoading(true); const response = await fetch("/api/admin");
+    setLoading(true); const response = await fetch("/api/admin", { cache: "no-store" });
     if (response.status === 403) setAccess("denied");
-    if (response.ok) { const body = await response.json() as { data: Record<string, AdminRow[]>; users?: AdminUser[]; admins?: AdminUser[]; stats?: Record<string, AdminStats>; presence?: Record<string, AdminPresence>; canManageAdmins?: boolean }; setData(body.data); setUsers(body.users ?? []); setAdmins(body.admins ?? []); setStats(body.stats ?? {}); setPresence(body.presence ?? {}); setCanManageAdmins(body.canManageAdmins === true); }
+    if (response.ok) { const body = await response.json() as { data: Record<string, AdminRow[]>; users?: AdminUser[]; admins?: AdminUser[]; groups?: AdminGroup[]; stats?: Record<string, AdminStats>; presence?: Record<string, AdminPresence>; canManageAdmins?: boolean }; setData(body.data); setUsers(body.users ?? []); setAdmins(body.admins ?? []); setGroups(body.groups ?? []); setStats(body.stats ?? {}); setPresence(body.presence ?? {}); setCanManageAdmins(body.canManageAdmins === true); }
     setLoading(false);
   }
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { if (access === "allowed") void load(); }, [access]);
 
   const rows = useMemo(() => data[table] ?? [], [data, table]);
-  const userGroups = useMemo(() => groupRowsByUser(Object.values(data).flat(), users), [data, users]);
-  const selected = users.find((user) => user.id === selectedUser) ?? userGroups.find((group) => group.user.id === selectedUser)?.user ?? { id: "", email: "", displayName: "" };
+  const userGroups = useMemo(() => groupRowsByUser(Object.values(data).flat(), users).map((group) => ({
+    ...group,
+    user: { ...group.user, displayName: `${group.user.displayName || "Unnamed user"} (${group.user.id})` },
+  })), [data, users]);
+  const selected = userGroups.find((group) => group.user.id === selectedUser)?.user ?? users.find((user) => user.id === selectedUser) ?? { id: "", email: "", displayName: "" };
   const visibleRows = useMemo(() => rows.filter((row) => String(row.userId) === selectedUser && (!search.trim() || JSON.stringify(row).toLowerCase().includes(search.toLowerCase()))), [rows, selectedUser, search]);
   const userSearch = search.trim().toLowerCase();
-  const visibleUsers = userGroups.filter(({ user }) => !userSearch || `${user.displayName} ${user.email}`.toLowerCase().includes(userSearch));
+  const visibleUsers = userGroups.filter(({ user }) => !userSearch || `${user.displayName} ${user.email} ${user.id}`.toLowerCase().includes(userSearch));
   const availableAdmins = users.filter((user) => !admins.some((admin) => admin.id === user.id));
 
   async function save(row: AdminRow) {
@@ -67,17 +71,48 @@ export function AdminClient() {
     setData((current) => ({ ...current, [table]: (current[table] ?? []).filter((item) => rowKey(item) !== rowKey(row) || String(item.userId) !== String(row.userId)) }));
     setDrafts((current) => { const next = { ...current }; delete next[`${table}:${rowKey(row)}`]; return next; }); toast.success("Record deleted.");
   }
-  async function changeAdmin(action: "add" | "remove", userId: string) { const response = await fetch("/api/admin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, userId }) }); if (response.ok) { toast.success(action === "add" ? "Admin added." : "Admin removed."); setNewAdminId(""); void load(); } else toast.error(await errorMessage(response, "Admin change failed.")); }
+  async function changeAdmin(action: "add" | "remove", userId: string) { const response = await fetch("/api/admin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, userId }) }); if (response.ok) { toast.success(action === "add" ? "Admin added." : "Admin removed."); if (action === "remove") setAdmins((current) => current.filter((admin) => admin.id !== userId)); setNewAdminId(""); await load(); } else toast.error(await errorMessage(response, "Admin change failed.")); }
 
   if (access === "checking") return <p className="text-sm text-muted-foreground">Checking admin access…</p>;
   if (access === "denied") return <Card><CardHeader><CardTitle>Admin access required</CardTitle><CardDescription>This panel is available only to admin users.</CardDescription></CardHeader></Card>;
   return <div className="space-y-8">
     <div><p className="text-sm uppercase tracking-[0.3em] text-primary">Administration</p><h1 className="mt-2 text-3xl font-semibold tracking-tight">Workspace control center</h1><p className="mt-2 max-w-2xl text-muted-foreground">Inspect, edit, delete, and export workspace data.</p></div>
     {canManageAdmins ? <Card><CardHeader><CardTitle className="flex items-center gap-2"><Shield className="h-5 w-5" /> Admin users</CardTitle><CardDescription>Only primary owner can manage delegated admins.</CardDescription></CardHeader><CardContent className="space-y-4"><div className="flex flex-wrap gap-2">{admins.map((admin) => <Badge key={admin.id} variant="outline" className="gap-2">{admin.email}{admin.email.toLowerCase() !== "aswin.kg@zohocorp.com" ? <button type="button" aria-label={`Remove ${admin.email}`} onClick={() => void changeAdmin("remove", admin.id)}><UserRoundMinus className="h-3 w-3" /></button> : null}</Badge>)}</div><div className="flex max-w-xl gap-2"><select value={newAdminId} onChange={(event) => setNewAdminId(event.target.value)} className="h-10 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm"><option value="">Select user to make admin</option>{availableAdmins.map((user) => <option key={user.id} value={user.id}>{user.email} — {user.displayName}</option>)}</select><Button disabled={!newAdminId} onClick={() => void changeAdmin("add", newAdminId)}><UserPlus className="mr-2 h-4 w-4" />Add</Button></div></CardContent></Card> : null}
+    {canManageAdmins ? <AdminGroups groups={groups} users={users} onChanged={load} /> : null}
     <Card><CardHeader><CardTitle className="flex items-center gap-2"><Shield className="h-5 w-5" /> Data explorer</CardTitle><CardDescription>{selectedUser && mode === "analytics" ? "User analytics dashboard" : selected ? `${selected.displayName || selected.email} · ${visibleRows.length} visible records` : `${userGroups.length} users · Select user to inspect records`}</CardDescription></CardHeader><CardContent className="space-y-4">
       {!selectedUser ? <><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search users by name or email…" />{loading ? <p className="text-sm text-muted-foreground">Loading…</p> : visibleUsers.length === 0 ? <p className="text-sm text-muted-foreground">No users found.</p> : <div className="grid gap-3 md:grid-cols-2">{visibleUsers.map(({ user, count }) => <button type="button" key={user.id} onClick={() => { setSelectedUser(user.id); setSearch(""); setMode("analytics"); }} className="rounded-xl border p-4 text-left transition hover:border-primary hover:bg-muted/30"><p className="font-medium">{user.displayName || "Unnamed user"}</p><p className="text-sm text-muted-foreground">{user.email}</p><p className="mt-3 text-xs text-muted-foreground">{count} records across workspace</p></button>)}</div>}</> : mode === "analytics" ? <UserDashboard user={selected!} rows={Object.entries(data).flatMap(([item, entries]) => entries.filter((row) => String(row.userId) === selectedUser).map((row) => ({ ...row, table: item })))} presence={presence[selected.id]} onBack={() => { setSelectedUser(null); setSearch(""); }} onEdit={() => setMode("edit")} /> : <><div className="flex flex-wrap items-center justify-between gap-3"><Button variant="ghost" onClick={() => { setSelectedUser(null); setSearch(""); }}><ArrowLeft className="mr-2 h-4 w-4" />All users</Button><div className="flex gap-2"><Button variant="outline" onClick={() => download(`koku-${table}.csv`, csv(visibleRows), "text/csv")} disabled={!visibleRows.length}><Download className="mr-2 h-4 w-4" />CSV</Button><Button variant="outline" onClick={() => download(`koku-${table}.json`, visibleRows, "application/json")} disabled={!visibleRows.length}><Download className="mr-2 h-4 w-4" />JSON</Button><Button onClick={() => setMode("analytics")}>Analytics</Button></div></div><div className="flex flex-wrap gap-2">{TABLES.map((item) => <Button key={item} size="sm" variant={table === item ? "default" : "outline"} onClick={() => setTable(item)}>{labelForTable(item)}</Button>)}</div><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search this user's records…" />{loading ? <p className="text-sm text-muted-foreground">Loading…</p> : visibleRows.length === 0 ? <p className="text-sm text-muted-foreground">No matching records.</p> : visibleRows.map((row) => <RecordCard key={`${row.userId}:${table}:${rowKey(row)}`} table={table} row={row} draft={drafts[`${table}:${rowKey(row)}`]} setDraft={(draft) => setDrafts((current) => ({ ...current, [`${table}:${rowKey(row)}`]: draft }))} onSave={() => void save(row)} onDelete={() => void remove(row)} />)}</>}
     </CardContent></Card>
   </div>;
+}
+
+function AdminGroups({ groups, users, onChanged }: { groups: AdminGroup[]; users: AdminUser[]; onChanged: () => Promise<void> }) {
+  const [name, setName] = useState("");
+  const [members, setMembers] = useState<Record<string, string[]>>(() => Object.fromEntries(groups.map((group) => [group.id, group.userIds])));
+
+  useEffect(() => {
+    setMembers(Object.fromEntries(groups.map((group) => [group.id, group.userIds])));
+  }, [groups]);
+
+  async function createGroup() {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const response = await fetch("/api/admin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "createGroup", group: { name: trimmed } }) });
+    if (!response.ok) { toast.error(await errorMessage(response, "Group creation failed.")); return; }
+    setName(""); toast.success("Group created."); await onChanged();
+  }
+
+  async function saveGroup(group: AdminGroup) {
+    const response = await fetch("/api/admin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "updateGroup", group: { ...group, userIds: members[group.id] ?? [] } }) });
+    if (response.ok) { toast.success("Group members saved."); await onChanged(); } else toast.error(await errorMessage(response, "Group update failed."));
+  }
+
+  async function deleteGroup(group: AdminGroup) {
+    if (!window.confirm(`Delete group “${group.name}”? Users stay unchanged.`)) return;
+    const response = await fetch("/api/admin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "deleteGroup", group: { id: group.id } }) });
+    if (response.ok) { toast.success("Group deleted."); await onChanged(); } else toast.error(await errorMessage(response, "Group deletion failed."));
+  }
+
+  return <Card><CardHeader><CardTitle>Groups</CardTitle><CardDescription>Organize users into reusable groups. Grouping does not change permissions.</CardDescription></CardHeader><CardContent className="space-y-4"><div className="flex max-w-xl gap-2"><Input value={name} onChange={(event) => setName(event.target.value)} placeholder="New group name" onKeyDown={(event) => { if (event.key === "Enter") void createGroup(); }} /><Button disabled={!name.trim()} onClick={() => void createGroup()}>Create group</Button></div>{groups.length ? <div className="grid gap-4 md:grid-cols-2">{groups.map((group) => <div key={group.id} className="rounded-xl border p-4"><div className="flex items-center justify-between gap-2"><div><p className="font-medium">{group.name}</p><p className="text-xs text-muted-foreground">{(members[group.id] ?? []).length} members</p></div><div className="flex gap-2"><Button size="sm" onClick={() => void saveGroup(group)}>Save</Button><Button size="sm" variant="ghost" onClick={() => void deleteGroup(group)}>Delete</Button></div></div><div className="mt-3 max-h-56 space-y-2 overflow-auto">{users.map((user) => { const selected = (members[group.id] ?? []).includes(user.id); return <label key={user.id} className="flex items-start gap-2 text-sm"><input type="checkbox" checked={selected} onChange={() => setMembers((current) => ({ ...current, [group.id]: selected ? (current[group.id] ?? []).filter((id) => id !== user.id) : [...(current[group.id] ?? []), user.id] }))} /><span>{user.displayName || "Unnamed user"}<span className="ml-1 text-xs text-muted-foreground">({user.id})</span><span className="block text-xs text-muted-foreground">{user.email}</span></span></label>; })}</div></div>)}</div> : <p className="text-sm text-muted-foreground">No groups yet.</p>}</CardContent></Card>;
 }
 
 function UserDashboard({ user, rows, presence, onBack, onEdit }: { user: AdminUser; rows: AdminRow[]; presence?: AdminPresence; onBack: () => void; onEdit: () => void }) {

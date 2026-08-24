@@ -42,10 +42,26 @@ export default function AccountSettingsPage() {
     toast.success("Local profile updated.");
   }
 
-  function handleLogout() {
-    // Real navigation lets Catalyst clear its session cookie. fetch() follows
-    // the redirect without changing the browser session/page reliably.
-    window.location.assign("/api/auth/logout");
+  async function handleLogout() {
+    try {
+      // Fetch the logout route first so the server can probe and clear the
+      // Catalyst session before we navigate. If the server-side probe succeeds
+      // it returns a 3xx that fetch follows automatically to the final page;
+      // we read the resolved URL and navigate there. If anything goes wrong
+      // (network error, Catalyst unavailable, INVALID_URL_PATTERN, etc.) we
+      // fall back to sending the browser straight to the home (Profiles) page
+      // so login details are visually cleared regardless.
+      const response = await fetch("/api/auth/logout", {
+        redirect: "follow",
+        cache: "no-store",
+      });
+      // On success the server ultimately resolves to the home page URL.
+      const destination = response.url || "/";
+      window.location.assign(destination);
+    } catch {
+      // Network or unexpected error — navigate to home (Profiles) page directly.
+      window.location.assign("/");
+    }
   }
 
   return (
@@ -96,6 +112,7 @@ export default function AccountSettingsPage() {
                   {cloudUser.email && (
                     <p className="text-xs text-muted-foreground">{cloudUser.email}</p>
                   )}
+                  <p className="mt-1 text-xs text-muted-foreground">User ID: {cloudUser.id}</p>
                 </div>
                 <Button variant="outline" onClick={handleLogout}>
                   Sign out

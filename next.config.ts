@@ -14,6 +14,7 @@ const contentSecurityPolicy = [
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
+  "frame-src 'self' https://accounts.zoho.com https://accounts.zohoportal.in https://*.zoho.in https://*.zohoportal.in",
   "frame-ancestors 'none'",
   "upgrade-insecure-requests",
 ].join("; ");
@@ -42,7 +43,12 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   poweredByHeader: false,
+
+  turbopack: {
+    root: __dirname,
+  },
 
   // Keep AI SDK packages as Node.js externals so they resolve from
   // node_modules at runtime rather than being inlined into the bundle.

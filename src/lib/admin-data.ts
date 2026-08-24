@@ -1,6 +1,7 @@
 export type AdminRow = Record<string, unknown>;
 
 export type AdminUser = { id: string; email: string; displayName: string };
+export type AdminGroup = { id: string; name: string; userIds: string[] };
 export interface AdminStats {
   totalTrackedDuration: number;
   timeEntryCount: number;

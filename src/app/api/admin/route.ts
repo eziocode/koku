@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { ADMIN_EMAIL } from "@/lib/auth/constants";
 import { initCatalyst, upsertRow, zcqlEscape, zcqlQuery } from "@/lib/db/catalyst-client";
 import { TABLE_CONFIG } from "@/lib/sync/table-config";
-import { getAdminKeys, setAdmin } from "@/lib/auth/user-registry";
+import { deleteAdminGroup, getAdminGroups, getAdminKeys, saveAdminGroup, setAdmin, type AdminGroup } from "@/lib/auth/user-registry";
 import { calculateAdminStats, extractCatalystRowId, type AdminPresence } from "@/lib/admin-data";
 
 export const runtime = "nodejs";
@@ -79,7 +79,8 @@ export async function GET(request: Request) {
       const userRows = Object.entries(data).flatMap(([table, rows]) => rows.filter((row) => String((row as Record<string, unknown>).userId) === user.id).map((row) => ({ ...(row as Record<string, unknown>), table })));
       stats[user.id] = calculateAdminStats(userRows);
     }
-    return NextResponse.json({ data, users, admins, stats, presence, canManageAdmins: auth.isOwner });
+    const groups = auth.isOwner ? await getAdminGroups(auth.app) : [];
+    return NextResponse.json({ data, users, admins, groups, stats, presence, canManageAdmins: auth.isOwner });
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -91,7 +92,28 @@ export async function POST(request: Request) {
     if (!auth) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     if (!auth.isOwner) return NextResponse.json({ error: "Owner admin required" }, { status: 403 });
 
-    const body = (await request.json()) as { action?: "add" | "remove"; userId?: string };
+    const body = (await request.json()) as { action?: "add" | "remove" | "createGroup" | "updateGroup" | "deleteGroup"; userId?: string; group?: Partial<AdminGroup> };
+    if (body.action === "createGroup") {
+      const name = String(body.group?.name ?? "").trim();
+      if (!name) return NextResponse.json({ error: "Group name required" }, { status: 400 });
+      const group: AdminGroup = { id: crypto.randomUUID(), name, userIds: [] };
+      await saveAdminGroup(auth.app, auth.user.user_id, group);
+      return NextResponse.json({ saved: true, group });
+    }
+    if (body.action === "updateGroup") {
+      const groupId = String(body.group?.id ?? "");
+      const name = String(body.group?.name ?? "").trim();
+      if (!groupId || !name || !Array.isArray(body.group?.userIds)) return NextResponse.json({ error: "Group id, name, and userIds required" }, { status: 400 });
+      const group: AdminGroup = { id: groupId, name, userIds: body.group.userIds.map(String) };
+      await saveAdminGroup(auth.app, auth.user.user_id, group);
+      return NextResponse.json({ saved: true, group });
+    }
+    if (body.action === "deleteGroup") {
+      const groupId = String(body.group?.id ?? "");
+      if (!groupId) return NextResponse.json({ error: "Group id required" }, { status: 400 });
+      await deleteAdminGroup(auth.app, auth.user.user_id, groupId);
+      return NextResponse.json({ saved: true });
+    }
     if (!body.action || !body.userId || body.userId === auth.user.user_id) {
       return NextResponse.json({ error: "Valid action and userId required" }, { status: 400 });
     }
