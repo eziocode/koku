@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, Download, Pencil, Save, Shield, Trash2, UserPlus, UserRoundMinus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
 import { dashboardForRange, formatDate, formatDuration, getPresenceStatus, groupRowsByUser, plainTextToTiptap, tiptapToPlainText, type AdminGroup, type AdminPresence, type AdminRow, type AdminStats, type AdminUser } from "@/lib/admin-data";
+import { syncNow } from "@/lib/sync/sync-engine";
 
 const TABLES = ["timeEntries", "projects", "categories", "notes", "noteLinks"] as const;
 type Table = (typeof TABLES)[number];
@@ -35,16 +36,32 @@ export function AdminClient() {
   const [presence, setPresence] = useState<Record<string, AdminPresence>>({}); const [mode, setMode] = useState<"analytics" | "edit">("analytics");
   const [search, setSearch] = useState(""); const [newAdminId, setNewAdminId] = useState(""); const [loading, setLoading] = useState(true);
   const [drafts, setDrafts] = useState<Record<string, AdminRow>>({});
+  const refreshing = useRef(false);
 
   useEffect(() => { fetch("/api/auth/me").then(async (response) => { const body = await response.json() as { user?: { isAdmin?: boolean } | null }; setAccess(body.user?.isAdmin ? "allowed" : "denied"); }).catch(() => setAccess("denied")); }, []);
-  async function load() {
-    setLoading(true); const response = await fetch("/api/admin", { cache: "no-store" });
+  const load = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true); const response = await fetch("/api/admin", { cache: "no-store" });
     if (response.status === 403) setAccess("denied");
     if (response.ok) { const body = await response.json() as { data: Record<string, AdminRow[]>; users?: AdminUser[]; admins?: AdminUser[]; groups?: AdminGroup[]; stats?: Record<string, AdminStats>; presence?: Record<string, AdminPresence>; ownerUserId?: string; canManageAdmins?: boolean }; setData(body.data); setUsers(body.users ?? []); setAdmins(body.admins ?? []); setGroups(body.groups ?? []); setStats(body.stats ?? {}); setPresence(body.presence ?? {}); setOwnerUserId(body.ownerUserId ?? ""); setCanManageAdmins(body.canManageAdmins === true); }
-    setLoading(false);
-  }
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { if (access === "allowed") void load(); }, [access]);
+    if (showLoading) setLoading(false);
+  }, []);
+  const refreshFromCloud = useCallback(async (showLoading = false) => {
+    if (refreshing.current) return;
+    refreshing.current = true;
+    try {
+      // Flush local records first so recent entries cannot remain browser-only while admin reads cloud.
+      try { await syncNow("local"); } catch { /* Admin API can still return cloud rows if sync is temporarily unavailable. */ }
+      await load(showLoading);
+    } finally {
+      refreshing.current = false;
+    }
+  }, [load]);
+  useEffect(() => {
+    if (access !== "allowed") return;
+    void refreshFromCloud(true);
+    const interval = window.setInterval(() => { void refreshFromCloud(); }, 15_000);
+    return () => window.clearInterval(interval);
+  }, [access, refreshFromCloud]);
 
   const rows = useMemo(() => data[table] ?? [], [data, table]);
   const userGroups = useMemo(() => groupRowsByUser(Object.values(data).flat(), users).map((group) => ({
@@ -55,6 +72,20 @@ export function AdminClient() {
   const visibleRows = useMemo(() => rows.filter((row) => String(row.userId) === selectedUser && (!search.trim() || JSON.stringify(row).toLowerCase().includes(search.toLowerCase()))), [rows, selectedUser, search]);
   const userSearch = search.trim().toLowerCase();
   const visibleUsers = userGroups.filter(({ user }) => !userSearch || `${user.displayName} ${user.email} ${user.id}`.toLowerCase().includes(userSearch));
+  const userDirectory = useMemo(() => {
+    const byId = new Map(userGroups.map((item) => [item.user.id, item]));
+    const assigned = new Set<string>();
+    const grouped = groups.map((group) => ({
+      group,
+      users: group.userIds.flatMap((id) => {
+        const item = byId.get(id);
+        if (!item || assigned.has(id) || (userSearch && !visibleUsers.includes(item))) return [];
+        assigned.add(id);
+        return [item];
+      }),
+    }));
+    return { grouped, ungrouped: visibleUsers.filter((item) => !assigned.has(item.user.id)) };
+  }, [groups, userGroups, userSearch, visibleUsers]);
   const availableAdmins = users.filter((user) => !admins.some((admin) => admin.id === user.id));
 
   async function save(row: AdminRow) {
@@ -80,9 +111,17 @@ export function AdminClient() {
     {canManageAdmins ? <Card><CardHeader><CardTitle className="flex items-center gap-2"><Shield className="h-5 w-5" /> Admin users</CardTitle><CardDescription>Only primary owner can manage delegated admins.</CardDescription></CardHeader><CardContent className="space-y-4"><div className="flex flex-wrap gap-2">{admins.map((admin) => <Badge key={admin.id} variant="outline" className="gap-2">{admin.email}{admin.id !== ownerUserId ? <button type="button" aria-label={`Remove ${admin.email}`} onClick={() => void changeAdmin("remove", admin.id)}><UserRoundMinus className="h-3 w-3" /></button> : null}</Badge>)}</div><div className="flex max-w-xl gap-2"><select value={newAdminId} onChange={(event) => setNewAdminId(event.target.value)} className="h-10 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm"><option value="">Select user to make admin</option>{availableAdmins.map((user) => <option key={user.id} value={user.id}>{user.email} — {user.displayName}</option>)}</select><Button disabled={!newAdminId} onClick={() => void changeAdmin("add", newAdminId)}><UserPlus className="mr-2 h-4 w-4" />Add</Button></div></CardContent></Card> : null}
     {canManageAdmins ? <AdminGroups groups={groups} users={users} onChanged={load} /> : null}
     <Card><CardHeader><CardTitle className="flex items-center gap-2"><Shield className="h-5 w-5" /> Data explorer</CardTitle><CardDescription>{selectedUser && mode === "analytics" ? "User analytics dashboard" : selected ? `${selected.displayName || selected.email} · ${visibleRows.length} visible records` : `${userGroups.length} users · Select user to inspect records`}</CardDescription></CardHeader><CardContent className="space-y-4">
-      {!selectedUser ? <><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search users by name or email…" />{loading ? <p className="text-sm text-muted-foreground">Loading…</p> : visibleUsers.length === 0 ? <p className="text-sm text-muted-foreground">No users found.</p> : <div className="grid gap-3 md:grid-cols-2">{visibleUsers.map(({ user, count }) => <button type="button" key={user.id} onClick={() => { setSelectedUser(user.id); setSearch(""); setMode("analytics"); }} className="rounded-xl border p-4 text-left transition hover:border-primary hover:bg-muted/30"><p className="font-medium">{user.displayName || "Unnamed user"}</p><p className="text-sm text-muted-foreground">{user.email}</p><p className="mt-3 text-xs text-muted-foreground">{count} records across workspace</p></button>)}</div>}</> : mode === "analytics" ? <UserDashboard user={selected!} rows={Object.entries(data).flatMap(([item, entries]) => entries.filter((row) => String(row.userId) === selectedUser).map((row) => ({ ...row, table: item })))} presence={presence[selected.id]} onBack={() => { setSelectedUser(null); setSearch(""); }} onEdit={() => setMode("edit")} /> : <><div className="flex flex-wrap items-center justify-between gap-3"><Button variant="ghost" onClick={() => { setSelectedUser(null); setSearch(""); }}><ArrowLeft className="mr-2 h-4 w-4" />All users</Button><div className="flex gap-2"><Button variant="outline" onClick={() => download(`koku-${table}.csv`, csv(visibleRows), "text/csv")} disabled={!visibleRows.length}><Download className="mr-2 h-4 w-4" />CSV</Button><Button variant="outline" onClick={() => download(`koku-${table}.json`, visibleRows, "application/json")} disabled={!visibleRows.length}><Download className="mr-2 h-4 w-4" />JSON</Button><Button onClick={() => setMode("analytics")}>Analytics</Button></div></div><div className="flex flex-wrap gap-2">{TABLES.map((item) => <Button key={item} size="sm" variant={table === item ? "default" : "outline"} onClick={() => setTable(item)}>{labelForTable(item)}</Button>)}</div><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search this user's records…" />{loading ? <p className="text-sm text-muted-foreground">Loading…</p> : visibleRows.length === 0 ? <p className="text-sm text-muted-foreground">No matching records.</p> : visibleRows.map((row) => <RecordCard key={`${row.userId}:${table}:${rowKey(row)}`} table={table} row={row} draft={drafts[`${table}:${rowKey(row)}`]} setDraft={(draft) => setDrafts((current) => ({ ...current, [`${table}:${rowKey(row)}`]: draft }))} onSave={() => void save(row)} onDelete={() => void remove(row)} />)}</>}
+      {!selectedUser ? <><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search users by name or email…" />{loading ? <p className="text-sm text-muted-foreground">Loading…</p> : visibleUsers.length === 0 ? <p className="text-sm text-muted-foreground">No users found.</p> : <div className="space-y-6">{userDirectory.grouped.map(({ group, users: members }) => <section key={group.id} className="rounded-xl border p-4"><div className="mb-3 flex items-center justify-between gap-3"><div><h3 className="font-semibold">{group.name}</h3><p className="text-xs text-muted-foreground">{members.length} member{members.length === 1 ? "" : "s"}</p></div><Badge variant="outline">Group</Badge></div>{members.length ? <div className="grid gap-3 md:grid-cols-2">{members.map((item) => <UserCard key={item.user.id} item={item} onSelect={(id) => { setSelectedUser(id); setSearch(""); setMode("analytics"); }} />)}</div> : <p className="text-sm text-muted-foreground">No matching members. Add users in Groups above.</p>}</section>)}<section><div className="mb-3 flex items-center justify-between gap-3"><div><h3 className="font-semibold">Other users</h3><p className="text-xs text-muted-foreground">Users not assigned to a group</p></div><Badge variant="outline">{userDirectory.ungrouped.length}</Badge></div>{userDirectory.ungrouped.length ? <div className="grid gap-3 md:grid-cols-2">{userDirectory.ungrouped.map((item) => <UserCard key={item.user.id} item={item} onSelect={(id) => { setSelectedUser(id); setSearch(""); setMode("analytics"); }} />)}</div> : <p className="text-sm text-muted-foreground">No ungrouped users.</p>}</section></div>}</> : mode === "analytics" ? <UserDashboard user={selected!} rows={Object.entries(data).flatMap(([item, entries]) => entries.filter((row) => String(row.userId) === selectedUser).map((row) => ({ ...row, table: item })))} presence={presence[selected.id]} onBack={() => { setSelectedUser(null); setSearch(""); }} onEdit={() => setMode("edit")} /> : <><div className="flex flex-wrap items-center justify-between gap-3"><Button variant="ghost" onClick={() => { setSelectedUser(null); setSearch(""); }}><ArrowLeft className="mr-2 h-4 w-4" />All users</Button><div className="flex gap-2"><Button variant="outline" onClick={() => download(`koku-${table}.csv`, csv(visibleRows), "text/csv")} disabled={!visibleRows.length}><Download className="mr-2 h-4 w-4" />CSV</Button><Button variant="outline" onClick={() => download(`koku-${table}.json`, visibleRows, "application/json")} disabled={!visibleRows.length}><Download className="mr-2 h-4 w-4" />JSON</Button><Button onClick={() => setMode("analytics")}>Analytics</Button></div></div><div className="flex flex-wrap gap-2">{TABLES.map((item) => <Button key={item} size="sm" variant={table === item ? "default" : "outline"} onClick={() => setTable(item)}>{labelForTable(item)}</Button>)}</div><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search this user's records…" />{loading ? <p className="text-sm text-muted-foreground">Loading…</p> : visibleRows.length === 0 ? <p className="text-sm text-muted-foreground">No matching records.</p> : visibleRows.map((row) => <RecordCard key={`${row.userId}:${table}:${rowKey(row)}`} table={table} row={row} draft={drafts[`${table}:${rowKey(row)}`]} setDraft={(draft) => setDrafts((current) => ({ ...current, [`${table}:${rowKey(row)}`]: draft }))} onSave={() => void save(row)} onDelete={() => void remove(row)} />)}</>}
     </CardContent></Card>
   </div>;
+}
+
+function UserCard({ item, onSelect }: { item: { user: AdminUser; count: number }; onSelect: (id: string) => void }) {
+  return <button type="button" onClick={() => onSelect(item.user.id)} className="rounded-xl border p-4 text-left transition hover:border-primary hover:bg-muted/30">
+    <p className="font-medium">{item.user.displayName || "Unnamed user"}</p>
+    <p className="text-sm text-muted-foreground">{item.user.email}</p>
+    <p className="mt-3 text-xs text-muted-foreground">{item.count} records across workspace</p>
+  </button>;
 }
 
 function AdminGroups({ groups, users, onChanged }: { groups: AdminGroup[]; users: AdminUser[]; onChanged: () => Promise<void> }) {

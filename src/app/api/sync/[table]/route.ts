@@ -172,15 +172,17 @@ export async function POST(
   const rows = body.rows;
   if (!Array.isArray(rows) || rows.length === 0) return NextResponse.json({ synced: 0 });
 
+  let synced = 0;
   for (const row of rows) {
     const r = row as Record<string, unknown>;
     const id = String(r.id ?? r.key ?? "");
     if (!id) continue;
     const fields = config.toFields(r);
     await upsertRow(auth.app, config.table, auth.userId, id, fields);
+    synced += 1;
   }
 
-  return NextResponse.json({ synced: rows.length });
+  return NextResponse.json({ synced });
 }
 
 // DELETE /api/sync/[table]?id=xxx — remove row
