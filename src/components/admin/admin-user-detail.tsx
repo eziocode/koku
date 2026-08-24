@@ -127,8 +127,6 @@ export function AdminUserDetail({ userId }: { userId: string }) {
   const [syncing, setSyncing] = useState(false);
   const [noDataConfirmed, setNoDataConfirmed] = useState(false);
   const [earliestDataDate, setEarliestDataDate] = useState<string | null>(null);
-  const reportWindow = useRef<Window | null>(null);
-
   const cache = useRef(new Map<string, CacheValue>());
   const requestVersion = useRef(0);
   const isOwnProfile = currentUserId !== null && currentUserId === userId;
@@ -140,12 +138,8 @@ export function AdminUserDetail({ userId }: { userId: string }) {
   const loadReport = useCallback(async (cursor?: string | null) => {
     const loadingMore = Boolean(cursor);
     if (loadingMore) setReportLoadingMore(true); else setReportLoading(true);
+    if (!cursor) setReportOpen(true);
     try {
-      if (!cursor && typeof window !== "undefined") {
-        reportWindow.current = window.open("", "koku-full-report");
-        reportWindow.current?.document.write("<title>Loading Koku report…</title><main style='font:16px system-ui;padding:32px'>Loading report…</main>");
-        reportWindow.current?.document.close();
-      }
       let value: ReportResponse;
       if (isOwnProfile) {
         const all = await localReportRows(rangeStart, rangeEnd);
@@ -158,18 +152,8 @@ export function AdminUserDetail({ userId }: { userId: string }) {
       }
       setReportRows((old) => cursor ? [...old, ...value.rows] : value.rows);
       setReportCursor(value.nextCursor);
-      setReportOpen(true);
-      if (!cursor && reportWindow.current) {
-        const daySet = new Map<string, AdminRow[]>();
-        value.rows.forEach((row) => { const key = String(row.startAt ?? row.updatedAt ?? row.createdAt ?? "").slice(0, 10); daySet.set(key, [...(daySet.get(key) ?? []), row]); });
-        const missing = daysBetween(rangeStart, rangeEnd).filter((day) => !daySet.has(day));
-        const missingText = missing.length ? `<section><h2>No records</h2><p>${missing.join(", ")}</p></section>` : "";
-        const cards = [...daySet.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([day, dayRows]) => `<section><h2>${new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { dateStyle: "full" })}</h2>${dayRows.map((row) => `<article><strong>${String(row.title ?? (row.table === "notes" ? "Untitled note" : "Untitled work"))}</strong><p>${row.table === "notes" ? tiptapToPlainText(row.content).trim() || "No text" : `${formatDuration(row.durationSec)} · ${String(row.projectId ?? "Unassigned")}`}</p></article>`).join("")}</section>`).join("");
-        reportWindow.current.document.open();
-        reportWindow.current.document.write(`<title>Koku report · ${rangeStart} to ${rangeEnd}</title><style>body{font:14px system-ui;max-width:980px;margin:0 auto;padding:32px;color:#20201e;background:#faf9f6}h1{font-size:30px}h2{border-bottom:1px solid #ddd6ce;padding-bottom:8px;margin-top:28px}article{background:white;border:1px solid #e5e0da;border-radius:10px;padding:12px;margin:8px 0}p{color:#6a665f;white-space:pre-wrap}</style><h1>Full activity report</h1><p>${rangeStart} → ${rangeEnd}</p>${missingText}${cards}`);
-        reportWindow.current.document.close();
-      }
     } catch (error) {
+      if (!cursor) setReportOpen(false);
       toast.error(error instanceof Error ? error.message : "Unable to load report");
     } finally {
       setReportLoading(false);
@@ -417,6 +401,31 @@ export function AdminUserDetail({ userId }: { userId: string }) {
     );
   }
 
+  if (reportOpen) {
+    return (
+      <div className="space-y-6">
+        <Button variant="ghost" onClick={() => setReportOpen(false)}>
+          <ArrowLeft className="mr-2 h-4 w-4" />Back to user detail
+        </Button>
+        <div>
+          <p className="text-sm text-muted-foreground">{user.displayName || user.email}</p>
+          <h1 className="mt-1 text-3xl font-semibold">Full activity report</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{rangeStart} to {rangeEnd}</p>
+        </div>
+        <FullRangeReport
+          days={reportDays}
+          rows={reportRows}
+          loading={reportLoading}
+          hasMore={!!reportCursor}
+          loadingMore={reportLoadingMore}
+          onMore={() => void loadReport(reportCursor)}
+          onExportCSV={() => void exportAdminReport(reportRows, "csv")}
+          onExportXLSX={() => void exportAdminReport(reportRows, "xlsx")}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -448,20 +457,6 @@ export function AdminUserDetail({ userId }: { userId: string }) {
           {reportLoading ? "Loading report…" : "View full report"}
         </Button>
       </div>
-
-      {reportOpen && (
-        <FullRangeReport
-          days={reportDays}
-          rows={reportRows}
-          loading={reportLoading}
-          hasMore={!!reportCursor}
-          loadingMore={reportLoadingMore}
-          onMore={() => void loadReport(reportCursor)}
-          onExportCSV={() => void exportAdminReport(reportRows, "csv")}
-          onExportXLSX={() => void exportAdminReport(reportRows, "xlsx")}
-          onClose={() => setReportOpen(false)}
-        />
-      )}
 
       {/* Day navigator */}
       <div className="flex items-center justify-between rounded-xl border p-3">
@@ -574,12 +569,13 @@ export function AdminUserDetail({ userId }: { userId: string }) {
             hasMore={!!noteCursor}
             loadingMore={noteLoadingMore}
             onMore={() => void moreNotes()}
+            compact
             render={(row) => (
-              <>
-                <p className="font-medium">{String(row.title || "Untitled note")}</p>
-                <p className="line-clamp-3 text-xs text-muted-foreground">{tiptapToPlainText(row.content).trim() || "No text"}</p>
-                <p className="text-xs text-muted-foreground">{formatDate(row.updatedAt ?? row.createdAt)}</p>
-              </>
+              <div className="flex min-w-0 items-center gap-3">
+                <p className="shrink-0 font-medium">{String(row.title || "Untitled note")}</p>
+                <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{tiptapToPlainText(row.content).trim() || "No text"}</p>
+                <p className="shrink-0 text-xs text-muted-foreground">{formatDate(row.updatedAt ?? row.createdAt)}</p>
+              </div>
             )}
           />
         </div>
@@ -612,7 +608,6 @@ function FullRangeReport({
   onMore,
   onExportCSV,
   onExportXLSX,
-  onClose,
 }: {
   days: string[];
   rows: AdminRow[];
@@ -622,7 +617,6 @@ function FullRangeReport({
   onMore: () => void;
   onExportCSV: () => void;
   onExportXLSX: () => void;
-  onClose: () => void;
 }) {
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const byDay = new Map<string, AdminRow[]>();
@@ -646,7 +640,6 @@ function FullRangeReport({
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={onExportCSV}>CSV</Button>
           <Button variant="outline" size="sm" onClick={onExportXLSX}>XLSX</Button>
-          <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
         </div>
       </CardHeader>
       <CardContent>
@@ -686,6 +679,7 @@ function LazyDetailList({
   loadingMore,
   onMore,
   render,
+  compact = false,
 }: {
   title: string;
   rows: AdminRow[];
@@ -694,6 +688,7 @@ function LazyDetailList({
   loadingMore: boolean;
   onMore: () => void;
   render: (row: AdminRow) => React.ReactNode;
+  compact?: boolean;
 }) {
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -715,12 +710,12 @@ function LazyDetailList({
       <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
       <CardContent className="flex-1 overflow-hidden px-6 pb-6">
         <ScrollArea className="h-80 rounded-lg">
-          <div className="space-y-3 pr-2 pt-1">
+          <div className={compact ? "space-y-2 pr-2 pt-1" : "space-y-3 pr-2 pt-1"}>
             {loading ? (
               [1, 2, 3].map((item) => <Skeleton key={item} className="h-16 rounded-lg" />)
             ) : rows.length ? (
               rows.map((row, index) => (
-                <div key={String(row.id ?? index)} className="rounded-lg border p-3 text-sm text-muted-foreground">
+                <div key={String(row.id ?? index)} className={compact ? "rounded-lg border px-3 py-2 text-sm text-muted-foreground" : "rounded-lg border p-3 text-sm text-muted-foreground"}>
                   {render(row)}
                 </div>
               ))

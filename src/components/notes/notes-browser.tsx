@@ -180,18 +180,30 @@ export function NotesBrowser() {
               {dayNotes.map((note) => (
                 <div key={note.id} className="group relative">
                   <button type="button" className="w-full text-left" onClick={() => router.push(`/notes?id=${note.id}`)}>
-                    <Card className={view === "grid" ? "h-full transition-transform hover:-translate-y-1 hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5" : "transition-colors hover:border-primary/20 hover:bg-muted/20"}>
-                      <CardHeader>
-                        <CardTitle>{note.title}</CardTitle>
-                        <CardDescription>Updated {new Date(note.updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        <div className="flex flex-wrap gap-2">
-                          {note.tags.length ? note.tags.map((tag) => <Badge key={tag}>{tag}</Badge>) : <Badge variant="outline">No tags</Badge>}
-                        </div>
-                        <p className="text-sm text-muted-foreground">/{note.slug}</p>
-                      </CardContent>
-                    </Card>
+                    {view === "grid" ? (
+                      <Card className="h-full transition-transform hover:-translate-y-1 hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5">
+                        <CardHeader>
+                          <CardTitle>{note.title}</CardTitle>
+                          <CardDescription>Updated {new Date(note.updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                          <div className="flex flex-wrap gap-2">
+                            {note.tags.length ? note.tags.map((tag) => <Badge key={tag}>{tag}</Badge>) : <Badge variant="outline">No tags</Badge>}
+                          </div>
+                          <p className="text-sm text-muted-foreground">/{note.slug}</p>
+                        </CardContent>
+                      </Card>
+                    ) : (
+                      <Card className="transition-colors hover:border-primary/20 hover:bg-muted/20">
+                        <CardContent className="flex min-h-12 items-center gap-3 px-4 py-2.5 pr-12">
+                          <CardTitle className="min-w-0 flex-1 truncate text-base">{note.title}</CardTitle>
+                          <div className="hidden max-w-[40%] gap-1 overflow-hidden sm:flex">
+                            {note.tags.length ? note.tags.map((tag) => <Badge key={tag} className="shrink-0">{tag}</Badge>) : <Badge variant="outline" className="shrink-0">No tags</Badge>}
+                          </div>
+                          <CardDescription className="shrink-0">{new Date(note.updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</CardDescription>
+                        </CardContent>
+                      </Card>
+                    )}
                   </button>
                   <button type="button" aria-label="Delete note" onClick={(e) => { e.stopPropagation(); setDeleteTarget({ id: note.id, title: note.title }); }} className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-lg border border-border bg-card opacity-0 shadow-sm transition-opacity group-hover:opacity-100 hover:border-destructive hover:text-destructive">
                     <Trash2 className="h-3.5 w-3.5" />
