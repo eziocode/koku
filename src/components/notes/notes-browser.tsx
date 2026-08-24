@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, Grid2X2, List, Search, Trash2 } from "lucide-react";
+import { CalendarDays, Grid2X2, List, Search, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useRef, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -17,13 +17,35 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "@/components/ui/toast";
 import { useNotes } from "@/lib/storage/hooks/use-notes";
+
+type CreatedDateFilter = "all" | "today" | "yesterday" | "week" | "month" | "exact";
+
+function dateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function noteDateKey(value: string) {
+  return dateKey(new Date(value));
+}
+
+const createdDateFilterLabels: Record<CreatedDateFilter, string> = {
+  all: "Any date",
+  today: "Today",
+  yesterday: "Yesterday",
+  week: "This week",
+  month: "This month",
+  exact: "Specific date",
+};
 
 export function NotesBrowser() {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [activeTag, setActiveTag] = useState<string>("all");
+  const [createdDateFilter, setCreatedDateFilter] = useState<CreatedDateFilter>("all");
+  const [createdDate, setCreatedDate] = useState("");
   const [view, setView] = useState<"grid" | "list">("grid");
   const { notes, createNote, deleteNote } = useNotes();
   const tags = useMemo(() => Array.from(new Set(notes.flatMap((note) => note.tags))).sort(), [notes]);
@@ -38,23 +60,53 @@ export function NotesBrowser() {
 
   const filteredNotes = useMemo(() => {
     const query = search.trim().toLowerCase();
+    const now = new Date();
+    const today = dateKey(now);
+    const yesterdayDate = new Date(now);
+    yesterdayDate.setDate(now.getDate() - 1);
+    const yesterday = dateKey(yesterdayDate);
+    const weekStart = new Date(now);
+    weekStart.setHours(0, 0, 0, 0);
+    weekStart.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+    const weekStartKey = dateKey(weekStart);
+    const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
     return notes.filter((note) => {
       const matchesTag = activeTag === "all" || note.tags.includes(activeTag);
       const matchesSearch = !query || `${note.title} ${note.tags.join(" ")}`.toLowerCase().includes(query);
-      return matchesTag && matchesSearch;
+      const noteCreatedDate = noteDateKey(note.createdAt);
+      const matchesCreatedDate =
+        createdDateFilter === "all"
+        || (createdDateFilter === "today" && noteCreatedDate === today)
+        || (createdDateFilter === "yesterday" && noteCreatedDate === yesterday)
+        || (createdDateFilter === "week" && noteCreatedDate >= weekStartKey && noteCreatedDate <= today)
+        || (createdDateFilter === "month" && noteCreatedDate.startsWith(monthPrefix))
+        || (createdDateFilter === "exact" && noteCreatedDate === createdDate);
+      return matchesTag && matchesSearch && matchesCreatedDate;
     });
-  }, [activeTag, notes, search]);
+  }, [activeTag, createdDate, createdDateFilter, notes, search]);
 
   const notesByDate = useMemo(() => {
     const groups = new Map<string, typeof filteredNotes>();
     [...filteredNotes]
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .sort((a, b) => {
+        const aDate = createdDateFilter === "all" ? a.updatedAt : a.createdAt;
+        const bDate = createdDateFilter === "all" ? b.updatedAt : b.createdAt;
+        return bDate.localeCompare(aDate);
+      })
       .forEach((note) => {
-        const day = note.updatedAt.slice(0, 10);
+        const day = noteDateKey(createdDateFilter === "all" ? note.updatedAt : note.createdAt);
         groups.set(day, [...(groups.get(day) ?? []), note]);
       });
     return [...groups.entries()];
-  }, [filteredNotes]);
+  }, [createdDateFilter, filteredNotes]);
+
+  const activeFilterCount = Number(activeTag !== "all") + Number(createdDateFilter !== "all");
+
+  function setDateFilter(filter: CreatedDateFilter) {
+    setCreatedDateFilter(filter);
+    if (filter === "exact" && !createdDate) setCreatedDate(dateKey(new Date()));
+  }
 
   function openCreateDialog() {
     setNewTitle("");
@@ -101,7 +153,7 @@ export function NotesBrowser() {
         <p className="text-sm uppercase tracking-[0.3em] text-primary">Notes</p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">Connected knowledge</h1>
         <p className="mt-2 max-w-2xl text-muted-foreground">
-          Search across notes, filter by tag, and open ideas in an editor designed for durable thought.
+          Search, filter by tags or creation date, and open ideas in an editor designed for durable thought.
         </p>
       </div>
 
@@ -159,6 +211,49 @@ export function NotesBrowser() {
             <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search notes by title or tag" className="pl-9" />
           </div>
           <div className="flex items-center gap-2">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="gap-2" aria-label="Smart filters">
+                  <SlidersHorizontal className="h-4 w-4" />
+                  <span className="hidden sm:inline">Smart filters</span>
+                  {activeFilterCount > 0 && <Badge className="h-5 min-w-5 justify-center rounded-full px-1">{activeFilterCount}</Badge>}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-80 space-y-4 p-3">
+                <div>
+                  <div className="flex items-center gap-2 px-1 text-sm font-semibold">
+                    <CalendarDays className="h-4 w-4 text-primary" />Created date
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-1">
+                    {(Object.keys(createdDateFilterLabels) as CreatedDateFilter[]).map((filter) => (
+                      <Button
+                        key={filter}
+                        type="button"
+                        variant={createdDateFilter === filter ? "secondary" : "ghost"}
+                        size="sm"
+                        className="justify-start"
+                        onClick={() => setDateFilter(filter)}
+                      >
+                        {createdDateFilterLabels[filter]}
+                      </Button>
+                    ))}
+                  </div>
+                  {createdDateFilter === "exact" && (
+                    <div className="mt-2 px-1">
+                      <Label htmlFor="note-created-date" className="text-xs text-muted-foreground">Created on</Label>
+                      <Input id="note-created-date" type="date" value={createdDate} onChange={(event) => setCreatedDate(event.target.value)} className="mt-1" />
+                    </div>
+                  )}
+                </div>
+                <div className="border-t pt-3">
+                  <p className="px-1 text-sm font-semibold">Tags</p>
+                  <div className="mt-2 flex max-h-36 flex-wrap gap-1 overflow-y-auto pr-1">
+                    <Button type="button" variant={activeTag === "all" ? "secondary" : "ghost"} size="sm" onClick={() => setActiveTag("all")}>All notes <span className="opacity-70">{notes.length}</span></Button>
+                    {tags.map((tag) => <Button key={tag} type="button" variant={activeTag === tag ? "secondary" : "ghost"} size="sm" onClick={() => setActiveTag(tag)}>{tag} <span className="opacity-70">{notes.filter((note) => note.tags.includes(tag)).length}</span></Button>)}
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
             <div className="flex rounded-lg border p-1" aria-label="Note view">
               <Button variant={view === "grid" ? "secondary" : "ghost"} size="icon" aria-label="Grid view" onClick={() => setView("grid")}><Grid2X2 /></Button>
               <Button variant={view === "list" ? "secondary" : "ghost"} size="icon" aria-label="List view" onClick={() => setView("list")}><List /></Button>
@@ -167,15 +262,9 @@ export function NotesBrowser() {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-muted/20 p-3">
-          <span className="mr-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground"><CalendarDays className="h-4 w-4" />Browse by tag</span>
-          <Button variant={activeTag === "all" ? "default" : "outline"} size="sm" onClick={() => setActiveTag("all")}>All notes <span className="opacity-70">{notes.length}</span></Button>
-          {tags.map((tag) => <Button key={tag} variant={activeTag === tag ? "default" : "outline"} size="sm" onClick={() => setActiveTag(tag)}>{tag} <span className="opacity-70">{notes.filter((note) => note.tags.includes(tag)).length}</span></Button>)}
-        </div>
-
         {notesByDate.length ? notesByDate.map(([day, dayNotes]) => (
           <section key={day} className="space-y-3">
-            <h2 className="text-sm font-semibold text-muted-foreground">{new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { dateStyle: "full" })}</h2>
+            <h2 className="text-sm font-semibold text-muted-foreground">{createdDateFilter === "all" ? "Updated " : "Created "}{new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { dateStyle: "full" })}</h2>
             <div className={view === "grid" ? "grid gap-4 md:grid-cols-2 xl:grid-cols-3" : "space-y-2"}>
               {dayNotes.map((note) => (
                 <div key={note.id} className="group relative">
