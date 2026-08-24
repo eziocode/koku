@@ -2,7 +2,7 @@ import { format } from "date-fns";
 
 import { kokuDb, type Note } from "@/lib/storage/db";
 import { slugify } from "@/lib/utils";
-import { syncRow } from "@/lib/sync/sync-engine";
+import { deleteRow, syncRow } from "@/lib/sync/sync-engine";
 
 function walkText(value: unknown): string {
   if (!value) {
@@ -54,17 +54,19 @@ export async function syncNoteLinks(noteId: string, content: unknown): Promise<v
     ? await kokuDb.notes.where("slug").anyOf(slugs).toArray()
     : [];
 
+  const oldLinks = await kokuDb.noteLinks.where("sourceNoteId").equals(noteId).toArray();
   await kokuDb.noteLinks.where("sourceNoteId").equals(noteId).delete();
+  await Promise.all(oldLinks.map((link) => deleteRow("noteLinks", link.id)));
   if (targets.length) {
-    await kokuDb.noteLinks.bulkPut(
-      targets
+    const links = targets
         .filter((target) => target.id !== noteId)
         .map((target) => ({
           id: crypto.randomUUID(),
           sourceNoteId: noteId,
           targetNoteId: target.id,
-        })),
-    );
+        }));
+    await kokuDb.noteLinks.bulkPut(links);
+    await Promise.all(links.map((link) => syncRow("noteLinks", link)));
   }
 }
 

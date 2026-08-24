@@ -56,6 +56,13 @@ export interface AppSetting {
   value: unknown;
 }
 
+export interface PendingDelete {
+  id: string;
+  table: string;
+  rowId: string;
+  createdAt: string;
+}
+
 class KokuDB extends Dexie {
   projects!: EntityTable<Project, "id">;
   categories!: EntityTable<Category, "id">;
@@ -64,6 +71,7 @@ class KokuDB extends Dexie {
   noteLinks!: EntityTable<NoteLink, "id">;
   aiKeys!: EntityTable<AiKey, "id">;
   settings!: EntityTable<AppSetting, "key">;
+  pendingDeletes!: EntityTable<PendingDelete, "id">;
 
   constructor() {
     super("koku-local");
@@ -75,6 +83,7 @@ class KokuDB extends Dexie {
       noteLinks: "id, sourceNoteId, targetNoteId",
       aiKeys: "id, provider, createdAt",
       settings: "key",
+      pendingDeletes: "id, table, rowId, createdAt",
     });
 
     this.version(2).stores({
@@ -85,6 +94,7 @@ class KokuDB extends Dexie {
       noteLinks: "id, sourceNoteId, targetNoteId",
       aiKeys: "id, provider, createdAt",
       settings: "key",
+      pendingDeletes: "id, table, rowId, createdAt",
     });
   }
 }

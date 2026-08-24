@@ -35,6 +35,15 @@ async function setLastSyncAt(userId: string, iso: string) {
   await kokuDb.settings.put({ key: `${LAST_SYNC_KEY}:${userId}`, value: iso });
 }
 
+async function flushPendingDeletes(): Promise<void> {
+  const pending = await kokuDb.pendingDeletes.toArray();
+  for (const item of pending) {
+    if (!SYNCABLE_TABLES.includes(item.table as SyncTable)) continue;
+    const res = await fetch(`/api/sync/${item.table}?id=${encodeURIComponent(item.rowId)}`, { method: "DELETE" });
+    if (res.ok) await kokuDb.pendingDeletes.delete(item.id);
+  }
+}
+
 export type SyncChoice = "local" | "cloud" | "cancel";
 export interface SyncConflict {
   total: number;
@@ -145,6 +154,8 @@ export async function syncNow(choice?: SyncChoice): Promise<SyncResult> {
   let pulled = 0;
   let pushed = 0;
 
+  await flushPendingDeletes();
+
   if (choice !== "cloud") {
     for (const table of SYNCABLE_TABLES) pushed += await pushTable(table);
   }
@@ -161,10 +172,8 @@ export async function syncWithConflictPrompt(): Promise<SyncResult> {
   const first = await syncNow();
   if (!first.conflict) return first;
   const c = first.conflict;
-  const answer = window.prompt(`Cloud/local data differ (${c.total} rows: ${c.addedLocal} local-only, ${c.addedCloud} cloud-only, ${c.changed} changed). Type local, cloud, or cancel.`, "cancel")?.trim().toLowerCase();
-  const choice: SyncChoice = answer === "local" ? "local" : answer === "cloud" ? "cloud" : "cancel";
-  if (choice === "cancel") return { pulled: 0, pushed: 0, error: "Sync cancelled", conflict: c };
-  return syncNow(choice);
+  // UI owns conflict choice. Bootstrap keeps existing local data untouched.
+  return { pulled: 0, pushed: 0, error: "Sync choice required", conflict: c };
 }
 
 // Push a single row change immediately (call after any IndexedDB write in cloud mode)
@@ -187,11 +196,14 @@ export async function syncRow(table: SyncTable, row: unknown): Promise<void> {
 
 // Delete a row from cloud
 export async function deleteRow(table: SyncTable, id: string): Promise<void> {
+  const pending = { id: crypto.randomUUID(), table, rowId: id, createdAt: new Date().toISOString() };
+  await kokuDb.pendingDeletes.put(pending);
   if (!navigator.onLine) return;
   try {
     const user = await getAuthUser();
     if (!user) return;
-    await fetch(`/api/sync/${table}?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    const res = await fetch(`/api/sync/${table}?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (res.ok) await kokuDb.pendingDeletes.delete(pending.id);
   } catch {
     // Full sync repairs pending deletes when user manually syncs.
   }

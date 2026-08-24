@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { ADMIN_EMAIL } from "@/lib/auth/constants";
 import { initCatalyst, upsertRow, zcqlEscape, zcqlQuery } from "@/lib/db/catalyst-client";
 import { TABLE_CONFIG } from "@/lib/sync/table-config";
+import { getAdminKeys, setAdmin } from "@/lib/auth/user-registry";
 import { calculateAdminStats, extractCatalystRowId } from "@/lib/admin-data";
 
 export const runtime = "nodejs";
@@ -13,11 +14,7 @@ async function requireAdmin(request: Request) {
   const isOwner = user.email_id?.toLowerCase() === ADMIN_EMAIL;
   if (isOwner) return { app, user, isOwner };
 
-  const adminRows = await zcqlQuery(app, "SELECT setting_key FROM settings_koku");
-  const isDelegatedAdmin = adminRows.some((row) => {
-    const tableRow = (row.settings_koku ?? row) as Record<string, unknown>;
-    return tableRow.setting_key === `admin_user:${user.user_id}`;
-  });
+  const isDelegatedAdmin = (await getAdminKeys(app)).includes(`admin_user:${user.user_id}`);
   if (!isDelegatedAdmin) return null;
   return { app, user, isOwner };
 }
@@ -57,12 +54,7 @@ export async function GET(request: Request) {
     } catch {
       // Data access remains useful when Catalyst user-list scope is unavailable.
     }
-    const adminRows = await zcqlQuery(auth.app, "SELECT setting_key FROM settings_koku");
-    const delegatedAdminIds = adminRows.flatMap((row) => {
-      const tableRow = (row.settings_koku ?? row) as Record<string, unknown>;
-      const key = String(tableRow.setting_key ?? "");
-      return key.startsWith("admin_user:") ? [key.slice("admin_user:".length)] : [];
-    });
+    const delegatedAdminIds = (await getAdminKeys(auth.app)).map((key) => key.slice("admin_user:".length));
     const adminIds = new Set([auth.user.user_id, ...delegatedAdminIds]);
     const admins = users.filter((user) => adminIds.has(user.id));
     const stats: Record<string, ReturnType<typeof calculateAdminStats>> = {};
@@ -86,20 +78,7 @@ export async function POST(request: Request) {
     if (!body.action || !body.userId || body.userId === auth.user.user_id) {
       return NextResponse.json({ error: "Valid action and userId required" }, { status: 400 });
     }
-    const key = `admin_user:${body.userId}`;
-    if (body.action === "add") {
-      await upsertRow(auth.app, "settings_koku", auth.user.user_id, key, {
-        setting_key: key,
-        setting_value: JSON.stringify({ userId: body.userId, addedAt: new Date().toISOString() }),
-      });
-    } else {
-      const rows = await zcqlQuery(auth.app, `SELECT ROWID FROM settings_koku WHERE setting_key = '${zcqlEscape(key)}' AND user_id = '${zcqlEscape(auth.user.user_id)}'`);
-      if (rows.length) {
-        const raw = rows[0] as Record<string, unknown>;
-        const nested = raw.settings_koku as Record<string, unknown> | undefined;
-        await auth.app.datastore().table("settings_koku").deleteRow(nested?.ROWID ?? raw.ROWID);
-      }
-    }
+    await setAdmin(auth.app, body.userId, auth.user.user_id, body.action === "add");
     return NextResponse.json({ saved: true });
   } catch {
     return NextResponse.json({ error: "Unable to update admin users" }, { status: 500 });

@@ -109,11 +109,13 @@ export function useNotes(search?: string) {
   }
 
   async function deleteNote(id: string) {
+    const links = await kokuDb.noteLinks.filter((link) => link.sourceNoteId === id || link.targetNoteId === id).toArray();
     await kokuDb.transaction("rw", kokuDb.notes, kokuDb.noteLinks, async () => {
       await kokuDb.noteLinks.where("sourceNoteId").equals(id).delete();
       await kokuDb.noteLinks.where("targetNoteId").equals(id).delete();
       await kokuDb.notes.delete(id);
     });
+    await Promise.all(links.map((link) => deleteRow("noteLinks", link.id)));
     void deleteRow("notes", id);
   }
 

@@ -42,10 +42,12 @@ export function useCategories() {
   }
 
   async function deleteCategory(id: string) {
+    const affectedEntries = await kokuDb.timeEntries.where("categoryId").equals(id).toArray();
     await kokuDb.transaction("rw", kokuDb.categories, kokuDb.timeEntries, async () => {
       await kokuDb.timeEntries.where("categoryId").equals(id).modify({ categoryId: null });
       await kokuDb.categories.delete(id);
     });
+    await Promise.all(affectedEntries.map((entry) => syncRow("timeEntries", { ...entry, categoryId: null })));
     void deleteRow("categories", id);
   }
 

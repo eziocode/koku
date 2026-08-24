@@ -44,10 +44,15 @@ export function useProjects() {
   }
 
   async function deleteProject(id: string) {
+    const affectedEntries = await kokuDb.timeEntries.where("projectId").equals(id).toArray();
     await kokuDb.transaction("rw", kokuDb.projects, kokuDb.timeEntries, async () => {
       await kokuDb.timeEntries.where("projectId").equals(id).modify({ projectId: null });
       await kokuDb.projects.delete(id);
     });
+    await Promise.all(affectedEntries.map(async (entry) => {
+      const updated = { ...entry, projectId: null };
+      return syncRow("timeEntries", updated);
+    }));
     void deleteRow("projects", id);
   }
 

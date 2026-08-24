@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useTheme } from "next-themes";
 
 import { DndPill } from "@/components/notifications/dnd-pill";
+import { ManualSync } from "@/components/layout/manual-sync";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -33,6 +34,7 @@ export function Topbar({ onOpenSidebar }: TopbarProps) {
       </div>
       {/* Renders nothing unless do-not-disturb is on. */}
       <DndPill />
+      <ManualSync />
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
