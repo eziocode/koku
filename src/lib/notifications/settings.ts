@@ -18,6 +18,7 @@ export const MAX_INTERVAL_MINUTES = 480;
 
 /** Offered in the settings dropdown; any value in range is still accepted. */
 export const INTERVAL_PRESETS = [5, 10, 15, 30, 45, 60, 90, 120] as const;
+export const AUTO_HIDE_PRESETS = [1, 2, 5, 10, 30, 60] as const;
 
 export type DndMode = "off" | "until" | "indefinite";
 
@@ -35,6 +36,8 @@ export interface NotificationPreferences {
   checkIn: {
     enabled: boolean;
     intervalMinutes: number;
+    /** Minutes before a non-sticky browser notification is closed. */
+    autoHideMinutes: number;
     /** Keeps the notification in the tray until acted on. Chrome/Edge desktop only. */
     requireInteraction: boolean;
     /** Also nudge when nothing is being tracked at all. */
@@ -85,7 +88,8 @@ export const NOTIFICATION_DEFAULTS: NotificationPreferences = {
   checkIn: {
     enabled: true,
     intervalMinutes: 30,
-    requireInteraction: true,
+    requireInteraction: false,
+    autoHideMinutes: 1,
     notifyWhenIdle: true,
     actions: { quickNote: true, openLog: true, dismiss: true },
   },
@@ -127,6 +131,12 @@ export const notificationPreferencesSchema = z
           .min(MIN_INTERVAL_MINUTES)
           .max(MAX_INTERVAL_MINUTES)
           .catch(NOTIFICATION_DEFAULTS.checkIn.intervalMinutes),
+        autoHideMinutes: z
+          .number()
+          .int()
+          .min(1)
+          .max(60)
+          .catch(NOTIFICATION_DEFAULTS.checkIn.autoHideMinutes),
         requireInteraction: z.boolean().catch(NOTIFICATION_DEFAULTS.checkIn.requireInteraction),
         notifyWhenIdle: z.boolean().catch(NOTIFICATION_DEFAULTS.checkIn.notifyWhenIdle),
         actions: z

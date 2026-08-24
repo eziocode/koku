@@ -1,11 +1,20 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { adminUserFromDetails, dashboardForRange, extractCatalystRowId, formatDate, formatDuration, getPresenceStatus, groupRowsByUser, plainTextToTiptap, tiptapToPlainText } from "@/lib/admin-data";
+import { adminUserFromDetails, dashboardForRange, extractCatalystRowId, extractCatalystRowUserId, formatDate, formatDuration, getPresenceStatus, groupRowsByUser, plainTextToTiptap, tiptapToPlainText } from "@/lib/admin-data";
 
 test("extracts nested and top-level Catalyst ROWID safely", () => {
   assert.equal(extractCatalystRowId({ notes_koku: { ROWID: 42 } }, "notes_koku"), 42);
   assert.equal(extractCatalystRowId({ ROWID: "abc" }, "notes_koku"), "abc");
   assert.equal(extractCatalystRowId({ notes_koku: { id: "x" } }, "notes_koku"), null);
+});
+
+test("extracts normalized Catalyst ownership from mixed row shapes", () => {
+  assert.equal(extractCatalystRowUserId({ notes_koku: { user_id: " nested-user " } }, "notes_koku"), "nested-user");
+  assert.equal(extractCatalystRowUserId({ notes_koku: { "notes_koku.user_id": "nested-qualified-user" } }, "notes_koku"), "nested-qualified-user");
+  assert.equal(extractCatalystRowUserId({ user_id: " top-level-user " }, "notes_koku"), "top-level-user");
+  assert.equal(extractCatalystRowUserId({ "notes_koku.user_id": 31247000006007476 }, "notes_koku"), "31247000006007476");
+  assert.equal(extractCatalystRowUserId({ user_id: 42 }, "notes_koku"), "42");
+  assert.equal(extractCatalystRowUserId({ notes_koku: { user_id: "   " } }, "notes_koku"), null);
 });
 
 test("converts TipTap content to readable plain text", () => {

@@ -9,6 +9,37 @@ export type CatalystUserDetails = {
   last_name?: string;
 };
 
+function normalizedUserId(value: unknown): string | null {
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  const id = String(value).trim();
+  return id || null;
+}
+
+/** Extract and normalize Catalyst ownership from any supported row shape. */
+export function extractCatalystRowUserId(raw: AdminRow, table?: string): string | null {
+  const nested = table && raw[table] && typeof raw[table] === "object"
+    ? raw[table] as AdminRow
+    : null;
+  const candidates = [
+    nested?.user_id,
+    table ? nested?.[`${table}.user_id`] : undefined,
+    raw.user_id,
+    raw.userId,
+    table ? raw[`${table}.user_id`] : undefined,
+    ...Object.entries(raw)
+      .filter(([key]) => key.endsWith(".user_id"))
+      .map(([, value]) => value),
+    ...(nested ? Object.entries(nested)
+      .filter(([key]) => key.endsWith(".user_id"))
+      .map(([, value]) => value) : []),
+  ];
+  for (const candidate of candidates) {
+    const id = normalizedUserId(candidate);
+    if (id) return id;
+  }
+  return null;
+}
+
 /** Map Catalyst user detail response to identity used by admin UI. */
 export function adminUserFromDetails(details: CatalystUserDetails): AdminUser | null {
   const id = String(details.user_id ?? "").trim();
@@ -147,7 +178,7 @@ export function groupRowsByUser(rows: AdminRow[], users: AdminUser[]) {
   const groups = new Map<string, { user: AdminUser; count: number }>();
   for (const user of users) groups.set(user.id, { user, count: 0 });
   for (const row of rows) {
-    const id = String(row.userId ?? "unknown");
+    const id = extractCatalystRowUserId(row) ?? "unknown";
     const user = known.get(id) ?? { id, email: id === "unknown" ? "Unknown user" : id, displayName: "" };
     const current = groups.get(id);
     groups.set(id, { user, count: (current?.count ?? 0) + 1 });

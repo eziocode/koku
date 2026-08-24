@@ -14,6 +14,34 @@ import { detectNotificationSupport, getPermissionState } from "@/lib/notificatio
  */
 const SW_READY_TIMEOUT_MS = 5_000;
 
+function scheduleAutoClose(
+  built: BuiltNotification,
+  registration: ServiceWorkerRegistration | null,
+  fallback: Notification | null = null,
+): void {
+  const delay = built.autoHideAfterMs;
+  if (!delay || delay <= 0 || built.options.requireInteraction) return;
+
+  window.setTimeout(async () => {
+    if (fallback) {
+      fallback.close();
+      return;
+    }
+
+    if (!registration) return;
+    try {
+      const notifications = await registration.getNotifications({ tag: built.options.tag });
+      const createdAt = (built.options.data as { createdAt?: unknown } | undefined)?.createdAt;
+      for (const notification of notifications) {
+        const notificationCreatedAt = (notification.data as { createdAt?: unknown } | undefined)?.createdAt;
+        if (createdAt === undefined || notificationCreatedAt === createdAt) notification.close();
+      }
+    } catch {
+      // Browser owns notification lifecycle; auto-close is best-effort.
+    }
+  }, delay);
+}
+
 /** Why a notification did not appear, for logging and honest UI copy. */
 export type ShowFailureReason =
   | "unsupported"
@@ -75,6 +103,7 @@ export async function showKokuNotificationDetailed(
   if (registration) {
     try {
       await registration.showNotification(built.title, built.options);
+      scheduleAutoClose(built, registration);
       return { shown: true, via: "service-worker" };
     } catch (error) {
       const detail = error instanceof Error ? error.name : "UnknownError";
@@ -91,7 +120,8 @@ export async function showKokuNotificationDetailed(
     const constructorSafe: NotificationOptions = { ...built.options };
     // `actions` is rejected by the constructor on some engines.
     delete constructorSafe.actions;
-    new Notification(built.title, constructorSafe);
+    const notification = new Notification(built.title, constructorSafe);
+    scheduleAutoClose(built, null, notification);
     auditLogger.event("notifications.show.degraded", "runtime", {
       reason: "sw-not-ready",
       tag: built.options.tag,

@@ -45,6 +45,8 @@ export type CheckInContext =
 export interface BuiltNotification {
   title: string;
   options: NotificationOptions;
+  /** Best-effort page-side close; browser still controls OS-level timeout. */
+  autoHideAfterMs?: number;
 }
 
 export interface NotificationCapabilities {
@@ -157,6 +159,7 @@ export function buildCheckInNotification(
       actions: buildNotificationActions(prefs.checkIn.actions, capabilities),
       data,
     },
+    autoHideAfterMs: prefs.checkIn.requireInteraction ? undefined : prefs.checkIn.autoHideMinutes * 60_000,
   };
 }
 
@@ -324,5 +327,6 @@ export function buildTestNotification(
       actions: buildNotificationActions(prefs.checkIn.actions, capabilities),
       data,
     },
+    autoHideAfterMs: prefs.checkIn.requireInteraction ? undefined : prefs.checkIn.autoHideMinutes * 60_000,
   };
 }

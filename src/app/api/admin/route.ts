@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { initCatalyst, upsertRow, zcqlEscape, zcqlQuery } from "@/lib/db/catalyst-client";
 import { TABLE_CONFIG } from "@/lib/sync/table-config";
 import { deleteAdminGroup, getAdminGroups, getAdminKeys, isOwnerUser, saveAdminGroup, setAdmin, type AdminGroup } from "@/lib/auth/user-registry";
-import { adminUserFromDetails, calculateAdminStats, extractCatalystRowId, type AdminPresence, type AdminUser } from "@/lib/admin-data";
+import { adminUserFromDetails, calculateAdminStats, dashboardForRange, extractCatalystRowId, type AdminPresence, type AdminRow, type AdminUser } from "@/lib/admin-data";
 
 export const runtime = "nodejs";
 
@@ -26,30 +26,10 @@ export async function GET(request: Request) {
   try {
     const auth = await requireAdmin(request);
     if (!auth) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-
-    const requested = new URL(request.url).searchParams.get("table");
-    const tables = requested ? [requested] : Object.keys(TABLE_CONFIG).filter((table) => table !== "settings");
-    if (tables.includes("settings")) return NextResponse.json({ error: "Settings are internal" }, { status: 400 });
-    const data: Record<string, unknown[]> = {};
-
-    for (const table of tables) {
-      const config = getConfig(table);
-      if (!config) return NextResponse.json({ error: `Unknown table: ${table}` }, { status: 400 });
-      const rows = await zcqlQuery(auth.app, `SELECT * FROM ${config.table}`);
-      const fromRow = config.fromRow as (row: Record<string, unknown>) => Record<string, unknown>;
-      data[table] = rows.map((raw) => {
-        const nested = (raw[config.table] ?? raw) as Record<string, unknown>;
-        return { ...fromRow(raw), userId: nested.user_id ?? raw.user_id };
-      });
-    }
-
+    const params = new URL(request.url).searchParams;
+    const userId = params.get("userId")?.trim();
+    const requested = params.get("table");
     const usersById = new Map<string, AdminUser>();
-    // Row owners are authoritative. Bulk user listing can omit users or fail for
-    // delegated admins, while per-user lookup still resolves each stored user_id.
-    const rowUserIds = new Set(
-      Object.values(data).flatMap((rows) => rows.map((row) => String((row as Record<string, unknown>).userId ?? "").trim()).filter(Boolean)),
-    );
-    rowUserIds.add(String(auth.user.user_id));
     try {
       const allUsers = await auth.app.userManagement().getAllUsers();
       for (const user of allUsers) {
@@ -57,52 +37,41 @@ export async function GET(request: Request) {
         if (mapped) usersById.set(mapped.id, mapped);
       }
     } catch {
-      // Per-user lookup below still works when bulk user-list scope unavailable.
-    }
-    await Promise.all([...rowUserIds].map(async (userId) => {
-      try {
-        const mapped = adminUserFromDetails(await auth.app.userManagement().getUserDetails(userId));
-        if (mapped) usersById.set(mapped.id, mapped);
-      } catch {
-        // Keep row visible with ID fallback if identity lookup unavailable.
-      }
-    }));
-    const users = [...rowUserIds, ...usersById.keys()].filter((id, index, all) => all.indexOf(id) === index).map((id) => usersById.get(id) ?? {
-      id,
-      email: id,
-      displayName: "",
-    });
-    // Include users returned by bulk listing even when they have no rows.
-    for (const user of usersById.values()) {
-      if (!users.some((item) => item.id === user.id)) users.push(user);
+      // Directory fallback below.
     }
     const delegatedAdminIds = (await getAdminKeys(auth.app)).map((key) => key.slice("admin_user:".length));
+    if (userId) {
+      const user = usersById.get(userId) ?? adminUserFromDetails(await auth.app.userManagement().getUserDetails(userId));
+      if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
+      const tables = Object.keys(TABLE_CONFIG).filter((table) => table !== "settings");
+      const data: Record<string, AdminRow[]> = {};
+      for (const table of tables) {
+        const config = getConfig(table);
+        if (!config) continue;
+        const rows = await zcqlQuery(auth.app, `SELECT * FROM ${config.table} WHERE user_id = '${zcqlEscape(userId)}'`);
+        data[table] = rows.map((raw) => ({ ...config.fromRow(raw), userId }));
+      }
+      const allRows = Object.entries(data).flatMap(([table, rows]) => rows.map((row) => ({ ...row, table })));
+      const table = requested && requested !== "summary" ? requested : "timeEntries";
+      if (!getConfig(table)) return NextResponse.json({ error: `Unknown table: ${table}` }, { status: 400 });
+      const start = params.get("start"); const end = params.get("end");
+      const from = start ? Date.parse(`${start}T00:00:00`) : Number.NEGATIVE_INFINITY;
+      const until = end ? Date.parse(`${end}T23:59:59.999`) : Number.POSITIVE_INFINITY;
+      const dateField = table === "timeEntries" ? "startAt" : table === "notes" ? "updatedAt" : "createdAt";
+      const scoped = (data[table] ?? []).filter((row) => { if (!start && !end) return true; const value = Date.parse(String(row[dateField] ?? row.createdAt ?? "")); return Number.isFinite(value) && value >= from && value <= until; }).sort((a, b) => String(b[dateField] ?? b.createdAt ?? "").localeCompare(String(a[dateField] ?? a.createdAt ?? "")));
+      const limit = Math.min(Math.max(Number(params.get("limit") ?? 25) || 25, 1), 100);
+      const offset = Math.max(Number(params.get("cursor") ?? 0) || 0, 0);
+      const rows = scoped.slice(offset, offset + limit);
+      let presence: AdminPresence | undefined;
+      try { const settings = await zcqlQuery(auth.app, `SELECT * FROM ${TABLE_CONFIG.settings.table} WHERE user_id = '${zcqlEscape(userId)}'`); for (const raw of settings) { const nested = (raw[TABLE_CONFIG.settings.table] ?? raw) as Record<string, unknown>; if (nested.setting_key === "adminPresence" && typeof nested.setting_value === "string") { const value = JSON.parse(nested.setting_value) as AdminPresence; if (typeof value.seenAt === "string") presence = value; } } } catch { /* optional */ }
+      return NextResponse.json({ user, rows, table, nextCursor: offset + rows.length < scoped.length ? String(offset + rows.length) : null, summary: calculateAdminStats(allRows), dashboard: dashboardForRange(allRows, `${start ?? "1900-01-01"}T00:00:00`, `${end ?? "2999-12-31"}T23:59:59.999`), presence });
+    }
+    const users = [...usersById.values()];
+    if (!users.some((user) => user.id === String(auth.user.user_id))) { const current = adminUserFromDetails(auth.user); if (current) users.push(current); }
     const adminIds = new Set([auth.user.user_id, ...delegatedAdminIds]);
     const admins = users.filter((user) => adminIds.has(user.id));
-    const presence: Record<string, AdminPresence> = {};
-    try {
-      const settings = await zcqlQuery(auth.app, `SELECT * FROM ${TABLE_CONFIG.settings.table}`);
-      for (const raw of settings) {
-        const nested = (raw[TABLE_CONFIG.settings.table] ?? raw) as Record<string, unknown>;
-        if (nested.setting_key !== "adminPresence" || typeof nested.setting_value !== "string" || !nested.user_id) continue;
-        try {
-          const value = JSON.parse(nested.setting_value) as AdminPresence;
-          if (typeof value.seenAt === "string" && typeof value.visible === "boolean" && typeof value.focused === "boolean") {
-            const userId = String(nested.user_id);
-            const previous = presence[userId];
-            if (!previous || Date.parse(value.seenAt) >= Date.parse(previous.seenAt)) presence[userId] = value;
-          }
-        } catch { /* corrupt operational metadata is ignored */ }
-      }
-    } catch { /* presence is optional operational metadata */ }
-    const stats: Record<string, ReturnType<typeof calculateAdminStats>> = {};
-    for (const user of users) {
-      const userRows = Object.entries(data).flatMap(([table, rows]) => rows.filter((row) => String((row as Record<string, unknown>).userId) === user.id).map((row) => ({ ...(row as Record<string, unknown>), table })));
-      stats[user.id] = calculateAdminStats(userRows);
-    }
-    // Groups are workspace data. Every admin may view them; only owner may mutate them.
     const groups = await getAdminGroups(auth.app);
-    return NextResponse.json({ data, users, admins, groups, stats, presence, ownerUserId: auth.user.user_id, canManageAdmins: auth.isOwner });
+    return NextResponse.json({ users, admins, groups, ownerUserId: auth.user.user_id, canManageAdmins: auth.isOwner });
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

@@ -80,6 +80,12 @@ test("a running timer's check-in names the timer and its elapsed time", () => {
   assert.match(built.options.body ?? "", /1h 12m/);
   assert.equal(built.options.tag, NOTIFICATION_TAGS.checkIn);
   assert.equal(built.options.renotify, true);
+  assert.equal(built.autoHideAfterMs, 60_000);
+});
+
+test("sticky check-ins disable auto-hide", () => {
+  const built = buildCheckInNotification(running, prefs({ requireInteraction: true, autoHideMinutes: 5 }), chrome, NOW);
+  assert.equal(built?.autoHideAfterMs, undefined);
 });
 
 test("a paused timer reads differently from a running one", () => {

@@ -25,6 +25,7 @@ import { explainUnsupported } from "@/lib/notifications/permission";
 import { minutesToTimeInput, timeInputToMinutes } from "@/lib/notifications/quiet-hours";
 import {
   INTERVAL_PRESETS,
+  AUTO_HIDE_PRESETS,
   MAX_INTERVAL_MINUTES,
   MIN_INTERVAL_MINUTES,
   clampIntervalMinutes,
@@ -259,11 +260,34 @@ export function NotificationSettings() {
           <ToggleRow
             id="checkin-require-interaction"
             label="Keep in the notification centre"
-            description="Stays until you act on it instead of fading away. Chrome and Edge on desktop only."
+            description="Overrides auto-hide and stays until you act on it. Chrome and Edge on desktop only."
             checked={prefs.checkIn.requireInteraction}
             disabled={off}
             onCheckedChange={(checked) => void patch({ checkIn: { requireInteraction: checked } })}
           />
+
+          <div className={cn("space-y-2", (off || prefs.checkIn.requireInteraction) && "opacity-50")}>
+            <Label htmlFor="checkin-auto-hide">Auto-hide after</Label>
+            <Select
+              value={String(prefs.checkIn.autoHideMinutes)}
+              disabled={off || prefs.checkIn.requireInteraction}
+              onValueChange={(value) => void patch({ checkIn: { autoHideMinutes: Number(value) } })}
+            >
+              <SelectTrigger id="checkin-auto-hide" className="w-44">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {AUTO_HIDE_PRESETS.map((minutes) => (
+                  <SelectItem key={minutes} value={String(minutes)}>
+                    {minutes} {minutes === 1 ? "minute" : "minutes"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Default: 1 minute. Browser may dismiss sooner or later depending on OS settings.
+            </p>
+          </div>
 
           <ToggleRow
             id="checkin-idle"
