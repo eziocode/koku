@@ -4,12 +4,11 @@ const isDev = process.env.NODE_ENV !== "production";
 
 const contentSecurityPolicy = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline' https://static.zohocdn.com${isDev ? " 'unsafe-eval'" : ""}`,
-  "style-src 'self' 'unsafe-inline' https://static.zohocdn.com",
-  "img-src 'self' data: blob: https://static.zohocdn.com",
-  "font-src 'self' https://static.zohocdn.com",
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self'",
   `connect-src 'self' https:${isDev ? " ws: wss:" : ""}`,
-  "frame-src 'self' https://accounts.zoho.com",
   "worker-src 'self'",
   "manifest-src 'self'",
   "object-src 'none'",
@@ -43,7 +42,6 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  output: "standalone",
   poweredByHeader: false,
 
   // Keep AI SDK packages as Node.js externals so they resolve from
@@ -53,10 +51,6 @@ const nextConfig: NextConfig = {
   // No next/image usage in this app — disable the optimisation proxy.
   images: {
     unoptimized: true,
-  },
-
-  turbopack: {
-    root: __dirname,
   },
 
   experimental: {
