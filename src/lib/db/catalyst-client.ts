@@ -19,13 +19,25 @@ export async function zcqlQuery(
   app: CatalystApp,
   sql: string,
 ): Promise<Record<string, unknown>[]> {
+  const pageSize = 300;
+  const allRows: Record<string, unknown>[] = [];
+  let offset = 0;
+
   try {
-    const rows = await app.zcql().executeZCQLQuery(sql);
-    return Array.isArray(rows) ? rows : [];
+    // Catalyst returns at most 300 rows for an unpaginated ZCQL query.
+    // Keep paging until a short page so admin/sync never silently loses rows.
+    while (true) {
+      const rows = await app.zcql().executeZCQLQuery(`${sql} LIMIT ${offset},${pageSize}`);
+      if (!Array.isArray(rows) || rows.length === 0) break;
+      allRows.push(...rows as Record<string, unknown>[]);
+      if (rows.length < pageSize) break;
+      offset += pageSize;
+    }
+    return allRows;
   } catch (err: unknown) {
     // Catalyst returns an error when query returns 0 rows in some SDK versions
     const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("no records") || msg.includes("EMPTY_RESULT")) return [];
+    if (msg.includes("no records") || msg.includes("EMPTY_RESULT")) return allRows;
     throw err;
   }
 }

@@ -23,12 +23,18 @@ export function ManualSync() {
   }
 
   async function openSync() {
-    setOpen(true); setBusy(true);
+    setBusy(true);
     try {
       const result = await syncNow();
-      setConflict(result.conflict ?? null);
-      if (!result.conflict && result.error) toast.error(result.error);
-      if (!result.conflict && !result.error) { toast.success("Already in sync."); setOpen(false); }
+      if (result.conflict) {
+        setConflict(result.conflict);
+        setOpen(true);
+      } else if (result.error) {
+        toast.error(result.error);
+      } else {
+        setConflict(null);
+        toast.success("Already in sync.");
+      }
     } catch (error) { toast.error(error instanceof Error ? error.message : "Sync check failed."); }
     finally { setBusy(false); }
   }

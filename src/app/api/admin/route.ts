@@ -78,7 +78,8 @@ export async function GET(request: Request) {
       const userRows = Object.entries(data).flatMap(([table, rows]) => rows.filter((row) => String((row as Record<string, unknown>).userId) === user.id).map((row) => ({ ...(row as Record<string, unknown>), table })));
       stats[user.id] = calculateAdminStats(userRows);
     }
-    const groups = auth.isOwner ? await getAdminGroups(auth.app) : [];
+    // Groups are workspace data. Every admin may view them; only owner may mutate them.
+    const groups = await getAdminGroups(auth.app);
     return NextResponse.json({ data, users, admins, groups, stats, presence, ownerUserId: auth.user.user_id, canManageAdmins: auth.isOwner });
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
