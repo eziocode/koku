@@ -30,7 +30,23 @@ export async function zcqlQuery(
   }
 }
 
-/** Upsert a row: insert if id not found for user, update (by ROWID) if found */
+function nestedRow(raw: Record<string, unknown>, tableName: string) {
+  return (raw[tableName] ?? raw) as Record<string, unknown>;
+}
+
+function rowId(raw: Record<string, unknown>, tableName: string): string | number | null {
+  const value = nestedRow(raw, tableName).ROWID ?? raw.ROWID;
+  return typeof value === "string" || typeof value === "number" ? value : null;
+}
+
+function rowTime(raw: Record<string, unknown>, tableName: string): number {
+  const row = nestedRow(raw, tableName);
+  const value = row.MODIFIEDTIME ?? row.modifiedtime ?? row.CREATEDTIME ?? row.createdtime;
+  const parsed = value ? Date.parse(String(value)) : Number.NaN;
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+/** Upsert one logical row and self-heal duplicate rows left by older writes. */
 export async function upsertRow(
   app: CatalystApp,
   tableName: string,
@@ -40,17 +56,22 @@ export async function upsertRow(
 ): Promise<void> {
   const existing = await zcqlQuery(
     app,
-    `SELECT ROWID FROM ${tableName} WHERE id = '${zcqlEscape(id)}' AND user_id = '${zcqlEscape(userId)}'`,
+    `SELECT * FROM ${tableName} WHERE id = '${zcqlEscape(id)}' AND user_id = '${zcqlEscape(userId)}'`,
   );
 
   const table = app.datastore().table(tableName);
 
-  if (existing.length > 0) {
-    const raw = existing[0] as Record<string, unknown>;
-    const nested = raw[tableName] as Record<string, unknown> | undefined;
-    const rowId = (nested?.ROWID ?? raw.ROWID) as string | number;
-    await table.updateRow({ ROWID: rowId, ...fields });
-  } else {
+  if (existing.length === 0) {
     await table.insertRow({ id, user_id: userId, ...fields });
+    return;
+  }
+  const indexed = existing.map((raw, index) => ({ raw: raw as Record<string, unknown>, index }));
+  indexed.sort((a, b) => rowTime(b.raw, tableName) - rowTime(a.raw, tableName) || b.index - a.index);
+  const keep = rowId(indexed[0].raw, tableName);
+  if (keep === null) throw new Error(`Existing ${tableName} row has no ROWID`);
+  await table.updateRow({ ROWID: keep, ...fields });
+  for (const duplicate of indexed.slice(1)) {
+    const duplicateId = rowId(duplicate.raw, tableName);
+    if (duplicateId !== null) await table.deleteRow(duplicateId);
   }
 }

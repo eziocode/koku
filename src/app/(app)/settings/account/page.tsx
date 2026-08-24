@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/toast";
-import { useSettings } from "@/lib/storage/hooks/use-settings";
+import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 import { CatalystSignIn } from "@/components/auth/catalyst-sign-in";
 
 interface CloudUser {
@@ -19,9 +19,7 @@ interface CloudUser {
 const isLocalMode = process.env.NEXT_PUBLIC_LOCAL_MODE === "true";
 
 export default function AccountSettingsPage() {
-  const { getSetting, setSetting } = useSettings();
-  const rawDisplayName = getSetting("displayName");
-  const savedDisplayName = typeof rawDisplayName === "string" ? rawDisplayName : "";
+  const { value: savedDisplayName, setValue: setDisplayName } = useTypedSetting("displayName");
   const [draftDisplayName, setDraftDisplayName] = useState<string | null>(null);
   const displayName = draftDisplayName ?? savedDisplayName;
 
@@ -39,7 +37,7 @@ export default function AccountSettingsPage() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await setSetting("displayName", displayName.trim());
+    await setDisplayName(displayName.trim());
     setDraftDisplayName(null);
     toast.success("Local profile updated.");
   }
@@ -53,8 +51,8 @@ export default function AccountSettingsPage() {
   return (
     <div className="space-y-8">
       <div>
-        <p className="text-sm uppercase tracking-[0.3em] text-primary">Local Settings</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Profile on this device</h1>
+        <p className="text-sm uppercase tracking-[0.3em] text-primary">Account &amp; Profile</p>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Account &amp; profile</h1>
         <p className="mt-2 max-w-2xl text-muted-foreground">
           Customize how Koku refers to you locally. Nothing is synced unless you export it.
         </p>

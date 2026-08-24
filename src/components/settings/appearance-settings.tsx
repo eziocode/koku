@@ -5,7 +5,7 @@ import { useTheme } from "next-themes";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { applyAccentToDocument, cacheAccent, isValidAccent } from "@/lib/appearance";
-import { useSettings } from "@/lib/storage/hooks/use-settings";
+import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 import { cn } from "@/lib/utils";
 
 const THEMES = [
@@ -25,10 +25,7 @@ const ACCENT_PALETTES = [
 
 export function AppearanceSettings() {
   const { theme, setTheme } = useTheme();
-  const { getSetting, setSetting } = useSettings();
-
-  const rawAccent = getSetting("accent");
-  const currentAccent = typeof rawAccent === "string" ? rawAccent : "terracotta";
+  const { value: currentAccent, setValue } = useTypedSetting("accent");
 
   return (
     <div className="space-y-6">
@@ -94,7 +91,7 @@ export function AppearanceSettings() {
                       applyAccentToDocument(key);
                       cacheAccent(key);
                     }
-                    void setSetting("accent", key);
+                    void setValue(key);
                   }}
                   className={cn(
                     "flex min-h-[80px] cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border p-3 text-xs font-medium transition-all",

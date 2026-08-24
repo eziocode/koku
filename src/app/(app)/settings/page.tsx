@@ -19,8 +19,8 @@ const settingsSections = [
     href: "/settings/mini-player",
   },
   {
-    title: "Local Settings",
-    description: "Personalize your display name and device-only preferences.",
+    title: "Account & Profile",
+    description: "Personalize your display name and manage your Zoho account.",
     href: "/settings/account",
   },
   {

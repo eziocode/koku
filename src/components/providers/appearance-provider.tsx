@@ -10,7 +10,7 @@ import {
   isValidAccent,
   type AccentKey,
 } from "@/lib/appearance";
-import { useSettings } from "@/lib/storage/hooks/use-settings";
+import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 
 export { ACCENT_KEYS };
 export type { AccentKey };
@@ -24,8 +24,7 @@ export type { AccentKey };
  * keeps that cache in sync with the authoritative Dexie value.
  */
 export function AppearanceProvider({ children }: { children: ReactNode }) {
-  const { getSetting } = useSettings();
-  const rawAccent = getSetting("accent");
+  const { value: rawAccent } = useTypedSetting("accent");
   const accent: AccentKey = isValidAccent(rawAccent) ? rawAccent : DEFAULT_ACCENT;
 
   useEffect(() => {

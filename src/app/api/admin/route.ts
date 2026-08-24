@@ -66,7 +66,11 @@ export async function GET(request: Request) {
         if (nested.setting_key !== "adminPresence" || typeof nested.setting_value !== "string" || !nested.user_id) continue;
         try {
           const value = JSON.parse(nested.setting_value) as AdminPresence;
-          if (typeof value.seenAt === "string" && typeof value.visible === "boolean" && typeof value.focused === "boolean") presence[String(nested.user_id)] = value;
+          if (typeof value.seenAt === "string" && typeof value.visible === "boolean" && typeof value.focused === "boolean") {
+            const userId = String(nested.user_id);
+            const previous = presence[userId];
+            if (!previous || Date.parse(value.seenAt) >= Date.parse(previous.seenAt)) presence[userId] = value;
+          }
         } catch { /* corrupt operational metadata is ignored */ }
       }
     } catch { /* presence is optional operational metadata */ }
