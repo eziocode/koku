@@ -6,13 +6,13 @@ function tryParse<T>(str: string | undefined | null, fallback: T): T {
 export const TABLE_CONFIG = {
   timeEntries: {
     table: "time_entries_koku",
-    toFields: (r: Record<string, unknown>) => ({ title: r.title ?? "", project_id: r.projectId ?? "", category_id: r.categoryId ?? "", start_at: r.startAt ?? "", end_at: r.endAt ?? "", duration_sec: r.durationSec ?? 0, tags: JSON.stringify(r.tags ?? []), notes: r.notes ?? "", created_at: r.createdAt ?? "" }),
+    toFields: (r: Record<string, unknown>) => ({ title: r.title ?? "", project_id: r.projectId ?? null, category_id: r.categoryId ?? null, start_at: r.startAt ?? "", end_at: r.endAt ?? null, duration_sec: r.durationSec ?? null, tags: JSON.stringify(r.tags ?? []), notes: r.notes ?? null, created_at: r.createdAt ?? "" }),
     fromRow: (r: Record<string, unknown>) => { const d = (r.time_entries_koku ?? r) as Record<string, unknown>; return { id: d.id, title: d.title, projectId: d.project_id || null, categoryId: d.category_id || null, startAt: d.start_at || null, endAt: d.end_at || null, durationSec: d.duration_sec === null || d.duration_sec === undefined || d.duration_sec === "" ? null : Number(d.duration_sec), tags: tryParse(d.tags as string, []), notes: d.notes || null, createdAt: d.created_at }; },
     sinceField: "created_at",
   },
   projects: {
     table: "projects_koku",
-    toFields: (r: Record<string, unknown>) => ({ name: r.name ?? "", color: r.color ?? "#888888", hourly_rate: String(r.hourlyRate ?? ""), created_at: r.createdAt ?? "" }),
+    toFields: (r: Record<string, unknown>) => ({ name: r.name ?? "", color: r.color ?? "#888888", hourly_rate: r.hourlyRate ?? null, created_at: r.createdAt ?? "" }),
     fromRow: (r: Record<string, unknown>) => { const d = (r.projects_koku ?? r) as Record<string, unknown>; return { id: d.id, name: d.name, color: d.color, hourlyRate: d.hourly_rate === null || d.hourly_rate === undefined || d.hourly_rate === "" ? null : parseFloat(d.hourly_rate as string), createdAt: d.created_at }; },
     sinceField: "created_at",
   },
@@ -43,3 +43,32 @@ export const TABLE_CONFIG = {
 } as const;
 
 export type TableKey = keyof typeof TABLE_CONFIG;
+
+const REQUIRED_STRING_FIELDS: Record<TableKey, string[]> = {
+  timeEntries: ["id", "title", "startAt", "createdAt"],
+  projects: ["id", "name", "color", "createdAt"],
+  categories: ["id", "name", "color", "createdAt"],
+  notes: ["id", "title", "slug", "createdAt", "updatedAt"],
+  noteLinks: ["id", "sourceNoteId", "targetNoteId"],
+  settings: ["key"],
+};
+
+export type SyncRowValidation =
+  | { ok: true; id: string; row: Record<string, unknown> }
+  | { ok: false; error: string };
+
+export function validateSyncRow(table: TableKey, value: unknown): SyncRowValidation {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ok: false, error: "Row must be an object." };
+  }
+
+  const row = value as Record<string, unknown>;
+  for (const field of REQUIRED_STRING_FIELDS[table]) {
+    if (typeof row[field] !== "string" || !row[field].trim()) {
+      return { ok: false, error: `${field} must be a non-empty string.` };
+    }
+  }
+
+  const id = String(row.id ?? row.key);
+  return { ok: true, id, row };
+}

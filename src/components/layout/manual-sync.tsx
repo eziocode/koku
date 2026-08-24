@@ -4,7 +4,11 @@ import { Cloud, Database, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { syncNow, type SyncConflict } from "@/lib/sync/sync-engine";
+import {
+  cancelSyncConflict,
+  syncNow,
+  type SyncConflict,
+} from "@/lib/sync/sync-engine";
 import { toast } from "@/components/ui/toast";
 
 export function ManualSync() {
@@ -43,7 +47,16 @@ export function ManualSync() {
     <Button variant="ghost" size="icon" aria-label="Sync cloud and local data" onClick={() => void openSync()} disabled={busy}>
       <RefreshCw className={busy ? "animate-spin" : ""} />
     </Button>
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) {
+          cancelSyncConflict();
+          setConflict(null);
+        }
+      }}
+    >
       <DialogContent>
         <DialogHeader><DialogTitle>Sync Koku</DialogTitle><DialogDescription>{conflict ? `${conflict.total} differences found. Choose source of truth.` : "Choose sync direction."}</DialogDescription></DialogHeader>
         <div className="grid gap-3 sm:grid-cols-2">
