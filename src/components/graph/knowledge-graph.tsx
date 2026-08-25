@@ -5,10 +5,20 @@ import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useMemo, useState } from "react";
 
-import { GraphCanvas, type CanvasEdge, type CanvasNode } from "@/components/graph/graph-canvas";
+import {
+  DEFAULT_FORCES,
+  GraphCanvas,
+  type CanvasEdge,
+  type CanvasNode,
+  type GraphForces,
+} from "@/components/graph/graph-canvas";
+import { GraphForcesPanel } from "@/components/graph/graph-forces-panel";
+import { GRAPH_FRAME_HEIGHT } from "@/components/graph/graph-frame";
 import { GraphLegend } from "@/components/graph/graph-legend";
+import { GraphSideRail } from "@/components/graph/graph-side-rail";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { getSegmentVariantColor } from "@/lib/charts/theme";
 import {
   detectCommunities,
@@ -50,6 +60,7 @@ export function KnowledgeGraph() {
   const [query, setQuery] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [forces, setForces] = useState<GraphForces>(DEFAULT_FORCES);
 
   const isDark = resolvedTheme === "dark";
 
@@ -205,95 +216,96 @@ export function KnowledgeGraph() {
   const filtersActive = Boolean(trimmedQuery || activeTag);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative min-w-[220px] flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Find a note…"
-            className="pl-9 text-sm"
+    <div className={cn("relative overflow-hidden rounded-2xl border border-border bg-card", GRAPH_FRAME_HEIGHT)}>
+      {noteNodes.length === 0 ? (
+        <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
+          <p className="font-medium text-foreground">No notes yet</p>
+          <p className="max-w-sm text-sm text-muted-foreground">
+            Write a note and link others with <code>[[wiki links]]</code> — clusters appear here as
+            your ideas connect.
+          </p>
+        </div>
+      ) : (
+        <>
+          <GraphCanvas
+            nodes={canvasNodes}
+            edges={canvasEdges}
+            isDark={isDark}
+            highlightIds={highlightIds}
+            onNodeClick={(id) => router.push(`/notes?id=${id}`)}
+            onNodeHover={setHoveredId}
+            forces={forces}
+            className="h-full w-full"
           />
-        </div>
 
-        <div className="inline-flex rounded-lg border border-border bg-muted/40 p-1">
-          {COLOR_MODES.map((mode) => (
-            <button
-              key={mode.value}
-              type="button"
-              title={mode.hint}
-              onClick={() => setColorMode(mode.value)}
-              className={[
-                "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-                colorMode === mode.value
-                  ? "bg-card text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
-              ].join(" ")}
-            >
-              {mode.label}
-            </button>
-          ))}
-        </div>
+          {/* Left rail: search, colour mode, tags, legend, forces — all floating
+              over the canvas so the graph itself keeps the whole frame. */}
+          <GraphSideRail>
+            <div className="pointer-events-auto relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Find a note…"
+                className="border-border/60 bg-card/90 pl-9 text-sm shadow-sm backdrop-blur"
+              />
+            </div>
 
-        {filtersActive && (
-          <button
-            type="button"
-            onClick={() => {
-              setQuery("");
-              setActiveTag(null);
-            }}
-            className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <X className="h-3.5 w-3.5" />
-            Clear focus
-          </button>
-        )}
-      </div>
+            <div className="pointer-events-auto inline-flex rounded-lg border border-border/60 bg-card/90 p-1 shadow-sm backdrop-blur">
+              {COLOR_MODES.map((mode) => (
+                <button
+                  key={mode.value}
+                  type="button"
+                  title={mode.hint}
+                  onClick={() => setColorMode(mode.value)}
+                  className={cn(
+                    "flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                    colorMode === mode.value
+                      ? "bg-muted text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {mode.label}
+                </button>
+              ))}
+            </div>
 
-      {allTags.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {allTags.map((tag) => (
-            <button
-              key={tag}
-              type="button"
-              onClick={() => setActiveTag((current) => (current === tag ? null : tag))}
-              className={[
-                "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
-                activeTag === tag
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border bg-muted/40 text-muted-foreground hover:bg-muted",
-              ].join(" ")}
-            >
-              #{tag}
-            </button>
-          ))}
-        </div>
-      )}
+            {filtersActive && (
+              <button
+                type="button"
+                onClick={() => {
+                  setQuery("");
+                  setActiveTag(null);
+                }}
+                className="pointer-events-auto inline-flex w-fit items-center gap-1 rounded-md border border-border/60 bg-card/90 px-2 py-1.5 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur transition-colors hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+                Clear focus
+              </button>
+            )}
 
-      <div className="relative overflow-hidden rounded-3xl border border-border bg-card shadow-sm">
-        {noteNodes.length === 0 ? (
-          <div className="flex h-[560px] flex-col items-center justify-center gap-2 text-center">
-            <p className="font-medium text-foreground">No notes yet</p>
-            <p className="max-w-sm text-sm text-muted-foreground">
-              Write a note and link others with <code>[[wiki links]]</code> — clusters appear here as
-              your ideas connect.
-            </p>
-          </div>
-        ) : (
-          <>
-            <GraphCanvas
-              nodes={canvasNodes}
-              edges={canvasEdges}
-              isDark={isDark}
-              highlightIds={highlightIds}
-              onNodeClick={(id) => router.push(`/notes?id=${id}`)}
-              onNodeHover={setHoveredId}
-              className="h-[560px] w-full"
-            />
+            {allTags.length > 0 && (
+              <div className="pointer-events-auto flex max-h-32 flex-wrap gap-1.5 overflow-y-auto rounded-2xl border border-border/60 bg-card/90 p-2 shadow-sm backdrop-blur">
+                {allTags.map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => setActiveTag((current) => (current === tag ? null : tag))}
+                    className={cn(
+                      "rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors",
+                      activeTag === tag
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border bg-muted/40 text-muted-foreground hover:bg-muted",
+                    )}
+                  >
+                    #{tag}
+                  </button>
+                ))}
+              </div>
+            )}
 
             <GraphLegend
-              className="absolute left-4 top-4 max-w-[220px]"
+              className="pointer-events-auto"
               title={colorMode === "cluster" ? "Clusters" : "Tags"}
               items={legendGroups.map((group) => ({
                 key: group.key,
@@ -304,36 +316,38 @@ export function KnowledgeGraph() {
               }))}
             />
 
-            {hovered ? (
-              <Card className="absolute right-4 top-4 max-w-xs border-border/60 bg-card/95 p-4 shadow-lg backdrop-blur">
-                <div className="flex items-start gap-2">
-                  <span
-                    className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: hovered.color }}
-                  />
-                  <div>
-                    <p className="font-semibold text-foreground">{hovered.title || "Untitled"}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {hovered.degree} {hovered.degree === 1 ? "link" : "links"} · {hovered.groupLabel}
-                    </p>
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      {hovered.tags.length
-                        ? hovered.tags.map((tag) => `#${tag}`).join(" ")
-                        : "No tags"}
-                    </p>
-                  </div>
-                </div>
-              </Card>
-            ) : null}
-          </>
-        )}
-      </div>
+            <GraphForcesPanel className="pointer-events-auto" forces={forces} onChange={setForces} />
+          </GraphSideRail>
 
-      <p className="text-xs text-muted-foreground">
-        {noteNodes.length} notes · {canvasEdges.length} links ·{" "}
-        {legendGroups.filter((group) => group.key !== "__orphan").length} groups
-        {highlightIds ? ` · ${highlightIds.size} in focus` : ""}
-      </p>
+          {hovered ? (
+            <Card className="absolute right-4 top-4 max-w-xs border-border/60 bg-card/95 p-4 shadow-lg backdrop-blur">
+              <div className="flex items-start gap-2">
+                <span
+                  className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: hovered.color }}
+                />
+                <div>
+                  <p className="font-semibold text-foreground">{hovered.title || "Untitled"}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {hovered.degree} {hovered.degree === 1 ? "link" : "links"} · {hovered.groupLabel}
+                  </p>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {hovered.tags.length
+                      ? hovered.tags.map((tag) => `#${tag}`).join(" ")
+                      : "No tags"}
+                  </p>
+                </div>
+              </div>
+            </Card>
+          ) : null}
+
+          <p className="pointer-events-none absolute bottom-4 right-4 rounded-full border border-border/60 bg-card/90 px-3 py-1 text-xs text-muted-foreground shadow-sm backdrop-blur">
+            {noteNodes.length} notes · {canvasEdges.length} links ·{" "}
+            {legendGroups.filter((group) => group.key !== "__orphan").length} groups
+            {highlightIds ? ` · ${highlightIds.size} in focus` : ""}
+          </p>
+        </>
+      )}
     </div>
   );
 }

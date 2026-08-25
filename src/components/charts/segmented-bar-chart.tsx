@@ -6,25 +6,51 @@ import { createPortal } from "react-dom";
 import { ChartEmpty } from "@/components/charts/chart-states";
 import { DayTooltipCard, getTooltipPosition } from "@/components/charts/segment-tooltip";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 import { cn } from "@/lib/utils";
+import type { TimeFormat } from "@/lib/settings/schema";
 import type { SegmentedDay, WorkLogSegment } from "@/lib/charts/segments";
 
 /** Fraction-of-24h below which two blocks are treated as touching, not gapped. */
 const EPS_HOURS = 0.01;
+
+/** Hours that carry a label on the ruler. Every 3h fits without crowding. */
+const RULER_HOURS = [0, 3, 6, 9, 12, 15, 18, 21, 24];
 
 function hourOfDay(iso: string): number {
   const date = new Date(iso);
   return date.getHours() + date.getMinutes() / 60 + date.getSeconds() / 3600;
 }
 
-function formatClockHour(hour: number): string {
+function formatClockHour(hour: number, timeFormat: TimeFormat): string {
   const clamped = Math.max(0, Math.min(24, hour));
   const wholeMinutes = Math.round(clamped * 60);
   const h = Math.floor(wholeMinutes / 60) % 24;
   const m = wholeMinutes % 60;
+
+  if (timeFormat === "24h") {
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  }
+
   const period = h < 12 ? "AM" : "PM";
   const displayHour = h % 12 === 0 ? 12 : h % 12;
   return `${displayHour}:${String(m).padStart(2, "0")} ${period}`;
+}
+
+/**
+ * Compact ruler label — drops the always-`:00` minutes so the axis reads
+ * `9 AM` / `09:00` rather than `9:00 AM`, which crowds at this tick density.
+ */
+function formatRulerHour(hour: number, timeFormat: TimeFormat): string {
+  const h = hour % 24;
+
+  if (timeFormat === "24h") {
+    return `${String(h).padStart(2, "0")}:00`;
+  }
+
+  const period = h < 12 ? "AM" : "PM";
+  const displayHour = h % 12 === 0 ? 12 : h % 12;
+  return `${displayHour} ${period}`;
 }
 
 function hoursMinutesLabel(seconds: number): string {
@@ -148,6 +174,8 @@ export function SegmentedBarChart({
     y: number;
   } | null>(null);
 
+  const { value: timeFormat } = useTypedSetting("timeFormat");
+
   const hasData = useMemo(() => days.some((day) => day.segments.length > 0), [days]);
   const now = useMemo(() => hourOfDay(new Date().toISOString()), []);
   const todayKey = useMemo(() => localDateKey(new Date()), []);
@@ -177,6 +205,29 @@ export function SegmentedBarChart({
 
   return (
     <div className="w-full">
+      {/* Hour ruler. Gutters match each row's day label and total columns so the
+          ticks line up with the tracks below. */}
+      <div className="flex items-end gap-3 pr-2">
+        <div className="w-14 shrink-0" aria-hidden />
+        <div className="relative h-4 flex-1">
+          {RULER_HOURS.map((hour) => (
+            <span
+              key={hour}
+              className={cn(
+                "absolute bottom-0 whitespace-nowrap text-[10px] tabular-nums text-muted-foreground",
+                hour === 0 && "translate-x-0",
+                hour === 24 && "-translate-x-full",
+                hour !== 0 && hour !== 24 && "-translate-x-1/2",
+              )}
+              style={{ left: `${(hour / 24) * 100}%` }}
+            >
+              {formatRulerHour(hour, timeFormat)}
+            </span>
+          ))}
+        </div>
+        <div className="w-16 shrink-0" aria-hidden />
+      </div>
+
       <ScrollArea ref={scrollAreaRef} style={{ height }}>
         <div className="space-y-1 pr-2">
           {days.map((day) => {
@@ -200,6 +251,15 @@ export function SegmentedBarChart({
                   {isToday ? "Today" : day.label}
                 </p>
                 <div className="relative h-6 flex-1 rounded-full bg-muted/20">
+                  {/* Hour gridlines, matching the ruler ticks. */}
+                  {RULER_HOURS.slice(1, -1).map((hour) => (
+                    <div
+                      key={hour}
+                      className="pointer-events-none absolute inset-y-0 w-px bg-border/50"
+                      style={{ left: `${(hour / 24) * 100}%` }}
+                      aria-hidden
+                    />
+                  ))}
                   <div
                     className="pointer-events-none absolute inset-y-0 border-l border-dashed border-primary/50"
                     style={{ left: `${(now / 24) * 100}%` }}
@@ -244,8 +304,8 @@ export function SegmentedBarChart({
                         key={`${day.key}-gap-${block.from}`}
                         tabIndex={0}
                         role="note"
-                        title={`No log found · ${formatClockHour(block.from)} – ${formatClockHour(block.to)}`}
-                        aria-label={`No log found from ${formatClockHour(block.from)} to ${formatClockHour(block.to)}`}
+                        title={`No log found · ${formatClockHour(block.from, timeFormat)} – ${formatClockHour(block.to, timeFormat)}`}
+                        aria-label={`No log found from ${formatClockHour(block.from, timeFormat)} to ${formatClockHour(block.to, timeFormat)}`}
                         className="absolute inset-y-0.5 cursor-help rounded-full bg-[repeating-linear-gradient(135deg,color-mix(in_srgb,var(--color-muted-foreground)_35%,transparent)_0,color-mix(in_srgb,var(--color-muted-foreground)_35%,transparent)_2px,transparent_2px,transparent_6px)]"
                         style={{
                           left: `${(block.from / 24) * 100}%`,
