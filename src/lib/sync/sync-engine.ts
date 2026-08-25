@@ -20,6 +20,7 @@ const AUTH_CACHE_TTL_MS = 30_000;
 let authCache: { user: { id: string } | null; expiresAt: number } | null = null;
 let conflictDecisionPending = false;
 const mutationLocks = new Map<string, Promise<void>>();
+let pendingSyncWarningShown = false;
 
 async function getAuthUser(): Promise<{ id: string } | null> {
   const now = Date.now();
@@ -89,6 +90,8 @@ async function waitForMutationLocks(): Promise<void> {
 }
 
 function notifyPendingSync() {
+  if (pendingSyncWarningShown) return;
+  pendingSyncWarningShown = true;
   toast.warning("Saved locally. Cloud sync is pending; use manual sync to retry.", {
     id: PENDING_SYNC_TOAST_ID,
   });
@@ -495,7 +498,10 @@ export function flushPendingChanges(
       kokuDb.pendingDeletes.count(),
     ]);
     const pending = upserts + deletes;
-    if (pending === 0) return { pushed: 0, deleted: 0, pending: 0 };
+    if (pending === 0) {
+      pendingSyncWarningShown = false;
+      return { pushed: 0, deleted: 0, pending: 0 };
+    }
     if (conflictDecisionPending && !options.ignoreConflictPause) {
       return { pushed: 0, deleted: 0, pending, error: "Sync choice required" };
     }
@@ -508,6 +514,7 @@ export function flushPendingChanges(
       const pushed = await deliverPendingUpserts();
       const deleted = await deliverPendingDeletes();
       const remaining = await kokuDb.pendingUpserts.count() + await kokuDb.pendingDeletes.count();
+      if (remaining === 0) pendingSyncWarningShown = false;
       return { pushed, deleted, pending: remaining };
     } catch (error) {
       if (options.notifyOnFailure) notifyPendingSync();

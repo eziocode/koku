@@ -1,6 +1,6 @@
 export type AdminRow = Record<string, unknown>;
 
-export type AdminUser = { id: string; email: string; displayName: string };
+export type AdminUser = { id: string; email: string; displayName: string; presence?: AdminPresence };
 export type AdminGroup = { id: string; name: string; userIds: string[] };
 export type CatalystUserDetails = {
   user_id?: string | number;
@@ -68,6 +68,22 @@ export type AdminPresence = {
 };
 
 export type PresenceStatus = "working" | "break" | "online" | "offline";
+
+/** Active users first, newest heartbeat first, inactive users last. */
+export function sortAdminUsersByPresence(users: AdminUser[], now = Date.now()): AdminUser[] {
+  return [...users].sort((a, b) => {
+    const aStatus = getPresenceStatus(a.presence, now);
+    const bStatus = getPresenceStatus(b.presence, now);
+    const aActive = aStatus === "offline" ? 0 : 1;
+    const bActive = bStatus === "offline" ? 0 : 1;
+    if (aActive !== bActive) return bActive - aActive;
+
+    const aSeen = validDate(a.presence?.seenAt)?.getTime() ?? 0;
+    const bSeen = validDate(b.presence?.seenAt)?.getTime() ?? 0;
+    if (aSeen !== bSeen) return bSeen - aSeen;
+    return (a.displayName || a.email).localeCompare(b.displayName || b.email);
+  });
+}
 
 export type DashboardData = {
   workEntries: AdminRow[];

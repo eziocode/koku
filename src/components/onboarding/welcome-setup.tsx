@@ -1,7 +1,8 @@
 "use client";
 
 import { Bell, CalendarDays, Clock3, UserRound } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -37,6 +38,8 @@ const STEP_META = {
 } satisfies Record<WelcomeStep, { label: string; icon: typeof UserRound }>;
 
 export function WelcomeSetup() {
+  const pathname = usePathname();
+  const router = useRouter();
   const { value: displayName, setValue: setDisplayName } = useTypedSetting("displayName");
   const { prefs, patch } = useNotificationPreferences();
   const { support, permission, request } = useNotificationPermission();
@@ -61,6 +64,12 @@ export function WelcomeSetup() {
   const stepIndex = activeStep ? STEP_ORDER.indexOf(activeStep) : 0;
   const meta = activeStep ? STEP_META[activeStep] : STEP_META.displayName;
   const Icon = meta.icon;
+
+  useEffect(() => {
+    if (loaded && !status.displayName && pathname !== "/settings/account") {
+      router.replace("/settings/account");
+    }
+  }, [loaded, pathname, router, status.displayName]);
 
   function goBack() {
     const previous = STEP_ORDER.slice(0, stepIndex).reverse().find((candidate) => !status[candidate]);

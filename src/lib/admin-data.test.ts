@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { adminUserFromDetails, dashboardForRange, extractCatalystRowId, extractCatalystRowUserId, formatDate, formatDuration, getPresenceStatus, groupRowsByUser, plainTextToTiptap, tiptapToPlainText } from "@/lib/admin-data";
+import { adminUserFromDetails, dashboardForRange, extractCatalystRowId, extractCatalystRowUserId, formatDate, formatDuration, getPresenceStatus, groupRowsByUser, plainTextToTiptap, sortAdminUsersByPresence, tiptapToPlainText } from "@/lib/admin-data";
 
 test("extracts nested and top-level Catalyst ROWID safely", () => {
   assert.equal(extractCatalystRowId({ notes_koku: { ROWID: 42 } }, "notes_koku"), 42);
@@ -63,4 +63,17 @@ test("presence status favors work and breaks, expires stale heartbeats", () => {
   assert.equal(getPresenceStatus({ seenAt, visible: true, focused: true, break: { label: "Lunch", startedAt: seenAt } }, 1_000_001), "break");
   assert.equal(getPresenceStatus({ seenAt, visible: true, focused: true }, 1_000_001), "online");
   assert.equal(getPresenceStatus({ seenAt, visible: true, focused: true }, 1_000_000 + 300_001), "offline");
+});
+
+test("sorts active users by recent heartbeat before inactive users", () => {
+  const now = 1_000_000;
+  const user = (id: string, seenAt?: number) => ({
+    id, email: `${id}@example.com`, displayName: id,
+    presence: seenAt === undefined ? undefined : { seenAt: new Date(seenAt).toISOString(), visible: true, focused: true },
+  });
+  assert.deepEqual(sortAdminUsersByPresence([
+    user("offline", now - 1_000_000),
+    user("recent", now - 1_000),
+    user("active", now - 10_000),
+  ], now).map((item) => item.id), ["recent", "active", "offline"]);
 });

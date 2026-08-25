@@ -37,7 +37,12 @@ export default function AccountSettingsPage() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await setDisplayName(displayName.trim());
+    const nextDisplayName = displayName.trim();
+    if (!nextDisplayName) {
+      toast.error("Display name is required.");
+      return;
+    }
+    await setDisplayName(nextDisplayName);
     setDraftDisplayName(null);
     toast.success("Local profile updated.");
   }
@@ -87,6 +92,7 @@ export default function AccountSettingsPage() {
                 value={displayName}
                 onChange={(event) => setDraftDisplayName(event.target.value)}
                 placeholder="e.g. Alex"
+                required
               />
             </div>
             <Button type="submit">Save local name</Button>

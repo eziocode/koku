@@ -81,6 +81,23 @@ export async function GET(request: Request) {
       return NextResponse.json({ user, rows, table, nextCursor: offset + rows.length < scoped.length ? String(offset + rows.length) : null, summary: calculateAdminStats(allRows), dashboard: dashboardForRange(allRows, `${start ?? "1900-01-01"}T00:00:00`, `${end ?? "2999-12-31"}T23:59:59.999`), presence });
     }
     const users = [...usersById.values()];
+    // Presence is stored as one user-scoped settings row. Read it once for
+    // directory ordering so admin does not need one request per user.
+    try {
+      const settings = await zcqlQuery(auth.app, `SELECT * FROM ${TABLE_CONFIG.settings.table}`);
+      for (const raw of settings) {
+        const nested = (raw[TABLE_CONFIG.settings.table] ?? raw) as Record<string, unknown>;
+        if (nested.setting_key !== "adminPresence" || typeof nested.setting_value !== "string") continue;
+        const userIdForPresence = String(nested.user_id ?? raw.user_id ?? "").trim();
+        if (!userIdForPresence) continue;
+        const user = usersById.get(userIdForPresence);
+        if (!user) continue;
+        try {
+          const presence = JSON.parse(nested.setting_value) as AdminPresence;
+          if (typeof presence.seenAt === "string") user.presence = presence;
+        } catch { /* Ignore malformed optional presence rows. */ }
+      }
+    } catch { /* Directory still works when presence cannot be read. */ }
     if (!users.some((user) => user.id === String(auth.user.user_id))) { const current = adminUserFromDetails(auth.user); if (current) users.push(current); }
     const adminIds = new Set([auth.user.user_id, ...delegatedAdminIds]);
     const admins = users.filter((user) => adminIds.has(user.id));

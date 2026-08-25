@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
-import { type AdminGroup, type AdminUser } from "@/lib/admin-data";
+import { sortAdminUsersByPresence, type AdminGroup, type AdminUser } from "@/lib/admin-data";
 
 type ConfirmAction =
   | { type: "removeAdmin"; userId: string; email: string }
@@ -170,9 +170,9 @@ export function AdminClient() {
     }
   }
 
-  const filteredUsers = users.filter((user) =>
+  const filteredUsers = sortAdminUsersByPresence(users.filter((user) =>
     `${user.displayName} ${user.email} ${user.id}`.toLowerCase().includes(search.trim().toLowerCase()),
-  );
+  ));
   const availableAdmins = users.filter((user) => !admins.some((admin) => admin.id === user.id));
 
   if (access === "checking")
@@ -263,7 +263,7 @@ export function AdminClient() {
                   </Badge>
                 </div>
                 <LazyUserGrid
-                  users={filteredUsers.filter((user) => !groups.some((group) => group.userIds.includes(user.id)))}
+                  users={sortAdminUsersByPresence(filteredUsers.filter((user) => !groups.some((group) => group.userIds.includes(user.id))))}
                   onOpen={(id) => router.push(`/admin/users/${encodeURIComponent(id)}`)}
                 />
               </div>

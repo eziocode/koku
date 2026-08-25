@@ -1,11 +1,39 @@
 "use client";
 
 import { useEffect, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 
 import { BreakRunner } from "@/components/notifications/break-runner";
 import { NotificationScheduler } from "@/components/providers/notification-scheduler";
 import { subscribeTimerStoreToOtherTabs } from "@/lib/stores/timer-sync";
 import { resyncTicker } from "@/lib/stores/use-ticker";
+import { useNotificationPermission } from "@/lib/notifications/use-notification-permission";
+import { toast } from "@/components/ui/toast";
+
+const PERMISSION_REMINDER_INTERVAL_MS = 60 * 60 * 1000;
+
+function NotificationPermissionReminder() {
+  const router = useRouter();
+  const { support, permission } = useNotificationPermission();
+
+  useEffect(() => {
+    if (!support.supported || permission === "granted") return;
+
+    const remind = () => {
+      if (document.visibilityState !== "visible") return;
+      toast.info("Don’t miss helpful koku reminders. Enable notifications for a smoother experience.", {
+        id: "notification-permission-hourly-reminder",
+        duration: 12_000,
+        action: { label: "Enable", onClick: () => router.push("/settings/notifications") },
+      });
+    };
+
+    const timer = window.setInterval(remind, PERMISSION_REMINDER_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [permission, router, support.supported]);
+
+  return null;
+}
 
 /**
  * Mounts the always-on notification machinery.
@@ -41,6 +69,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       {children}
       <NotificationScheduler />
       <BreakRunner />
+      <NotificationPermissionReminder />
     </>
   );
 }
