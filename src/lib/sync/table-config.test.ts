@@ -109,5 +109,6 @@ describe("Catalyst field transforms", () => {
     assert.equal(fields.category_id, null);
     assert.equal(fields.end_at, null);
     assert.equal(fields.duration_sec, null);
+    assert.equal(fields.start_at, "2026-08-24 10:00:00");
   });
 });

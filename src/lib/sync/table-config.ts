@@ -1,3 +1,5 @@
+import { toCatalystDateTime } from "@/lib/db/catalyst-datetime";
+
 function tryParse<T>(str: string | undefined | null, fallback: T): T {
   if (!str) return fallback;
   try { return JSON.parse(str) as T; } catch { return fallback; }
@@ -6,7 +8,7 @@ function tryParse<T>(str: string | undefined | null, fallback: T): T {
 export const TABLE_CONFIG = {
   timeEntries: {
     table: "time_entries_koku",
-    toFields: (r: Record<string, unknown>) => ({ title: r.title ?? "", project_id: r.projectId ?? null, category_id: r.categoryId ?? null, start_at: r.startAt ?? "", end_at: r.endAt ?? null, duration_sec: r.durationSec ?? null, tags: JSON.stringify(r.tags ?? []), notes: r.notes ?? null, created_at: r.createdAt ?? "" }),
+    toFields: (r: Record<string, unknown>) => ({ title: r.title ?? "", project_id: r.projectId ?? null, category_id: r.categoryId ?? null, start_at: toCatalystDateTime(r.startAt) ?? "", end_at: r.endAt === null || r.endAt === undefined ? null : toCatalystDateTime(r.endAt), duration_sec: r.durationSec ?? null, tags: JSON.stringify(r.tags ?? []), notes: r.notes ?? null, created_at: r.createdAt ?? "" }),
     fromRow: (r: Record<string, unknown>) => { const d = (r.time_entries_koku ?? r) as Record<string, unknown>; return { id: d.id, title: d.title, projectId: d.project_id || null, categoryId: d.category_id || null, startAt: d.start_at || null, endAt: d.end_at || null, durationSec: d.duration_sec === null || d.duration_sec === undefined || d.duration_sec === "" ? null : Number(d.duration_sec), tags: tryParse(d.tags as string, []), notes: d.notes || null, createdAt: d.created_at }; },
     sinceField: "created_at",
   },
