@@ -18,7 +18,7 @@ export function AppShell({ children }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-background text-foreground">
+    <div className="flex h-full overflow-hidden bg-background text-foreground">
       <CommandPalette />
       {/* Receives notification actions (quick note / open log) from the service
           worker. Mounted here so it is route-independent, like the palette. */}
