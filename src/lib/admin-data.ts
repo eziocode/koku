@@ -1,3 +1,5 @@
+import type { SegmentSourceEntry } from "@/lib/charts/segments";
+
 export type AdminRow = Record<string, unknown>;
 
 export type AdminUser = { id: string; email: string; displayName: string; presence?: AdminPresence };
@@ -147,6 +149,54 @@ export function dashboardForRange(rows: AdminRow[], start: string, end: string, 
   }
   const activity = [...entries, ...rows.filter((row) => row.table === "notes")].map((row) => validDate(row.updatedAt ?? row.startAt ?? row.createdAt)?.toISOString()).filter((value): value is string => Boolean(value)).sort();
   return { workEntries, breakEntries, notes, totalSeconds, todaySeconds, activeDays: dailyMap.size, daily: [...dailyMap].map(([day, seconds]) => ({ day, seconds })).sort((a, b) => a.day.localeCompare(b.day)), projects: [...projectMap.values()].sort((a, b) => b.seconds - a.seconds), lastActivity: activity.at(-1) ?? null };
+}
+
+function optionalString(value: unknown): string | null {
+  if (typeof value === "number") return String(value);
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+/**
+ * Adapts untyped admin rows into the entry shape the segmented-chart transforms
+ * consume.
+ *
+ * Admin rows arrive from two places with the same field names but no shared
+ * type: the Catalyst-backed API (`TABLE_CONFIG.timeEntries.fromRow`) and the
+ * local Dexie mirror. Both surface startAt/endAt/durationSec/tags, so one
+ * defensive adapter serves both. Rows with an unparseable `startAt` are dropped
+ * — the chart needs a real instant to bucket a slice onto a day, and this
+ * mirrors the `if (!day) continue` skip `dashboardForRange` already applies.
+ */
+export function adminRowsToSegmentEntries(rows: AdminRow[]): SegmentSourceEntry[] {
+  const entries: SegmentSourceEntry[] = [];
+
+  rows.forEach((row, index) => {
+    const startAt = optionalString(row.startAt);
+    if (!startAt || !validDate(startAt)) return;
+
+    const endAt = optionalString(row.endAt);
+    const duration = Number(row.durationSec);
+
+    entries.push({
+      // Segment ids only key React nodes and the colour-variant hash, so a
+      // synthetic id beats dropping an hour of real tracked work.
+      id: optionalString(row.id) ?? `admin-row-${index}`,
+      title: optionalString(row.title) ?? "Untitled work",
+      notes: optionalString(row.notes),
+      projectId: optionalString(row.projectId),
+      categoryId: optionalString(row.categoryId),
+      startAt,
+      // A stored end that will not parse means the entry never closed cleanly;
+      // null makes `deriveStatus` read it as running, which is the honest read.
+      endAt: endAt && validDate(endAt) ? endAt : null,
+      durationSec: Number.isFinite(duration) && duration > 0 ? Math.floor(duration) : null,
+      tags: Array.isArray(row.tags) ? row.tags.map((tag) => String(tag)).filter(Boolean) : [],
+    });
+  });
+
+  return entries;
 }
 
 export function getPresenceStatus(presence: AdminPresence | undefined, now = Date.now()): PresenceStatus {

@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, RefreshCw } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
+import { ChartLoading } from "@/components/charts/chart-states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "@/components/ui/toast";
 import {
+  adminRowsToSegmentEntries,
   formatDate,
   formatDuration,
   dashboardForRange,
@@ -22,9 +25,27 @@ import {
   type AdminUser,
   type DashboardData,
 } from "@/lib/admin-data";
+import { buildSegmentedDays, toProjectBreakdown } from "@/lib/charts/segments";
+import { BREAK_TAG } from "@/lib/notifications/settings";
 import { kokuDb } from "@/lib/storage/db";
 import { syncNow } from "@/lib/sync/sync-engine";
 import { exportToCSV, exportToXLSX } from "@/lib/export";
+import { cn } from "@/lib/utils";
+
+const CHART_HEIGHT = 224;
+const chartLoader = () => <ChartLoading height={CHART_HEIGHT} />;
+
+const SegmentedBarChart = dynamic(
+  () => import("@/components/charts/segmented-bar-chart").then((mod) => mod.SegmentedBarChart),
+  { loading: chartLoader },
+);
+const ProjectPieChart = dynamic(
+  () => import("@/components/charts/project-pie-chart").then((mod) => mod.ProjectPieChart),
+  { loading: chartLoader },
+);
+
+/** Tags that mark an entry as rest, not work — matches `isBreak` in admin-data. */
+const WORK_EXCLUDED_TAGS = [BREAK_TAG];
 
 type DetailResponse = {
   user: AdminUser;
@@ -102,6 +123,8 @@ export function AdminUserDetail({ userId }: { userId: string }) {
   const [user, setUser] = useState<AdminUser | null>(null);
   const [summary, setSummary] = useState<AdminStats | null>(null);
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
+  /** Same shape as `dashboard`, but spanning the whole From/To range — feeds the charts. */
+  const [rangeDashboard, setRangeDashboard] = useState<DashboardData | null>(null);
   const [presence, setPresence] = useState<AdminPresence>();
 
   const [rangeStart, setRangeStart] = useState(dayShift(today, -29));
@@ -237,6 +260,48 @@ export function AdminUserDetail({ userId }: { userId: string }) {
     );
   }, [selectedDay]);
 
+  const localDashboardForRange = useCallback(async () => {
+    const [rows, projects] = await Promise.all([
+      localReportRows(start, rangeEnd),
+      kokuDb.projects.toArray(),
+    ]);
+    return dashboardForRange(
+      [...rows, ...projects.map((project) => ({ ...project, table: "projects" } as AdminRow))],
+      `${start}T00:00:00`,
+      `${rangeEnd}T23:59:59.999`,
+    );
+  }, [rangeEnd, start]);
+
+  const chartDays = useMemo(() => {
+    if (!rangeDashboard) return [];
+    return buildSegmentedDays({
+      entries: adminRowsToSegmentEntries(rangeDashboard.workEntries),
+      projectMap: new Map(rangeDashboard.projects.map((project) => [project.id, project])),
+      interval: { start: new Date(`${start}T00:00:00`), end: new Date(`${rangeEnd}T00:00:00`) },
+      labelFormat: "date",
+      excludeTags: WORK_EXCLUDED_TAGS,
+    });
+  }, [rangeDashboard, rangeEnd, start]);
+
+  const chartProjects = useMemo(
+    () =>
+      toProjectBreakdown(chartDays).map((item) => ({
+        name: item.name,
+        value: item.hours,
+        color: item.color,
+        seconds: item.seconds,
+      })),
+    [chartDays],
+  );
+
+  // Summed from the drawn segments, not from `rangeDashboard.totalSeconds`: the
+  // day-interval clip can drop the post-midnight tail of an entry that started
+  // on the last day of the range, and the donut must match the bars.
+  const chartTotalSeconds = useMemo(
+    () => chartDays.reduce((total, day) => total + day.totalSeconds, 0),
+    [chartDays],
+  );
+
   const load = useCallback(
     async (force = false) => {
       const version = ++requestVersion.current;
@@ -248,6 +313,7 @@ export function AdminUserDetail({ userId }: { userId: string }) {
       setNotes([]);
       setNoteCursor(null);
       setDashboard(null);
+      setRangeDashboard(null);
 
       try {
         const statsPromise = fetchTable("timeEntries", null, force, start, rangeEnd, true);
@@ -277,7 +343,12 @@ export function AdminUserDetail({ userId }: { userId: string }) {
           setNoDataConfirmed(logResult.rows.length === 0 && noteResult.rows.length === 0);
         }
         setDayLoading(false);
-        await statsPromise;
+        const rangeResult = await statsPromise;
+        const rangeData = isOwnProfile && !force
+          ? await localDashboardForRange()
+          : rangeResult.dashboard ?? null;
+        if (version !== requestVersion.current) return;
+        setRangeDashboard(rangeData);
         const selectedDashboard = isOwnProfile
           ? await localDashboardForSelectedDay()
           : (await fetchTable("timeEntries", null, force, selectedDay, selectedDay)).dashboard;
@@ -296,7 +367,7 @@ export function AdminUserDetail({ userId }: { userId: string }) {
         }
       }
     },
-    [fetchTable, isOwnProfile, localDashboardForSelectedDay, rangeEnd, selectedDay, setDashboard, setDayLoading, setLoading, setLogCursor, setLogs, setNoDataConfirmed, setNoteCursor, setNotes, start],
+    [fetchTable, isOwnProfile, localDashboardForRange, localDashboardForSelectedDay, rangeEnd, selectedDay, setDashboard, setDayLoading, setLoading, setLogCursor, setLogs, setNoDataConfirmed, setNoteCursor, setNotes, setRangeDashboard, start],
   );
 
   useEffect(() => {
@@ -480,8 +551,7 @@ export function AdminUserDetail({ userId }: { userId: string }) {
             {[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
           </div>
           <div className="grid gap-4 lg:grid-cols-2">
-            <Skeleton className="h-48 rounded-2xl" />
-            <Skeleton className="h-48 rounded-2xl" />
+            {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-48 rounded-2xl" />)}
           </div>
         </div>
       ) : summary && dashboard ? (
@@ -530,6 +600,33 @@ export function AdminUserDetail({ userId }: { userId: string }) {
               </CardContent>
             </Card>
           </div>
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+            <Card>
+              <CardHeader>
+                <CardTitle>Daily activity</CardTitle>
+                <p className="text-xs text-muted-foreground">{start} to {rangeEnd}</p>
+              </CardHeader>
+              <CardContent>
+                <SegmentedBarChart
+                  days={chartDays}
+                  height={CHART_HEIGHT}
+                  emptyTitle="No tracked work in range"
+                  emptyDescription="Try a wider From/To range, or use Manual Sync if data was recently added."
+                />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader><CardTitle>Project split</CardTitle></CardHeader>
+              <CardContent>
+                <ProjectPieChart
+                  data={chartProjects}
+                  height={CHART_HEIGHT}
+                  centerLabel="Tracked"
+                  centerValue={formatDuration(chartTotalSeconds)}
+                />
+              </CardContent>
+            </Card>
+          </div>
         </>
       ) : null}
 
@@ -569,14 +666,7 @@ export function AdminUserDetail({ userId }: { userId: string }) {
             hasMore={!!noteCursor}
             loadingMore={noteLoadingMore}
             onMore={() => void moreNotes()}
-            compact
-            render={(row) => (
-              <div className="flex min-w-0 items-center gap-3">
-                <p className="shrink-0 font-medium">{String(row.title || "Untitled note")}</p>
-                <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{tiptapToPlainText(row.content).trim() || "No text"}</p>
-                <p className="shrink-0 text-xs text-muted-foreground">{formatDate(row.updatedAt ?? row.createdAt)}</p>
-              </div>
-            )}
+            render={(row) => <AdminNoteRow row={row} />}
           />
         </div>
       }
@@ -671,6 +761,67 @@ function FullRangeReport({
   );
 }
 
+/** Quick notes open with a "Logged … " stamp paragraph — see `buildQuickNoteStamp`. */
+const NOTE_STAMP_PATTERN = /^Logged .+/;
+
+/**
+ * One note in the admin Notes panel.
+ *
+ * Note content is a TipTap doc flattened to newline-separated lines, and quick
+ * notes carry a "Logged … while tracking …" stamp as their first paragraph. That
+ * stamp is lifted out as its own metadata line so the body starts with what the
+ * user actually wrote, wrapped and clamped rather than truncated to one line.
+ */
+function AdminNoteRow({ row }: { row: AdminRow }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const { stamp, body } = useMemo(() => {
+    const lines = tiptapToPlainText(row.content)
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const hasStamp = lines.length > 1 && NOTE_STAMP_PATTERN.test(lines[0]);
+    return {
+      stamp: hasStamp ? lines[0] : null,
+      body: (hasStamp ? lines.slice(1) : lines).join("\n"),
+    };
+  }, [row.content]);
+
+  const isLong = body.length > 180 || body.includes("\n");
+
+  return (
+    <div className="min-w-0 space-y-1.5">
+      <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <p className="min-w-0 break-words font-medium text-foreground">
+          {String(row.title || "Untitled note")}
+        </p>
+        <p className="shrink-0 text-xs tabular-nums text-muted-foreground">
+          {formatDate(row.updatedAt ?? row.createdAt)}
+        </p>
+      </div>
+      {stamp ? <p className="text-xs italic text-muted-foreground/80">{stamp}</p> : null}
+      <p
+        className={cn(
+          "whitespace-pre-wrap break-words text-sm leading-relaxed text-muted-foreground",
+          !expanded && "line-clamp-3",
+        )}
+      >
+        {body || "No text"}
+      </p>
+      {isLong ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-auto px-0 text-xs"
+          onClick={() => setExpanded((value) => !value)}
+        >
+          {expanded ? "Show less" : "Show more"}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 function LazyDetailList({
   title,
   rows,
@@ -679,7 +830,6 @@ function LazyDetailList({
   loadingMore,
   onMore,
   render,
-  compact = false,
 }: {
   title: string;
   rows: AdminRow[];
@@ -688,7 +838,6 @@ function LazyDetailList({
   loadingMore: boolean;
   onMore: () => void;
   render: (row: AdminRow) => React.ReactNode;
-  compact?: boolean;
 }) {
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -709,13 +858,13 @@ function LazyDetailList({
     <Card className="flex flex-col">
       <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
       <CardContent className="flex-1 overflow-hidden px-6 pb-6">
-        <ScrollArea className="h-80 rounded-lg">
-          <div className={compact ? "space-y-2 pr-2 pt-1" : "space-y-3 pr-2 pt-1"}>
+        <ScrollArea className="h-80 max-h-[60vh] rounded-lg xl:h-96">
+          <div className="space-y-3 pr-2 pt-1">
             {loading ? (
               [1, 2, 3].map((item) => <Skeleton key={item} className="h-16 rounded-lg" />)
             ) : rows.length ? (
               rows.map((row, index) => (
-                <div key={String(row.id ?? index)} className={compact ? "rounded-lg border px-3 py-2 text-sm text-muted-foreground" : "rounded-lg border p-3 text-sm text-muted-foreground"}>
+                <div key={String(row.id ?? index)} className="min-w-0 rounded-lg border p-3 text-sm text-muted-foreground">
                   {render(row)}
                 </div>
               ))

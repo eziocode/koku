@@ -1,6 +1,24 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { adminUserFromDetails, dashboardForRange, extractCatalystRowId, extractCatalystRowUserId, formatDate, formatDuration, getPresenceStatus, groupRowsByUser, plainTextToTiptap, sortAdminUsersByPresence, tiptapToPlainText } from "@/lib/admin-data";
+import { adminRowsToSegmentEntries, adminUserFromDetails, dashboardForRange, extractCatalystRowId, extractCatalystRowUserId, formatDate, formatDuration, getPresenceStatus, groupRowsByUser, plainTextToTiptap, sortAdminUsersByPresence, tiptapToPlainText } from "@/lib/admin-data";
+
+test("adapts admin rows into chart entries and drops the unusable ones", () => {
+  const entries = adminRowsToSegmentEntries([
+    { id: "a", title: "Bugs", startAt: "2026-08-25T09:00:00.000Z", endAt: "2026-08-25T10:00:00.000Z", durationSec: 3600, projectId: "p1", tags: ["deep", 7] },
+    { id: "b", startAt: "not-a-date", durationSec: 60 },
+    { startAt: "2026-08-25T11:00:00.000Z", endAt: "garbage", durationSec: "nope" },
+  ]);
+
+  assert.equal(entries.length, 2);
+  assert.deepEqual(entries[0], { id: "a", title: "Bugs", notes: null, projectId: "p1", categoryId: null, startAt: "2026-08-25T09:00:00.000Z", endAt: "2026-08-25T10:00:00.000Z", durationSec: 3600, tags: ["deep", "7"] });
+  // Missing id/title fall back rather than losing real tracked work, and an
+  // unparseable end reads as still-running instead of poisoning the chart.
+  assert.equal(entries[1].id, "admin-row-2");
+  assert.equal(entries[1].title, "Untitled work");
+  assert.equal(entries[1].endAt, null);
+  assert.equal(entries[1].durationSec, null);
+  assert.deepEqual(entries[1].tags, []);
+});
 
 test("extracts nested and top-level Catalyst ROWID safely", () => {
   assert.equal(extractCatalystRowId({ notes_koku: { ROWID: 42 } }, "notes_koku"), 42);

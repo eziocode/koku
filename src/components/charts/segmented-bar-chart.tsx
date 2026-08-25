@@ -5,7 +5,7 @@ import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis
 
 import { ChartEmpty } from "@/components/charts/chart-states";
 import { RechartsSegmentTooltip } from "@/components/charts/segment-tooltip";
-import { CHART_TOKENS } from "@/lib/charts/theme";
+import { CHART_TOKENS, DAY_AXIS } from "@/lib/charts/theme";
 import { formatDuration } from "@/lib/utils";
 import { toStackedRows, type SegmentedDay, type StackedRow, type WorkLogSegment } from "@/lib/charts/segments";
 
@@ -86,6 +86,12 @@ interface SegmentedBarChartProps {
   onSegmentClick?: (segment: WorkLogSegment) => void;
   emptyTitle?: string;
   emptyDescription?: string;
+  /**
+   * Lock the Y axis to a full 0–24h day instead of letting recharts scale it to
+   * the tallest column. On by default: every caller plots day totals, and an
+   * auto-scaled axis makes the same month look different month to month.
+   */
+  fullDayAxis?: boolean;
 }
 
 const TINY_SEGMENT_TOOLTIP_HEIGHT = 12;
@@ -104,6 +110,7 @@ export function SegmentedBarChart({
   onSegmentClick,
   emptyTitle,
   emptyDescription,
+  fullDayAxis = true,
 }: SegmentedBarChartProps) {
   const { rows, maxSegments } = useMemo(() => toStackedRows(days), [days]);
   // Bars grow in once, on mount. Leaving the animation on makes every live-timer
@@ -129,7 +136,21 @@ export function SegmentedBarChart({
     <div className="w-full" style={{ height }}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={rows} margin={{ top: 8, right: 8, bottom: 4, left: -12 }} barCategoryGap="22%">
-          <CartesianGrid vertical={false} stroke={CHART_TOKENS.grid} strokeDasharray="4 4" />
+          {fullDayAxis ? (
+            // Two grids: a faint line on every hour for reading duration off the
+            // chart, plus the normal dashed line on the hours that carry a label.
+            <CartesianGrid
+              vertical={false}
+              stroke={CHART_TOKENS.gridSubtle}
+              horizontalValues={DAY_AXIS.gridlineHours}
+            />
+          ) : null}
+          <CartesianGrid
+            vertical={false}
+            stroke={CHART_TOKENS.grid}
+            strokeDasharray="4 4"
+            horizontalValues={fullDayAxis ? DAY_AXIS.labelledTicks : undefined}
+          />
           <XAxis
             dataKey="label"
             stroke={CHART_TOKENS.axis}
@@ -143,7 +164,11 @@ export function SegmentedBarChart({
             tickLine={false}
             axisLine={false}
             fontSize={12}
-            width={44}
+            width={40}
+            allowDecimals={!fullDayAxis}
+            domain={fullDayAxis ? DAY_AXIS.domain : undefined}
+            ticks={fullDayAxis ? DAY_AXIS.labelledTicks : undefined}
+            interval={fullDayAxis ? 0 : "preserveEnd"}
             tickFormatter={(value: number) => `${value}h`}
           />
           <Tooltip
