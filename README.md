@@ -34,6 +34,7 @@ A **local-first** time tracker, notes workspace, and AI assistant. Track your wo
 - **AI assistant** — bring-your-own-key chat, stand-up generation, and monthly narrative reports across multiple providers.
 - **Appearance** — light/dark theme, accent customisation, and a daily sidebar quote.
 - **Cloud sync (optional)** — sign in with Zoho Catalyst to sync data across devices; local mode keeps data in-browser.
+- **Deploy updates** — open tabs detect a newly uploaded build and show a refresh icon; work already saved locally remains intact.
 - **Personal notes** — private, device-synced notes excluded from every in-app admin view and export.
 - **Admin workspace** — manage users and groups, inspect usage, and run full-range reports.
 
@@ -95,9 +96,8 @@ koku runs with **no configuration**. Environment variables are optional and only
 
 **AI provider keys are _not_ set here.** They are entered in the app under **Settings → AI Keys**, stored in your browser, and sent directly to the provider with each request.
 
-### Catalyst personal-notes table
-
-Cloud deployments need a `personal_notes_koku` Catalyst table with same fields as `notes_koku`: `id`, `user_id`, `title`, `slug`, `content`, `tags`, `created_at`, and `updated_at`. App sync only allows each signed-in user to read or write their own rows; admin APIs reject this table.
+Personal notes sync through `personal_notes_koku`. Admin APIs reject this table, so personal notes never appear in in-app admin views or exports.
+Required columns: `id`, `user_id`, `title`, `slug`, `content`, `tags`, `created_at`, `updated_at`.
 
 ---
 

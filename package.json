@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build && node scripts/prepare-appsail.mjs",
+    "build": "node scripts/write-build-version.mjs && next build && node scripts/prepare-appsail.mjs",
     "start": "next start",
     "lint": "eslint",
     "test": "tsx --test \"src/**/*.test.ts\"",

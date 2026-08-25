@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
 
 import { DndPill } from "@/components/notifications/dnd-pill";
+import { AppUpdateIndicator } from "@/components/layout/app-update-indicator";
 import { ManualSync } from "@/components/layout/manual-sync";
 import { Button } from "@/components/ui/button";
 import {
@@ -56,6 +57,7 @@ export function Topbar({ onOpenSidebar }: TopbarProps) {
       ) : null}
       <ManualSync />
       <TooltipProvider>
+        <AppUpdateIndicator />
         <Tooltip>
           <TooltipTrigger asChild>
             <Button

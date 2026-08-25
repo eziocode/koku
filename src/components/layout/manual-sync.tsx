@@ -3,6 +3,7 @@
 import { Cloud, Database, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { checkForAppUpdate } from "@/components/layout/app-update-indicator";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   cancelSyncConflict,
@@ -31,6 +32,7 @@ export function ManualSync() {
     setBusy(true);
     try {
       const result = await syncNow(choice);
+      checkForAppUpdate();
       if (result.error) toast.error(result.error);
       else { toast.success(`Sync complete: ${result.pushed} sent, ${result.pulled} received.`); setOpen(false); setConflict(null); }
     } catch (error) { toast.error(error instanceof Error ? error.message : "Sync failed."); }
@@ -41,6 +43,7 @@ export function ManualSync() {
     setBusy(true);
     try {
       const result = await syncNow();
+      checkForAppUpdate();
       if (result.conflict) {
         setConflict(result.conflict);
         setOpen(true);
