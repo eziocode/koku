@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.2.1] - 2026-08-25
+
+### Fixed
+
+- Stop treating a missing or still-restoring Zoho session as a cloud-sync failure, preventing repeated “Saved locally” warnings after reloads and ordinary saves.
+- Bypass stale browser caching for sync authentication checks and retry a newly restored session quickly.
+
 ## [0.2.0] - 2026-08-25
 
 ### Added
@@ -22,3 +29,4 @@ All notable changes to this project are documented in this file.
 - Prevent report date selections beyond today and improve dashboard selected-day loading.
 
 [0.2.0]: https://github.com/eziocode/koku/releases/tag/v0.2.0
+[0.2.1]: https://github.com/eziocode/koku/releases/tag/v0.2.1

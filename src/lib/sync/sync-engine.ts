@@ -17,6 +17,7 @@ const PENDING_SYNC_TOAST_ID = "pending-cloud-sync";
 // The Catalyst SDK logs NO_ACCESS to stderr before throwing, so repeated
 // unauthenticated calls produce continuous server-side noise.
 const AUTH_CACHE_TTL_MS = 30_000;
+const NO_AUTH_CACHE_TTL_MS = 2_000;
 let authCache: { user: { id: string } | null; expiresAt: number } | null = null;
 let conflictDecisionPending = false;
 const mutationLocks = new Map<string, Promise<void>>();
@@ -25,9 +26,14 @@ let pendingSyncWarningShown = false;
 async function getAuthUser(): Promise<{ id: string } | null> {
   const now = Date.now();
   if (authCache && authCache.expiresAt > now) return authCache.user;
-  const res = await fetch("/api/auth/me");
+  // An auth result must reflect current browser session. In particular, do not
+  // reuse a stale anonymous response immediately after the OAuth redirect.
+  const res = await fetch("/api/auth/me", { cache: "no-store" });
+  if (!res.ok) throw new Error(`Auth check failed: ${res.status}`);
   const { user } = (await res.json()) as { user: { id: string } | null };
-  authCache = { user, expiresAt: now + AUTH_CACHE_TTL_MS };
+  // Cache a signed-in user to avoid a request per save, but only cache an
+  // anonymous state briefly: session cookies can appear just after reload.
+  authCache = { user, expiresAt: now + (user ? AUTH_CACHE_TTL_MS : NO_AUTH_CACHE_TTL_MS) };
   return user;
 }
 
@@ -421,7 +427,8 @@ export async function syncRow(table: SyncTable, row: unknown): Promise<void> {
     try {
       const user = await getAuthUser();
       if (!user) {
-        notifyPendingSync();
+        // Cloud sync is optional. A missing/not-yet-restored session is not a
+        // failed sync and must not show a warning on every save or reload.
         return;
       }
       const result = await pushRows(table, [row]);
@@ -460,7 +467,7 @@ export async function deleteRow(table: SyncTable, id: string): Promise<void> {
     try {
       const user = await getAuthUser();
       if (!user) {
-        notifyPendingSync();
+        // See syncRow: wait for a signed-in session without alarming user.
         return;
       }
       const res = await fetch(

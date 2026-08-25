@@ -75,6 +75,27 @@ describe("background sync recovery", () => {
     assert.equal(requests, 0);
   });
 
+  it("queues saves quietly while authentication is still unavailable", async () => {
+    const requests: { url: string; init?: RequestInit }[] = [];
+    globalThis.fetch = async (input, init) => {
+      requests.push({ url: String(input), init });
+      return jsonResponse({ user: null });
+    };
+
+    await syncRow("projects", {
+      id: "project-1",
+      name: "Local only for now",
+      color: "#123456",
+      hourlyRate: null,
+      createdAt: "2026-08-24T10:00:00.000Z",
+    });
+
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].url, "/api/auth/me");
+    assert.equal(requests[0].init?.cache, "no-store");
+    assert.equal(await kokuDb.pendingUpserts.count(), 1);
+  });
+
   it("coalesces failed edits and clears the latest row after a successful retry", async () => {
     globalThis.fetch = async (input) => {
       if (String(input) === "/api/auth/me") {

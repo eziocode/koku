@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 const QUOTE_API = "https://api.quotable.io/quotes/random?limit=1&maxLength=180";
-const CACHE_KEY = "koku-daily-quote";
+const CACHE_SLOT = "koku-daily-quote";
 const FALLBACK_QUOTE: Quote = {
   content: "The key is not to prioritize what is on your schedule, but to schedule your priorities.",
   author: "Stephen Covey",
@@ -36,7 +36,7 @@ export function DailyQuote() {
       const date = todayKey();
 
       try {
-        const cached = window.localStorage.getItem(CACHE_KEY);
+        const cached = window.localStorage.getItem(CACHE_SLOT);
         if (cached) {
           const parsed = JSON.parse(cached) as CachedQuote;
           if (active && parsed.date === date && parsed.quote?.content && parsed.quote.author) {
@@ -52,7 +52,7 @@ export function DailyQuote() {
         const nextQuote = Array.isArray(payload) ? payload[0] : payload;
         if (!nextQuote?.content || !nextQuote.author || !active) return;
 
-        window.localStorage.setItem(CACHE_KEY, JSON.stringify({ date, quote: nextQuote } satisfies CachedQuote));
+        window.localStorage.setItem(CACHE_SLOT, JSON.stringify({ date, quote: nextQuote } satisfies CachedQuote));
         setQuote(nextQuote);
       } catch {
         // Keep fallback visible when external API unavailable.
@@ -61,7 +61,7 @@ export function DailyQuote() {
 
     void loadQuote();
     const refreshAtMidnight = window.setInterval(() => {
-      const cached = window.localStorage.getItem(CACHE_KEY);
+      const cached = window.localStorage.getItem(CACHE_SLOT);
       if (!cached || !cached.includes(`\"date\":\"${todayKey()}\"`)) {
         void loadQuote();
       }

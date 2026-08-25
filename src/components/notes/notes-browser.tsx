@@ -27,7 +27,7 @@ import { formatTime } from "@/lib/time-format";
 type CreatedDateFilter = "all" | "today" | "yesterday" | "week" | "month" | "exact";
 type NoteView = "grid" | "list";
 
-const NOTE_VIEW_STORAGE_KEY = "koku.notes.view";
+const NOTE_VIEW_STORAGE_SLOT = "koku.notes.view";
 
 function dateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -59,21 +59,25 @@ export function NotesBrowser({ scope = "shared" }: { scope?: NoteScope }) {
   const tags = useMemo(() => Array.from(new Set(notes.flatMap((note) => note.tags))).sort(), [notes]);
 
   useEffect(() => {
+    let active = true;
     try {
-      const savedView = window.localStorage.getItem(NOTE_VIEW_STORAGE_KEY);
+      const savedView = window.localStorage.getItem(NOTE_VIEW_STORAGE_SLOT);
       if (savedView === "grid" || savedView === "list") {
         // Keep server/client first render identical; restore persisted mode after hydration.
-        setView(savedView);
+        queueMicrotask(() => {
+          if (active) setView(savedView);
+        });
       }
     } catch {
       // Storage can be unavailable in private/restricted browser contexts.
     }
+    return () => { active = false; };
   }, []);
 
   function changeView(nextView: NoteView) {
     setView(nextView);
     try {
-      window.localStorage.setItem(NOTE_VIEW_STORAGE_KEY, nextView);
+      window.localStorage.setItem(NOTE_VIEW_STORAGE_SLOT, nextView);
     } catch {
       // Keep in-memory mode when storage is unavailable.
     }

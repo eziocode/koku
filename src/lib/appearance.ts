@@ -30,8 +30,8 @@ export type AccentKey = (typeof ACCENT_KEYS)[number];
 /** `terracotta` is the default `@theme` value, so it carries no attribute. */
 export const DEFAULT_ACCENT: AccentKey = "terracotta";
 
-/** localStorage cache key for the pre-paint script. */
-export const ACCENT_STORAGE_KEY = "koku-accent";
+/** Browser storage name for pre-paint accent cache. */
+export const ACCENT_STORAGE_NAME = "koku-accent";
 
 export function isValidAccent(value: unknown): value is AccentKey {
   return typeof value === "string" && (ACCENT_KEYS as readonly string[]).includes(value);
@@ -55,7 +55,7 @@ export function applyAccentToDocument(accent: AccentKey): void {
 /** Writes the warm cache read by the pre-paint script. Safe to call on the client only. */
 export function cacheAccent(accent: AccentKey): void {
   try {
-    localStorage.setItem(ACCENT_STORAGE_KEY, accent);
+    localStorage.setItem(ACCENT_STORAGE_NAME, accent);
   } catch {
     /* private mode / storage disabled — the async provider still corrects it */
   }
@@ -64,14 +64,14 @@ export function cacheAccent(accent: AccentKey): void {
 /**
  * The dependency-free blocking script injected into `<head>`. It reads the
  * cached accent from localStorage and applies `data-accent` before first paint.
- * Written as a plain string so it can be inlined via `dangerouslySetInnerHTML`
+ * Written as a plain string so layout can inline it before hydration.
  * and executed before hydration. Fails silently so a corrupt/absent cache can
  * never block render — the async provider will reconcile post-hydration.
  */
 export function buildAccentScript(): string {
   const keys = JSON.stringify(ACCENT_KEYS);
-  const storageKey = JSON.stringify(ACCENT_STORAGE_KEY);
+  const storageName = JSON.stringify(ACCENT_STORAGE_NAME);
   const fallback = JSON.stringify(DEFAULT_ACCENT);
 
-  return `(function(){try{var v=localStorage.getItem(${storageKey});var k=${keys};var d=${fallback};if(!v||k.indexOf(v)===-1){v=d;}var h=document.documentElement;if(v===d){h.removeAttribute("data-accent");}else{h.setAttribute("data-accent",v);}}catch(e){}})();`;
+  return `(function(){try{var v=localStorage.getItem(${storageName});var k=${keys};var d=${fallback};if(!v||k.indexOf(v)===-1){v=d;}var h=document.documentElement;if(v===d){h.removeAttribute("data-accent");}else{h.setAttribute("data-accent",v);}}catch(e){}})();`;
 }

@@ -350,7 +350,7 @@ export function NotificationScheduler() {
       window.removeEventListener("focus", run);
       window.removeEventListener("online", run);
     };
-  }, [active]);
+  }, [active, deliverable, isLeader]);
 
   // Shortening the interval (say 60 minutes to 5) should take effect now rather
   // than after the remaining hour has elapsed.

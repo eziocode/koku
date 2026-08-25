@@ -537,7 +537,7 @@ export function NotificationSettings() {
         <CardHeader>
           <CardTitle>End of day</CardTitle>
           <CardDescription>
-            At your logoff time, koku asks if you're done. If there's no response within the grace
+            At your logoff time, koku asks if you’re done. If there’s no response within the grace
             period, running timers are stopped and saved automatically.
           </CardDescription>
         </CardHeader>

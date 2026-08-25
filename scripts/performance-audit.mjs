@@ -36,7 +36,9 @@ function isAllowedStaticHeavyImport(file, specifier) {
   }
 
   if (specifier === "sigma" || specifier === "graphology") {
-    return normalized === "src/components/graph/knowledge-graph.tsx";
+    // GraphClient lazy-loads both graph views; GraphCanvas is their shared
+    // renderer, so these imports remain in that deferred graph-only chunk.
+    return normalized === "src/components/graph/graph-canvas.tsx";
   }
 
   return false;
