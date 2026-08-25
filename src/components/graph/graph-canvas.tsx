@@ -37,6 +37,24 @@ export interface GraphForces {
   edgeWeightInfluence: number;
 }
 
+/**
+ * Canvas chrome colours. Sigma paints into WebGL/2D contexts that cannot read
+ * CSS variables, so these mirror the theme by hand.
+ *
+ * Labels must flip with the theme: a single fixed colour is either black text
+ * on the dark canvas or white text on the light one. The hovered label is drawn
+ * by `defaultDrawNodeHover` below, which paints its own bubble *and* its own
+ * text colour — so it stays legible instead of inheriting a label colour that
+ * only works against the plain background.
+ */
+function labelColorFor(dark: boolean): string {
+  return dark ? "#e2e8f0" : "#1e293b";
+}
+
+function edgeBaseFor(dark: boolean): string {
+  return dark ? "#94a3b8" : "#64748b";
+}
+
 export const DEFAULT_FORCES: GraphForces = {
   gravity: 0.6,
   scalingRatio: 12,
@@ -114,11 +132,10 @@ export function GraphCanvas({
     const graph = new Graph();
     graphRef.current = graph;
 
-    const edgeBaseFor = (dark: boolean) => (dark ? "#94a3b8" : "#64748b");
-
     const sigma = new Sigma(graph, container, {
       renderEdgeLabels: false,
       renderLabels: true,
+      labelColor: { color: labelColorFor(isDarkRef.current) },
       labelSize: 12,
       labelWeight: "500",
       labelDensity: 0.6,
@@ -272,6 +289,9 @@ export function GraphCanvas({
   // re-seed the layout one frame in.
   useEffect(() => {
     isDarkRef.current = isDark;
+    // Label colour is a Sigma setting, not something the reducers can return,
+    // so it has to be pushed on the instance when the theme flips.
+    sigmaRef.current?.setSetting("labelColor", { color: labelColorFor(isDark) });
     sigmaRef.current?.refresh();
   }, [isDark]);
 

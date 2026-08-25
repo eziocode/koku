@@ -14,8 +14,27 @@ import type { SegmentedDay, WorkLogSegment } from "@/lib/charts/segments";
 /** Fraction-of-24h below which two blocks are treated as touching, not gapped. */
 const EPS_HOURS = 0.01;
 
-/** Hours that carry a label on the ruler. Every 3h fits without crowding. */
-const RULER_HOURS = [0, 3, 6, 9, 12, 15, 18, 21, 24];
+/** Gridline hours. Always every 3h — thin lines never collide. */
+const GRIDLINE_HOURS = [3, 6, 9, 12, 15, 18, 21];
+
+/**
+ * Candidate label spacings, densest first, and the minimum track width each
+ * needs. A `12 AM`-style label is ~46px, so a tick every 3h needs ~8×46px of
+ * track before the labels start touching; narrower tracks step up to 6h then
+ * 12h rather than overprinting.
+ */
+const RULER_STEPS = [
+  { step: 3, minWidth: 520 },
+  { step: 6, minWidth: 260 },
+  { step: 12, minWidth: 0 },
+];
+
+function rulerHoursFor(trackWidth: number): number[] {
+  const { step } = RULER_STEPS.find((candidate) => trackWidth >= candidate.minWidth) ?? RULER_STEPS[RULER_STEPS.length - 1];
+  const hours: number[] = [];
+  for (let hour = 0; hour <= 24; hour += step) hours.push(hour);
+  return hours;
+}
 
 function hourOfDay(iso: string): number {
   const date = new Date(iso);
@@ -184,6 +203,28 @@ export function SegmentedBarChart({
   const todayRowRef = useRef<HTMLDivElement | null>(null);
   const centeredOnceRef = useRef(false);
 
+  // Label density is chosen from the measured track width so a narrow panel
+  // (the dashboard's "This week" card, a resized window) thins the ticks out
+  // instead of printing them on top of each other.
+  const rulerTrackRef = useRef<HTMLDivElement | null>(null);
+  const [trackWidth, setTrackWidth] = useState(0);
+
+  // Depends on `hasData`: the ruler is not in the tree while the empty state is
+  // showing, so without re-running the observer would never attach and the
+  // width would stay 0 (collapsing the axis to its sparsest step forever).
+  useEffect(() => {
+    const track = rulerTrackRef.current;
+    if (!track) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setTrackWidth(entry.contentRect.width);
+    });
+    observer.observe(track);
+    setTrackWidth(track.getBoundingClientRect().width);
+    return () => observer.disconnect();
+  }, [hasData]);
+
+  const rulerHours = useMemo(() => rulerHoursFor(trackWidth), [trackWidth]);
+
   // Land on today once data is in, then leave scroll position to the user —
   // re-centering on every re-render (a live timer ticks `days` every second)
   // would fight anyone who scrolled away to look at an earlier day.
@@ -209,8 +250,8 @@ export function SegmentedBarChart({
           ticks line up with the tracks below. */}
       <div className="flex items-end gap-3 pr-2">
         <div className="w-14 shrink-0" aria-hidden />
-        <div className="relative h-4 flex-1">
-          {RULER_HOURS.map((hour) => (
+        <div ref={rulerTrackRef} className="relative h-4 flex-1">
+          {rulerHours.map((hour) => (
             <span
               key={hour}
               className={cn(
@@ -251,8 +292,8 @@ export function SegmentedBarChart({
                   {isToday ? "Today" : day.label}
                 </p>
                 <div className="relative h-6 flex-1 rounded-full bg-muted/20">
-                  {/* Hour gridlines, matching the ruler ticks. */}
-                  {RULER_HOURS.slice(1, -1).map((hour) => (
+                  {/* Hour gridlines, kept at 3h regardless of label density. */}
+                  {GRIDLINE_HOURS.map((hour) => (
                     <div
                       key={hour}
                       className="pointer-events-none absolute inset-y-0 w-px bg-border/50"

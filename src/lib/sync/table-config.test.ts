@@ -127,6 +127,18 @@ describe("Catalyst field transforms", () => {
     assert.equal(fields.updated_at, "2026-08-25 16:04:34");
   });
 
+  it("sends null, never an empty string, for a missing datetime", () => {
+    // Catalyst answers `INVALID_INPUT — datetime value expected` when a
+    // DateTime column receives "", so an absent timestamp has to stay null.
+    const fields = TABLE_CONFIG.timeEntries.toFields({
+      title: "Work",
+      tags: [],
+    });
+
+    assert.equal(fields.start_at, null);
+    assert.equal(fields.created_at, null);
+  });
+
   it("rejects invalid datetimes before sending rows to Catalyst", () => {
     assert.deepEqual(
       validateSyncRow("notes", {

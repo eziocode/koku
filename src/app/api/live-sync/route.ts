@@ -46,13 +46,13 @@ function parseJson(value: unknown, fallback: string[]) { try { return typeof val
 function fields(table: string, mutation: Mutation, revision: number): Row {
   const common = {
     revision,
-    updated_at: toCatalystDateTime(new Date().toISOString()) ?? "",
+    updated_at: toCatalystDateTime(new Date().toISOString()),
     deleted_at: mutation.deletedAt ? toCatalystDateTime(mutation.deletedAt) : null,
   };
   if (table === TIMER_TABLE) return { ...common, title: mutation.title ?? "", project_id: mutation.projectId ?? null, category_id: mutation.categoryId ?? null,
-    tags: JSON.stringify(Array.isArray(mutation.tags) ? mutation.tags : []), notes: mutation.notes ?? null, start_at: toCatalystDateTime(mutation.startAt) ?? "", elapsed_before_pause_sec: Number(mutation.elapsedBeforePauseSec ?? 0),
+    tags: JSON.stringify(Array.isArray(mutation.tags) ? mutation.tags : []), notes: mutation.notes ?? null, start_at: toCatalystDateTime(mutation.startAt), elapsed_before_pause_sec: Number(mutation.elapsedBeforePauseSec ?? 0),
     paused_at: mutation.pausedAt === null || mutation.pausedAt === undefined ? null : toCatalystDateTime(mutation.pausedAt), pomodoro_mode: Boolean(mutation.pomodoroMode), parent_timer_id: mutation.parentTimerId ?? null };
-  return { ...common, label: mutation.label ?? "Break", started_at: toCatalystDateTime(mutation.startedAt) ?? "", planned_duration_sec: Number(mutation.plannedDurationSec ?? 0), paused_timer_ids: JSON.stringify(Array.isArray(mutation.pausedTimerIds) ? mutation.pausedTimerIds : []), notes: mutation.notes ?? null };
+  return { ...common, label: mutation.label ?? "Break", started_at: toCatalystDateTime(mutation.startedAt), planned_duration_sec: Number(mutation.plannedDurationSec ?? 0), paused_timer_ids: JSON.stringify(Array.isArray(mutation.pausedTimerIds) ? mutation.pausedTimerIds : []), notes: mutation.notes ?? null };
 }
 async function user(request: Request) {
   try { const app = initCatalyst(request); const value = await app.userManagement().getCurrentUser(); return { app, id: value.user_id }; } catch { return null; }
