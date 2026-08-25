@@ -266,47 +266,6 @@ export function buildSegmentedDays({
   return days.sort((a, b) => a.key.localeCompare(b.key));
 }
 
-/**
- * Flattens segmented days into the row shape Recharts needs for a stacked
- * `<BarChart>`: one object per day with a numeric key per segment index plus a
- * parallel `segments` array for tooltip lookups.
- */
-export interface StackedRow {
-  key: string;
-  label: string;
-  totalHours: number;
-  segments: WorkLogSegment[];
-  hasRunning: boolean;
-  /** Index of the topmost segment for this day, so only it gets rounded corners. `-1` when empty. */
-  topSegmentIndex: number;
-  /** `seg0`, `seg1`, … hold each segment's hours for the stacked bars. */
-  [segKey: string]: number | string | boolean | WorkLogSegment[];
-}
-
-export function toStackedRows(days: SegmentedDay[]): {
-  rows: StackedRow[];
-  maxSegments: number;
-} {
-  let maxSegments = 0;
-  const rows: StackedRow[] = days.map((day) => {
-    maxSegments = Math.max(maxSegments, day.segments.length);
-    const row: StackedRow = {
-      key: day.key,
-      label: day.label,
-      totalHours: day.totalHours,
-      segments: day.segments,
-      hasRunning: day.hasRunning,
-      topSegmentIndex: day.segments.length - 1,
-    };
-    day.segments.forEach((segment, index) => {
-      row[`seg${index}`] = segment.hours;
-    });
-    return row;
-  });
-
-  return { rows, maxSegments };
-}
-
 /** Aggregates segmented days into a per-project breakdown for pie charts. */
 export function toProjectBreakdown(days: SegmentedDay[]): Array<{
   key: string;

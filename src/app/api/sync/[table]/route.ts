@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { initCatalyst, zcqlQuery, zcqlEscape, upsertRow } from "@/lib/db/catalyst-client";
+import { toCatalystDateTime } from "@/lib/db/catalyst-datetime";
 import { TABLE_CONFIG, type TableKey, validateSyncRow } from "@/lib/sync/table-config";
 
 export const runtime = "nodejs";
@@ -145,10 +146,14 @@ export async function GET(
   const config = TABLE_CONFIG[table as TableKey];
   const url = new URL(request.url);
   const since = url.searchParams.get("since");
+  const catalystSince = since ? toCatalystDateTime(since) : null;
+  if (since && !catalystSince) {
+    return NextResponse.json({ error: "since must be a valid datetime." }, { status: 400 });
+  }
 
   let sql = `SELECT * FROM ${config.table} WHERE user_id = '${zcqlEscape(auth.userId)}'`;
-  if (since && config.sinceField) {
-    sql += ` AND ${config.sinceField} > '${zcqlEscape(since)}'`;
+  if (catalystSince && config.sinceField) {
+    sql += ` AND ${config.sinceField} > '${zcqlEscape(catalystSince)}'`;
   }
 
   const rows = await zcqlQuery(auth.app, sql);

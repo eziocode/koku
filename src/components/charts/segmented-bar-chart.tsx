@@ -1,81 +1,121 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { ChartEmpty } from "@/components/charts/chart-states";
-import { RechartsSegmentTooltip } from "@/components/charts/segment-tooltip";
-import { CHART_TOKENS, DAY_AXIS } from "@/lib/charts/theme";
-import { formatDuration } from "@/lib/utils";
-import { toStackedRows, type SegmentedDay, type StackedRow, type WorkLogSegment } from "@/lib/charts/segments";
+import { DayTooltipCard, getTooltipPosition } from "@/components/charts/segment-tooltip";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
+import type { SegmentedDay, WorkLogSegment } from "@/lib/charts/segments";
+
+/** Fraction-of-24h below which two blocks are treated as touching, not gapped. */
+const EPS_HOURS = 0.01;
+
+function hourOfDay(iso: string): number {
+  const date = new Date(iso);
+  return date.getHours() + date.getMinutes() / 60 + date.getSeconds() / 3600;
+}
+
+function formatClockHour(hour: number): string {
+  const clamped = Math.max(0, Math.min(24, hour));
+  const wholeMinutes = Math.round(clamped * 60);
+  const h = Math.floor(wholeMinutes / 60) % 24;
+  const m = wholeMinutes % 60;
+  const period = h < 12 ? "AM" : "PM";
+  const displayHour = h % 12 === 0 ? 12 : h % 12;
+  return `${displayHour}:${String(m).padStart(2, "0")} ${period}`;
+}
+
+function hoursMinutesLabel(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
+/** Local-timezone `yyyy-MM-dd`, matching `SegmentedDay.key`'s date-fns format. */
+function localDateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+interface WorkBlock {
+  kind: "work";
+  from: number;
+  to: number;
+  segment: WorkLogSegment;
+}
+interface GapBlock {
+  kind: "gap";
+  from: number;
+  to: number;
+}
+type TimelineBlock = WorkBlock | GapBlock;
 
 /**
- * Custom bar shape that rounds only the topmost non-empty segment of each day's
- * stack, marks running logs with a pulsing live outline, and gives
- * unassigned logs a dashed outline so they read differently from assigned work.
+ * Lays each day's segments onto a 0–24h track. Gaps *between* two logged
+ * segments become a hoverable "no log found" block; the empty stretch before
+ * the first log and after the last log is left bare on purpose — there is
+ * nothing to explain about time nobody claimed to be working.
  */
-function RoundedSegment(props: {
-  x?: number;
-  y?: number;
-  width?: number;
-  height?: number;
-  fill?: string;
-  fillOpacity?: number;
-  segIndex: number;
-  payload?: StackedRow;
-  onHoverSegment?: (segment: WorkLogSegment, height: number) => void;
-  onLeaveSegment?: () => void;
+function buildDayBlocks(day: SegmentedDay): TimelineBlock[] {
+  const sorted = [...day.segments].sort((a, b) => a.startAt.localeCompare(b.startAt));
+  const blocks: TimelineBlock[] = [];
+  let cursor = 0;
+
+  sorted.forEach((segment, index) => {
+    const start = Math.max(0, Math.min(24, hourOfDay(segment.startAt)));
+    const end = Math.max(start, Math.min(24, start + segment.hours));
+    if (index > 0 && start > cursor + EPS_HOURS) {
+      blocks.push({ kind: "gap", from: cursor, to: start });
+    }
+    blocks.push({ kind: "work", from: start, to: end, segment });
+    cursor = Math.max(cursor, end);
+  });
+
+  return blocks;
+}
+
+/** Portals a `DayTooltipCard` to `document.body`, positioned near the cursor. */
+function SegmentTooltipPortal({
+  label,
+  segment,
+  anchor,
+}: {
+  label: string;
+  segment: WorkLogSegment;
+  anchor: { x: number; y: number };
 }) {
-  const {
-    x = 0,
-    y = 0,
-    width = 0,
-    height = 0,
-    fill,
-    fillOpacity,
-    segIndex,
-    payload,
-    onHoverSegment,
-    onLeaveSegment,
-  } = props;
-  if (height <= 0 || width <= 0) {
-    return null;
-  }
-  const segment = payload?.segments?.[segIndex];
-  const r = Math.min(CHART_TOKENS.radius, width / 2, height);
-  const isTop = payload?.topSegmentIndex === segIndex;
-  const path = isTop
-    ? `M${x},${y + height} L${x},${y + r} Q${x},${y} ${x + r},${y} L${x + width - r},${y} Q${x + width},${y} ${x + width},${y + r} L${x + width},${y + height} Z`
-    : `M${x},${y} h${width} v${height} h${-width} Z`;
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
 
-  const isRunning = segment?.status === "running";
-  const isUnassigned = segment?.assignment === "unassigned";
+  useLayoutEffect(() => {
+    const card = cardRef.current;
+    if (!card) return;
+    const rect = card.getBoundingClientRect();
+    setPosition(
+      getTooltipPosition({
+        anchor,
+        size: { width: rect.width, height: rect.height },
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+      }),
+    );
+  }, [anchor]);
 
-  return (
-    <g
-      onMouseEnter={() => {
-        if (segment) {
-          onHoverSegment?.(segment, height);
-        }
+  return createPortal(
+    <div
+      ref={cardRef}
+      style={{
+        position: "fixed",
+        left: position?.left ?? 0,
+        top: position?.top ?? 0,
+        zIndex: 60,
+        pointerEvents: "none",
+        visibility: position ? "visible" : "hidden",
       }}
-      onMouseLeave={onLeaveSegment}
-      style={{ cursor: segment ? "pointer" : undefined }}
     >
-      <path
-        d={path}
-        fill={fill}
-        fillOpacity={fillOpacity}
-        stroke={isUnassigned ? "color-mix(in srgb, var(--color-foreground) 45%, transparent)" : "none"}
-        strokeWidth={isUnassigned ? 1 : 0}
-        strokeDasharray={isUnassigned ? "3 3" : undefined}
-      />
-      {isRunning ? (
-        // One pulsing outline, nothing layered inside the bar: the running
-        // segment re-renders every second as its duration ticks up, so anything
-        // heavier here repaints continuously and reads as stutter.
-        <path d={path} fill="none" stroke={fill} strokeWidth={2} className="koku-live-outline" />
-      ) : null}
-    </g>
+      <DayTooltipCard label={label} segments={[segment]} activeSegmentId={segment.id} />
+    </div>,
+    document.body,
   );
 }
 
@@ -86,23 +126,13 @@ interface SegmentedBarChartProps {
   onSegmentClick?: (segment: WorkLogSegment) => void;
   emptyTitle?: string;
   emptyDescription?: string;
-  /**
-   * Lock the Y axis to a full 0–24h day instead of letting recharts scale it to
-   * the tallest column. On by default: every caller plots day totals, and an
-   * auto-scaled axis makes the same month look different month to month.
-   */
-  fullDayAxis?: boolean;
 }
 
-const TINY_SEGMENT_TOOLTIP_HEIGHT = 12;
-
 /**
- * Segmented, stacked daily-activity bar chart.
- *
- * Each day is a column; each work log within that day is a differently coloured
- * stacked segment whose height is proportional to its duration. Running logs
- * carry a pulsing outline, unassigned logs get a dashed outline, and
- * hovering a column shows a rich tooltip listing every log for that day.
+ * Attendance-style daily timeline: one row per day, each row a 0–24h track with
+ * a coloured bar wherever a work log ran. Hovering a log shows its details;
+ * hovering an interior gap between two logs shows "no log found" for that
+ * stretch. Time before the first log and after the last is left unmarked.
  */
 export function SegmentedBarChart({
   days,
@@ -110,125 +140,137 @@ export function SegmentedBarChart({
   onSegmentClick,
   emptyTitle,
   emptyDescription,
-  fullDayAxis = true,
 }: SegmentedBarChartProps) {
-  const { rows, maxSegments } = useMemo(() => toStackedRows(days), [days]);
-  // Bars grow in once, on mount. Leaving the animation on makes every live-timer
-  // tick replay it, so the whole chart appears to lurch once a second.
-  const [animateBars, setAnimateBars] = useState(true);
-  const [hoveredSegment, setHoveredSegment] = useState<{
-    id: string;
-    showFullDay: boolean;
+  const [hovered, setHovered] = useState<{
+    dayLabel: string;
+    segment: WorkLogSegment;
+    x: number;
+    y: number;
   } | null>(null);
 
   const hasData = useMemo(() => days.some((day) => day.segments.length > 0), [days]);
+  const now = useMemo(() => hourOfDay(new Date().toISOString()), []);
+  const todayKey = useMemo(() => localDateKey(new Date()), []);
 
+  const scrollAreaRef = useRef<HTMLDivElement | null>(null);
+  const todayRowRef = useRef<HTMLDivElement | null>(null);
+  const centeredOnceRef = useRef(false);
+
+  // Land on today once data is in, then leave scroll position to the user —
+  // re-centering on every re-render (a live timer ticks `days` every second)
+  // would fight anyone who scrolled away to look at an earlier day.
   useEffect(() => {
-    const timeout = setTimeout(() => setAnimateBars(false), CHART_TOKENS.animationDuration);
-    return () => clearTimeout(timeout);
-  }, []);
+    if (centeredOnceRef.current) return;
+    const row = todayRowRef.current;
+    const viewport = scrollAreaRef.current?.querySelector<HTMLDivElement>(
+      "[data-radix-scroll-area-viewport]",
+    );
+    if (!row || !viewport) return;
+    const target = row.offsetTop - viewport.clientHeight / 2 + row.clientHeight / 2;
+    viewport.scrollTop = Math.max(0, target);
+    centeredOnceRef.current = true;
+  }, [days]);
 
   if (!hasData) {
     return <ChartEmpty height={height} title={emptyTitle} description={emptyDescription} />;
   }
 
   return (
-    <div className="w-full" style={{ height }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={rows} margin={{ top: 8, right: 8, bottom: 4, left: -12 }} barCategoryGap="22%">
-          {fullDayAxis ? (
-            // Two grids: a faint line on every hour for reading duration off the
-            // chart, plus the normal dashed line on the hours that carry a label.
-            <CartesianGrid
-              vertical={false}
-              stroke={CHART_TOKENS.gridSubtle}
-              horizontalValues={DAY_AXIS.gridlineHours}
-            />
-          ) : null}
-          <CartesianGrid
-            vertical={false}
-            stroke={CHART_TOKENS.grid}
-            strokeDasharray="4 4"
-            horizontalValues={fullDayAxis ? DAY_AXIS.labelledTicks : undefined}
-          />
-          <XAxis
-            dataKey="label"
-            stroke={CHART_TOKENS.axis}
-            tickLine={false}
-            axisLine={false}
-            fontSize={12}
-            dy={6}
-          />
-          <YAxis
-            stroke={CHART_TOKENS.axis}
-            tickLine={false}
-            axisLine={false}
-            fontSize={12}
-            width={40}
-            allowDecimals={!fullDayAxis}
-            domain={fullDayAxis ? DAY_AXIS.domain : undefined}
-            ticks={fullDayAxis ? DAY_AXIS.labelledTicks : undefined}
-            interval={fullDayAxis ? 0 : "preserveEnd"}
-            tickFormatter={(value: number) => `${value}h`}
-          />
-          <Tooltip
-            allowEscapeViewBox={{ x: true, y: true }}
-            content={
-              <RechartsSegmentTooltip
-                activeSegmentId={hoveredSegment?.id}
-                showFullDay={hoveredSegment ? hoveredSegment.showFullDay : true}
-              />
-            }
-            cursor={{ fill: CHART_TOKENS.cursor, radius: 6 }}
-            offset={28}
-            wrapperStyle={{ outline: "none", pointerEvents: "none", zIndex: 50 }}
-          />
-          {Array.from({ length: maxSegments }).map((_, segIndex) => {
-            const dataKey = `seg${segIndex}`;
+    <div className="w-full">
+      <ScrollArea ref={scrollAreaRef} style={{ height }}>
+        <div className="space-y-1 pr-2">
+          {days.map((day) => {
+            const blocks = buildDayBlocks(day);
+            const isToday = day.key === todayKey;
             return (
-              <Bar
-                key={dataKey}
-                dataKey={dataKey}
-                stackId="day"
-                isAnimationActive={animateBars}
-                animationDuration={CHART_TOKENS.animationDuration}
-                shape={(shapeProps: object) => (
-                  <RoundedSegment
-                    {...shapeProps}
-                    segIndex={segIndex}
-                    onHoverSegment={(segment, renderedHeight) => {
-                      setHoveredSegment({
-                        id: segment.id,
-                        showFullDay: renderedHeight < TINY_SEGMENT_TOOLTIP_HEIGHT,
-                      });
-                    }}
-                    onLeaveSegment={() => setHoveredSegment(null)}
-                  />
+              <div
+                key={day.key}
+                ref={isToday ? todayRowRef : undefined}
+                className={cn(
+                  "flex items-center gap-3 rounded-lg py-1.5",
+                  isToday && "border-y border-dashed border-primary/60 bg-primary/5",
                 )}
-                onClick={(data: unknown) => {
-                  const payload = (data as { payload?: { segments?: WorkLogSegment[] } })?.payload;
-                  const segment = payload?.segments?.[segIndex];
-                  if (segment && onSegmentClick) {
-                    onSegmentClick(segment);
-                  }
-                }}
-                cursor={onSegmentClick ? "pointer" : undefined}
               >
-                {rows.map((row) => {
-                  const segment = row.segments[segIndex];
-                  return (
-                    <Cell
-                      key={row.key}
-                      fill={segment?.color ?? "transparent"}
-                      fillOpacity={segment ? (segment.status === "running" ? 0.72 : 0.92) : 0}
-                    />
-                  );
-                })}
-              </Bar>
+                <p
+                  className={cn(
+                    "w-14 shrink-0 text-right text-xs font-medium text-muted-foreground",
+                    isToday && "text-primary",
+                  )}
+                >
+                  {isToday ? "Today" : day.label}
+                </p>
+                <div className="relative h-6 flex-1 rounded-full bg-muted/20">
+                  <div
+                    className="pointer-events-none absolute inset-y-0 border-l border-dashed border-primary/50"
+                    style={{ left: `${(now / 24) * 100}%` }}
+                    aria-hidden
+                  />
+                  {blocks.map((block) =>
+                    block.kind === "work" ? (
+                      <button
+                        key={block.segment.id}
+                        type="button"
+                        className={cn(
+                          "absolute inset-y-0.5 rounded-full transition-[filter]",
+                          block.segment.status === "running" && "animate-pulse",
+                          onSegmentClick && "cursor-pointer hover:brightness-110",
+                        )}
+                        style={{
+                          left: `${(block.from / 24) * 100}%`,
+                          width: `${Math.max(0.6, ((block.to - block.from) / 24) * 100)}%`,
+                          backgroundColor: block.segment.color,
+                          opacity: block.segment.status === "running" ? 0.85 : 1,
+                        }}
+                        onMouseEnter={(event) =>
+                          setHovered({
+                            dayLabel: day.label,
+                            segment: block.segment,
+                            x: event.clientX,
+                            y: event.clientY,
+                          })
+                        }
+                        onMouseMove={(event) =>
+                          setHovered((current) =>
+                            current && current.segment.id === block.segment.id
+                              ? { ...current, x: event.clientX, y: event.clientY }
+                              : current,
+                          )
+                        }
+                        onMouseLeave={() => setHovered(null)}
+                        onClick={() => onSegmentClick?.(block.segment)}
+                      />
+                    ) : (
+                      <div
+                        key={`${day.key}-gap-${block.from}`}
+                        tabIndex={0}
+                        role="note"
+                        title={`No log found · ${formatClockHour(block.from)} – ${formatClockHour(block.to)}`}
+                        aria-label={`No log found from ${formatClockHour(block.from)} to ${formatClockHour(block.to)}`}
+                        className="absolute inset-y-0.5 cursor-help rounded-full bg-[repeating-linear-gradient(135deg,color-mix(in_srgb,var(--color-muted-foreground)_35%,transparent)_0,color-mix(in_srgb,var(--color-muted-foreground)_35%,transparent)_2px,transparent_2px,transparent_6px)]"
+                        style={{
+                          left: `${(block.from / 24) * 100}%`,
+                          width: `${((block.to - block.from) / 24) * 100}%`,
+                        }}
+                      />
+                    ),
+                  )}
+                </div>
+                <p className="w-16 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                  {hoursMinutesLabel(day.totalSeconds)}
+                </p>
+              </div>
             );
           })}
-        </BarChart>
-      </ResponsiveContainer>
+        </div>
+      </ScrollArea>
+
+      {hovered ? (
+        <SegmentTooltipPortal
+          label={hovered.dayLabel}
+          segment={hovered.segment}
+          anchor={{ x: hovered.x + 16, y: hovered.y + 16 }}
+        />
+      ) : null}
 
       {/* Accessible, screen-reader-only equivalent of the chart data. */}
       <table className="sr-only">
@@ -240,19 +282,21 @@ export function SegmentedBarChart({
             <th scope="col">Project</th>
             <th scope="col">Status</th>
             <th scope="col">Assignment</th>
-            <th scope="col">Duration</th>
+            <th scope="col">Start</th>
+            <th scope="col">End</th>
           </tr>
         </thead>
         <tbody>
-          {rows.flatMap((row) =>
-            row.segments.map((segment) => (
-              <tr key={`${row.key}-${segment.id}`}>
-                <td>{row.label}</td>
+          {days.flatMap((day) =>
+            day.segments.map((segment) => (
+              <tr key={`${day.key}-${segment.id}`}>
+                <td>{day.label}</td>
                 <td>{segment.title}</td>
                 <td>{segment.projectName}</td>
                 <td>{segment.status}</td>
                 <td>{segment.assignment}</td>
-                <td>{formatDuration(segment.durationSec)}</td>
+                <td>{segment.startAt}</td>
+                <td>{segment.endAt ?? "running"}</td>
               </tr>
             )),
           )}

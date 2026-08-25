@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { initCatalyst, zcqlEscape, zcqlQuery } from "@/lib/db/catalyst-client";
-import { toCatalystDateTime } from "@/lib/db/catalyst-datetime";
+import { fromCatalystDateTime, toCatalystDateTime } from "@/lib/db/catalyst-datetime";
 
 export const runtime = "nodejs";
 
@@ -33,18 +33,22 @@ function validBreak(value: Mutation): boolean {
 function timerFromRow(raw: Row): Row {
   const value = nested(raw, TIMER_TABLE);
   return { id: value.id, title: value.title, projectId: value.project_id ?? null, categoryId: value.category_id ?? null,
-    tags: parseJson(value.tags, []), notes: value.notes ?? null, startAt: value.start_at, elapsedBeforePauseSec: Number(value.elapsed_before_pause_sec ?? 0),
-    pausedAt: value.paused_at ?? null, pomodoroMode: value.pomodoro_mode === true || value.pomodoro_mode === "true", parentTimerId: value.parent_timer_id ?? null,
-    revision: Number(value.revision ?? 0), updatedAt: value.updated_at, deletedAt: value.deleted_at ?? null };
+    tags: parseJson(value.tags, []), notes: value.notes ?? null, startAt: fromCatalystDateTime(value.start_at) ?? "", elapsedBeforePauseSec: Number(value.elapsed_before_pause_sec ?? 0),
+    pausedAt: value.paused_at ? fromCatalystDateTime(value.paused_at) : null, pomodoroMode: value.pomodoro_mode === true || value.pomodoro_mode === "true", parentTimerId: value.parent_timer_id ?? null,
+    revision: Number(value.revision ?? 0), updatedAt: fromCatalystDateTime(value.updated_at) ?? "", deletedAt: value.deleted_at ? fromCatalystDateTime(value.deleted_at) : null };
 }
 function breakFromRow(raw: Row): Row {
   const value = nested(raw, BREAK_TABLE);
-  return { id: value.id, label: value.label, startedAt: value.started_at, plannedDurationSec: Number(value.planned_duration_sec ?? 0),
-    pausedTimerIds: parseJson(value.paused_timer_ids, []), notes: value.notes ?? null, revision: Number(value.revision ?? 0), updatedAt: value.updated_at, deletedAt: value.deleted_at ?? null };
+  return { id: value.id, label: value.label, startedAt: fromCatalystDateTime(value.started_at) ?? "", plannedDurationSec: Number(value.planned_duration_sec ?? 0),
+    pausedTimerIds: parseJson(value.paused_timer_ids, []), notes: value.notes ?? null, revision: Number(value.revision ?? 0), updatedAt: fromCatalystDateTime(value.updated_at) ?? "", deletedAt: value.deleted_at ? fromCatalystDateTime(value.deleted_at) : null };
 }
 function parseJson(value: unknown, fallback: string[]) { try { return typeof value === "string" ? JSON.parse(value) : fallback; } catch { return fallback; } }
 function fields(table: string, mutation: Mutation, revision: number): Row {
-  const common = { revision, updated_at: new Date().toISOString(), deleted_at: mutation.deletedAt ?? null };
+  const common = {
+    revision,
+    updated_at: toCatalystDateTime(new Date().toISOString()) ?? "",
+    deleted_at: mutation.deletedAt ? toCatalystDateTime(mutation.deletedAt) : null,
+  };
   if (table === TIMER_TABLE) return { ...common, title: mutation.title ?? "", project_id: mutation.projectId ?? null, category_id: mutation.categoryId ?? null,
     tags: JSON.stringify(Array.isArray(mutation.tags) ? mutation.tags : []), notes: mutation.notes ?? null, start_at: toCatalystDateTime(mutation.startAt) ?? "", elapsed_before_pause_sec: Number(mutation.elapsedBeforePauseSec ?? 0),
     paused_at: mutation.pausedAt === null || mutation.pausedAt === undefined ? null : toCatalystDateTime(mutation.pausedAt), pomodoro_mode: Boolean(mutation.pomodoroMode), parent_timer_id: mutation.parentTimerId ?? null };
@@ -69,14 +73,15 @@ async function apply(app: ReturnType<typeof initCatalyst>, userId: string, table
 export async function GET(request: Request) {
   const auth = await user(request);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const cutoff = new Date(Date.now() - TOMBSTONE_RETENTION_MS).toISOString();
+  const cutoffMs = Date.now() - TOMBSTONE_RETENTION_MS;
   const [timers, breaks] = await Promise.all([zcqlQuery(auth.app, `SELECT * FROM ${TIMER_TABLE} WHERE user_id = '${zcqlEscape(auth.id)}'`), zcqlQuery(auth.app, `SELECT * FROM ${BREAK_TABLE} WHERE user_id = '${zcqlEscape(auth.id)}'`)]);
   const purge = async (rows: Row[], table: string) => Promise.all(rows.map(async (raw) => {
     const value = nested(raw, table);
-    if (value.deleted_at && String(value.deleted_at) <= cutoff && value.ROWID !== undefined) await auth.app.datastore().table(table).deleteRow(value.ROWID as string | number);
+    const deletedAt = fromCatalystDateTime(value.deleted_at);
+    if (deletedAt && Date.parse(deletedAt) <= cutoffMs && value.ROWID !== undefined) await auth.app.datastore().table(table).deleteRow(value.ROWID as string | number);
   }));
   await Promise.all([purge(timers, TIMER_TABLE), purge(breaks, BREAK_TABLE)]);
-  return NextResponse.json({ timers: timers.map(timerFromRow).filter((x) => !x.deletedAt || String(x.deletedAt) > cutoff), breaks: breaks.map(breakFromRow).filter((x) => !x.deletedAt || String(x.deletedAt) > cutoff) });
+  return NextResponse.json({ timers: timers.map(timerFromRow).filter((x) => !x.deletedAt || Date.parse(String(x.deletedAt)) > cutoffMs), breaks: breaks.map(breakFromRow).filter((x) => !x.deletedAt || Date.parse(String(x.deletedAt)) > cutoffMs) });
 }
 
 export async function POST(request: Request) {

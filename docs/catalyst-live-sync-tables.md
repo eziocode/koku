@@ -7,7 +7,9 @@ must be indexed/unique per user where Catalyst supports composite uniqueness.
 
 | Column | Type |
 | --- | --- |
-| id, user_id, title, project_id, category_id, notes, start_at, paused_at, parent_timer_id, updated_at, deleted_at | String |
+| id, user_id, title, project_id, category_id, parent_timer_id | String |
+| notes | Text |
+| start_at, paused_at, updated_at, deleted_at | DateTime |
 | tags | String (JSON array) |
 | elapsed_before_pause_sec, revision | Number |
 | pomodoro_mode | Boolean |
@@ -16,7 +18,9 @@ must be indexed/unique per user where Catalyst supports composite uniqueness.
 
 | Column | Type |
 | --- | --- |
-| id, user_id, label, started_at, notes, updated_at, deleted_at | String |
+| id, user_id, label | String |
+| notes | Text |
+| started_at, updated_at, deleted_at | DateTime |
 | paused_timer_ids | String (JSON array) |
 | planned_duration_sec, revision | Number |
 

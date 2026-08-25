@@ -71,8 +71,8 @@ describe("Catalyst field transforms", () => {
         slug: "private-thought",
         content: JSON.stringify({ type: "doc" }),
         tags: JSON.stringify(["private"]),
-        created_at: "2026-08-24T10:00:00.000Z",
-        updated_at: "2026-08-24T10:05:00.000Z",
+        created_at: "2026-08-24 10:00:00",
+        updated_at: "2026-08-24 10:05:00",
       },
     );
   });
@@ -89,7 +89,7 @@ describe("Catalyst field transforms", () => {
         name: "Koku",
         color: "#123456",
         hourly_rate: null,
-        created_at: "2026-08-24T10:00:00.000Z",
+        created_at: "2026-08-24 10:00:00",
       },
     );
 
@@ -110,5 +110,33 @@ describe("Catalyst field transforms", () => {
     assert.equal(fields.end_at, null);
     assert.equal(fields.duration_sec, null);
     assert.equal(fields.start_at, "2026-08-24 10:00:00");
+    assert.equal(fields.created_at, "2026-08-24 10:00:00");
+  });
+
+  it("converts note timestamps to Catalyst DateTime values", () => {
+    const fields = TABLE_CONFIG.notes.toFields({
+      title: "Note",
+      slug: "note",
+      content: null,
+      tags: [],
+      createdAt: "2026-08-24T10:00:00.000Z",
+      updatedAt: "2026-08-25T16:04:34.899Z",
+    });
+
+    assert.equal(fields.created_at, "2026-08-24 10:00:00");
+    assert.equal(fields.updated_at, "2026-08-25 16:04:34");
+  });
+
+  it("rejects invalid datetimes before sending rows to Catalyst", () => {
+    assert.deepEqual(
+      validateSyncRow("notes", {
+        id: "note-1",
+        title: "Note",
+        slug: "note",
+        createdAt: "2026-08-24T10:00:00.000Z",
+        updatedAt: "not-a-date",
+      }),
+      { ok: false, error: "updatedAt must be a valid datetime." },
+    );
   });
 });

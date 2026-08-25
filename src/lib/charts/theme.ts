@@ -131,28 +131,8 @@ export function getStatusColor(key: string): string {
  */
 export const CHART_TOKENS = {
   grid: "color-mix(in srgb, var(--color-muted-foreground) 18%, transparent)",
-  /** Unlabelled hourly gridlines — deliberately fainter than `grid`. */
-  gridSubtle: "color-mix(in srgb, var(--color-muted-foreground) 8%, transparent)",
   axis: "var(--color-muted-foreground)",
   cursor: "color-mix(in srgb, var(--color-primary) 8%, transparent)",
   radius: 6,
   animationDuration: 420,
-} as const;
-
-/**
- * Fixed day-scale axis for daily-activity charts: a full 24-hour domain so a
- * quiet day and a heavy day are directly comparable across ranges, instead of
- * recharts rescaling the axis to whatever the tallest column happens to be.
- *
- * Gridlines land on every hour; only every third hour is labelled, because 25
- * tick labels do not fit a typical plot area.
- */
-export const DAY_AXIS = {
-  /** Clamped upward only — overlapping entries can push a day past 24h. */
-  domain: [0, (dataMax: number) => Math.max(24, Math.ceil(dataMax))] as [
-    number,
-    (dataMax: number) => number,
-  ],
-  labelledTicks: [0, 3, 6, 9, 12, 15, 18, 21, 24] as number[],
-  gridlineHours: Array.from({ length: 25 }, (_, hour) => hour),
 } as const;

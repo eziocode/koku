@@ -6,7 +6,6 @@ import {
   deriveStatus,
   hasExcludedTag,
   toProjectBreakdown,
-  toStackedRows,
   toStatusBreakdown,
   type SegmentSourceEntry,
 } from "./segments";
@@ -97,44 +96,6 @@ test("invalid start dates are skipped", () => {
     projectMap,
   });
   assert.equal(days.length, 0);
-});
-
-test("toStackedRows produces one row per day and reports max segment count", () => {
-  const days = buildSegmentedDays({
-    entries: [
-      entry({ id: "a", startAt: "2024-06-03T09:00:00.000Z", projectId: "p1" }),
-      entry({ id: "b", startAt: "2024-06-03T11:00:00.000Z", projectId: "p2", durationSec: 1800 }),
-      entry({ id: "c", startAt: "2024-06-04T09:00:00.000Z", projectId: "p1" }),
-    ],
-    projectMap,
-  });
-  const { rows, maxSegments } = toStackedRows(days);
-  assert.equal(rows.length, 2);
-  assert.equal(maxSegments, 2);
-  const twoSegRow = rows.find((r) => r.segments.length === 2);
-  assert.ok(twoSegRow);
-  assert.equal(twoSegRow.seg0, 1);
-  assert.equal(twoSegRow.seg1, 0.5);
-});
-
-test("toStackedRows marks the topmost segment per row and leaves shorter days undefined", () => {
-  const days = buildSegmentedDays({
-    entries: [
-      entry({ id: "a", startAt: "2024-06-03T09:00:00.000Z", projectId: "p1" }),
-      entry({ id: "b", startAt: "2024-06-03T11:00:00.000Z", projectId: "p2", durationSec: 1800 }),
-      entry({ id: "c", startAt: "2024-06-04T09:00:00.000Z", projectId: "p1" }),
-    ],
-    projectMap,
-  });
-  const { rows } = toStackedRows(days);
-  const twoSegRow = rows.find((r) => r.segments.length === 2);
-  const oneSegRow = rows.find((r) => r.segments.length === 1);
-  assert.ok(twoSegRow && oneSegRow);
-  // Each row's top index reflects its own segment count, not the global max.
-  assert.equal(twoSegRow.topSegmentIndex, 1);
-  assert.equal(oneSegRow.topSegmentIndex, 0);
-  // The shorter day has no seg1 value.
-  assert.equal(oneSegRow.seg1, undefined);
 });
 
 test("category name resolves via categoryMap when present", () => {
