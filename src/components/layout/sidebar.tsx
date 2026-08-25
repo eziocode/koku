@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { Logo } from "@/components/layout/logo";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { DailyQuote } from "@/components/layout/daily-quote";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { appNavigation } from "@/lib/navigation";
@@ -34,14 +34,14 @@ export function Sidebar({ open, onNavigate }: SidebarProps) {
   return (
     <aside
       className={cn(
-        "fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r border-border/70 bg-card/85 backdrop-blur-xl transition-transform duration-300 lg:static lg:translate-x-0",
+        "fixed inset-y-0 left-0 z-40 flex h-screen w-72 flex-col overflow-hidden border-r border-border/70 bg-card/85 backdrop-blur-xl transition-transform duration-300 lg:sticky lg:top-0 lg:translate-x-0",
         open ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
       )}
     >
       <div className="flex items-center justify-between border-b border-border/70 px-6 py-5">
         <Logo />
       </div>
-      <ScrollArea className="flex-1 px-4 py-4">
+      <div className="flex-1 overflow-hidden px-4 py-4">
         <nav className="space-y-1">
           {navigation.map((item) => {
             const Icon = item.icon;
@@ -64,9 +64,9 @@ export function Sidebar({ open, onNavigate }: SidebarProps) {
             );
           })}
         </nav>
-      </ScrollArea>
+      </div>
       <div className="border-t border-border/70 px-6 py-4 text-xs leading-5 text-muted-foreground">
-        <p>Mark the moment. Master your time.</p>
+        <DailyQuote />
         <TooltipProvider>
           <div className="mt-3 flex items-center gap-3">
             <Tooltip>
