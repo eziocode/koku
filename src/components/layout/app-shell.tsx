@@ -18,7 +18,7 @@ export function AppShell({ children }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background text-foreground">
+    <div className="flex h-dvh overflow-hidden bg-background text-foreground">
       <CommandPalette />
       {/* Receives notification actions (quick note / open log) from the service
           worker. Mounted here so it is route-independent, like the palette. */}
@@ -38,7 +38,7 @@ export function AppShell({ children }: AppShellProps) {
           onClick={() => setSidebarOpen(false)}
         />
       ) : null}
-      <div className="flex h-screen min-w-0 flex-1 flex-col lg:pl-0">
+      <div className="flex h-full min-w-0 flex-1 flex-col lg:pl-0">
         <Topbar onOpenSidebar={() => setSidebarOpen(true)} />
         <main className={cn("min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8")}>
           <div className="mx-auto w-full max-w-7xl">

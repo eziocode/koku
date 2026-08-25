@@ -68,7 +68,7 @@ export default function RootLayout({
           {buildAccentScript()}
         </Script>
       </head>
-      <body className="min-h-screen bg-background text-foreground">
+      <body className="min-h-dvh bg-background text-foreground">
         <AppProviders>{children}</AppProviders>
         <ServiceWorkerRegistrar />
       </body>

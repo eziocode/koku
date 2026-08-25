@@ -34,7 +34,7 @@ export function Sidebar({ open, onNavigate }: SidebarProps) {
   return (
     <aside
       className={cn(
-        "fixed inset-y-0 left-0 z-40 flex h-screen w-72 flex-col overflow-hidden border-r border-border/70 bg-card/85 backdrop-blur-xl transition-transform duration-300 lg:sticky lg:top-0 lg:translate-x-0",
+        "fixed inset-y-0 left-0 z-40 flex h-dvh w-72 flex-col overflow-hidden border-r border-border/70 bg-card/85 backdrop-blur-xl transition-transform duration-300 lg:sticky lg:top-0 lg:translate-x-0",
         open ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
       )}
     >
