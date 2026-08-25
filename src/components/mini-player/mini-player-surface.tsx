@@ -13,7 +13,7 @@ import { BREAK_TAG } from "@/lib/notifications/settings";
 import { useNotificationPreferences } from "@/lib/notifications/use-notification-preferences";
 import { getActiveTimerElapsedSec, useTimerStore } from "@/lib/stores/timer-store";
 import { useSecondTick } from "@/lib/stores/use-ticker";
-import { createTimeEntry, ensureCategory } from "@/lib/time-tracking/time-entries";
+import { createTimeEntry, ensureBreakAssignments } from "@/lib/time-tracking/time-entries";
 import { stopTimerAndPersist } from "@/lib/time-tracking/stop-timer";
 import { cn, formatDuration } from "@/lib/utils";
 
@@ -137,10 +137,10 @@ export function MiniPlayerSurface({ pipWindow }: MiniPlayerSurfaceProps) {
     const elapsedSec = getBreakElapsedSec(activeBreak, tickNow);
 
     try {
-      const breakCategory = await ensureCategory("Break");
+      const breakAssignments = await ensureBreakAssignments();
       await createTimeEntry({
         title: activeBreak.label,
-        categoryId: breakCategory.id,
+        ...breakAssignments,
         startAt: activeBreak.startedAt,
         endAt: new Date(tickNow).toISOString(),
         durationSec: elapsedSec,

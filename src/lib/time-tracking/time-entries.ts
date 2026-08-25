@@ -1,4 +1,4 @@
-import { kokuDb, type Category, type TimeEntry } from "@/lib/storage/db";
+import { kokuDb, type Category, type Project, type TimeEntry } from "@/lib/storage/db";
 import { syncRow } from "@/lib/sync/sync-engine";
 
 /**
@@ -51,6 +51,44 @@ export async function ensureCategory(name: string, color = "#8b5cf6"): Promise<C
     if (concurrent) return concurrent;
     throw new Error(`Unable to create category: ${name}`);
   }
+}
+
+/** Return shared system project, creating it on first break log. */
+export async function ensureProject(name: string, color = "#8b5cf6"): Promise<Project> {
+  const existing = await kokuDb.projects.filter((project) => project.name === name).first();
+  if (existing) return existing;
+
+  const project: Project = {
+    id: name === "Break" ? "system-break" : crypto.randomUUID(),
+    name,
+    color,
+    hourlyRate: null,
+    createdAt: new Date().toISOString(),
+  };
+
+  try {
+    await kokuDb.projects.add(project);
+    void syncRow("projects", project);
+    return project;
+  } catch {
+    // Another tab may have created same project concurrently.
+    const concurrent = await kokuDb.projects.filter((item) => item.name === name).first();
+    if (concurrent) return concurrent;
+    throw new Error(`Unable to create project: ${name}`);
+  }
+}
+
+/** Return IDs used by every automatically logged break. */
+export async function ensureBreakAssignments(): Promise<{
+  projectId: string;
+  categoryId: string;
+}> {
+  const [project, category] = await Promise.all([
+    ensureProject("Break"),
+    ensureCategory("Break"),
+  ]);
+
+  return { projectId: project.id, categoryId: category.id };
 }
 
 export async function createTimeEntry(data: CreateTimeEntryInput): Promise<TimeEntry> {

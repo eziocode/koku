@@ -166,11 +166,17 @@ function SegmentTooltipPortal({
 
 interface SegmentedBarChartProps {
   days: SegmentedDay[];
+  /** Scroll-area height. Defaults to a size that suits the row density. */
   height?: number;
   /** Fired when a segment is clicked — use to navigate to / filter the work log. */
   onSegmentClick?: (segment: WorkLogSegment) => void;
   emptyTitle?: string;
   emptyDescription?: string;
+  /**
+   * Slimmer rows and tighter type, for a narrow panel like the dashboard's
+   * "This week" card where the full-size track wastes the little width it has.
+   */
+  compact?: boolean;
 }
 
 /**
@@ -181,11 +187,15 @@ interface SegmentedBarChartProps {
  */
 export function SegmentedBarChart({
   days,
-  height = 288,
+  height,
   onSegmentClick,
   emptyTitle,
   emptyDescription,
+  compact = false,
 }: SegmentedBarChartProps) {
+  // Compact rows are roughly a third shorter, so the default frame shrinks with
+  // them — otherwise a full week of slim rows sits in a mostly empty panel.
+  const frameHeight = height ?? (compact ? 176 : 288);
   const [hovered, setHovered] = useState<{
     dayLabel: string;
     segment: WorkLogSegment;
@@ -241,15 +251,15 @@ export function SegmentedBarChart({
   }, [days]);
 
   if (!hasData) {
-    return <ChartEmpty height={height} title={emptyTitle} description={emptyDescription} />;
+    return <ChartEmpty height={frameHeight} title={emptyTitle} description={emptyDescription} />;
   }
 
   return (
     <div className="w-full">
       {/* Hour ruler. Gutters match each row's day label and total columns so the
           ticks line up with the tracks below. */}
-      <div className="flex items-end gap-3 pr-2">
-        <div className="w-14 shrink-0" aria-hidden />
+      <div className={cn("flex items-end pr-2", compact ? "gap-2" : "gap-3")}>
+        <div className={cn("shrink-0", compact ? "w-11" : "w-14")} aria-hidden />
         <div ref={rulerTrackRef} className="relative h-4 flex-1">
           {rulerHours.map((hour) => (
             <span
@@ -266,10 +276,10 @@ export function SegmentedBarChart({
             </span>
           ))}
         </div>
-        <div className="w-16 shrink-0" aria-hidden />
+        <div className={cn("shrink-0", compact ? "w-12" : "w-16")} aria-hidden />
       </div>
 
-      <ScrollArea ref={scrollAreaRef} style={{ height }}>
+      <ScrollArea ref={scrollAreaRef} style={{ height: frameHeight }}>
         <div className="space-y-1 pr-2">
           {days.map((day) => {
             const blocks = buildDayBlocks(day);
@@ -279,19 +289,26 @@ export function SegmentedBarChart({
                 key={day.key}
                 ref={isToday ? todayRowRef : undefined}
                 className={cn(
-                  "flex items-center gap-3 rounded-lg py-1.5",
+                  "flex items-center rounded-lg",
+                  compact ? "gap-2 py-0.5" : "gap-3 py-1.5",
                   isToday && "border-y border-dashed border-primary/60 bg-primary/5",
                 )}
               >
                 <p
                   className={cn(
-                    "w-14 shrink-0 text-right text-xs font-medium text-muted-foreground",
+                    "shrink-0 text-right font-medium text-muted-foreground",
+                    compact ? "w-11 text-[10px]" : "w-14 text-xs",
                     isToday && "text-primary",
                   )}
                 >
                   {isToday ? "Today" : day.label}
                 </p>
-                <div className="relative h-6 flex-1 rounded-full bg-muted/20">
+                <div
+                  className={cn(
+                    "relative flex-1 rounded-sm bg-muted/20",
+                    compact ? "h-3.5" : "h-6",
+                  )}
+                >
                   {/* Hour gridlines, kept at 3h regardless of label density. */}
                   {GRIDLINE_HOURS.map((hour) => (
                     <div
@@ -312,7 +329,10 @@ export function SegmentedBarChart({
                         key={block.segment.id}
                         type="button"
                         className={cn(
-                          "absolute inset-y-0.5 rounded-full transition-[filter]",
+                          // Rectangular candle, not a pill: a rounded cap on a
+                          // short block reads as a blob and hides where the log
+                          // actually starts and ends on the hour axis.
+                          "absolute inset-y-0 rounded-[2px] transition-[filter]",
                           block.segment.status === "running" && "animate-pulse",
                           onSegmentClick && "cursor-pointer hover:brightness-110",
                         )}
@@ -347,7 +367,7 @@ export function SegmentedBarChart({
                         role="note"
                         title={`No log found · ${formatClockHour(block.from, timeFormat)} – ${formatClockHour(block.to, timeFormat)}`}
                         aria-label={`No log found from ${formatClockHour(block.from, timeFormat)} to ${formatClockHour(block.to, timeFormat)}`}
-                        className="absolute inset-y-0.5 cursor-help rounded-full bg-[repeating-linear-gradient(135deg,color-mix(in_srgb,var(--color-muted-foreground)_35%,transparent)_0,color-mix(in_srgb,var(--color-muted-foreground)_35%,transparent)_2px,transparent_2px,transparent_6px)]"
+                        className="absolute inset-y-0 cursor-help rounded-[2px] bg-[repeating-linear-gradient(135deg,color-mix(in_srgb,var(--color-muted-foreground)_35%,transparent)_0,color-mix(in_srgb,var(--color-muted-foreground)_35%,transparent)_2px,transparent_2px,transparent_6px)]"
                         style={{
                           left: `${(block.from / 24) * 100}%`,
                           width: `${((block.to - block.from) / 24) * 100}%`,
@@ -356,7 +376,12 @@ export function SegmentedBarChart({
                     ),
                   )}
                 </div>
-                <p className="w-16 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                <p
+                  className={cn(
+                    "shrink-0 text-right tabular-nums text-muted-foreground",
+                    compact ? "w-12 text-[10px]" : "w-16 text-xs",
+                  )}
+                >
                   {hoursMinutesLabel(day.totalSeconds)}
                 </p>
               </div>

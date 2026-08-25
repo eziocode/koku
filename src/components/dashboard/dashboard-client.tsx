@@ -233,6 +233,7 @@ export function DashboardClient() {
             onSegmentClick={handleSegmentClick}
             emptyTitle="No sessions this week"
             emptyDescription="Start a timer or add a manual entry to see your week take shape."
+            compact
           />
         </ChartCard>
       </div>

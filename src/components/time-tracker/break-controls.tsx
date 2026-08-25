@@ -17,7 +17,7 @@ import {
 import { useNotificationPreferences } from "@/lib/notifications/use-notification-preferences";
 import { useTimerStore } from "@/lib/stores/timer-store";
 import { useSecondTick } from "@/lib/stores/use-ticker";
-import { createTimeEntry, ensureCategory } from "@/lib/time-tracking/time-entries";
+import { createTimeEntry, ensureBreakAssignments } from "@/lib/time-tracking/time-entries";
 import { BREAK_TAG } from "@/lib/notifications/settings";
 import { cn, formatDuration } from "@/lib/utils";
 
@@ -192,10 +192,10 @@ export function BreakCard() {
       // Written before finishing, so a failed write leaves the break intact and
       // retryable rather than losing the record.
       if (shouldLog) {
-        const breakCategory = await ensureCategory("Break");
+        const breakAssignments = await ensureBreakAssignments();
         await createTimeEntry({
           title: current.label,
-          categoryId: breakCategory.id,
+          ...breakAssignments,
           startAt: current.startedAt,
           endAt: new Date(tickNow).toISOString(),
           durationSec: elapsedSec,
