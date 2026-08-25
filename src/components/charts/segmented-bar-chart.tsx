@@ -36,6 +36,18 @@ function rulerHoursFor(trackWidth: number): number[] {
   return hours;
 }
 
+/**
+ * Row metrics, kept in sync with the row markup below (`py-*` + track height)
+ * and the `space-y-1` gap between rows. Used to size the scroll frame to its
+ * content instead of a fixed guess.
+ */
+const ROW_HEIGHT_COMPACT = 18;
+const ROW_HEIGHT_REGULAR = 36;
+const ROW_GAP = 4;
+
+/** Past this many rows the frame stops growing and the list scrolls. */
+const MAX_VISIBLE_ROWS = 12;
+
 function hourOfDay(iso: string): number {
   const date = new Date(iso);
   return date.getHours() + date.getMinutes() / 60 + date.getSeconds() / 3600;
@@ -193,9 +205,12 @@ export function SegmentedBarChart({
   emptyDescription,
   compact = false,
 }: SegmentedBarChartProps) {
-  // Compact rows are roughly a third shorter, so the default frame shrinks with
-  // them — otherwise a full week of slim rows sits in a mostly empty panel.
-  const frameHeight = height ?? (compact ? 176 : 288);
+  // Estimated frame height, used until the rows have been measured (and as the
+  // empty state's footprint). Row metrics mirror the row markup below.
+  const rowHeight = compact ? ROW_HEIGHT_COMPACT : ROW_HEIGHT_REGULAR;
+  const estimatedRows = Math.min(Math.max(days.length, 1), MAX_VISIBLE_ROWS);
+  const estimatedHeight = estimatedRows * rowHeight + (estimatedRows - 1) * ROW_GAP;
+  const maxFrameHeight = MAX_VISIBLE_ROWS * rowHeight + (MAX_VISIBLE_ROWS - 1) * ROW_GAP;
   const [hovered, setHovered] = useState<{
     dayLabel: string;
     segment: WorkLogSegment;
@@ -219,6 +234,13 @@ export function SegmentedBarChart({
   const rulerTrackRef = useRef<HTMLDivElement | null>(null);
   const [trackWidth, setTrackWidth] = useState(0);
 
+  // The frame is sized from the rows it actually renders rather than a fixed
+  // box, so a seven-day week and a thirty-day month do not share one height
+  // with either of them stranded in empty space. Measured (not just computed
+  // from row metrics) so it stays right if the row markup changes.
+  const rowsRef = useRef<HTMLDivElement | null>(null);
+  const [measuredRowsHeight, setMeasuredRowsHeight] = useState(0);
+
   // Depends on `hasData`: the ruler is not in the tree while the empty state is
   // showing, so without re-running the observer would never attach and the
   // width would stay 0 (collapsing the axis to its sparsest step forever).
@@ -234,6 +256,20 @@ export function SegmentedBarChart({
   }, [hasData]);
 
   const rulerHours = useMemo(() => rulerHoursFor(trackWidth), [trackWidth]);
+
+  useEffect(() => {
+    const rows = rowsRef.current;
+    if (!rows) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setMeasuredRowsHeight(entry.contentRect.height);
+    });
+    observer.observe(rows);
+    setMeasuredRowsHeight(rows.getBoundingClientRect().height);
+    return () => observer.disconnect();
+  }, [hasData]);
+
+  const frameHeight =
+    height ?? Math.min(measuredRowsHeight || estimatedHeight, maxFrameHeight);
 
   // Land on today once data is in, then leave scroll position to the user —
   // re-centering on every re-render (a live timer ticks `days` every second)
@@ -251,7 +287,9 @@ export function SegmentedBarChart({
   }, [days]);
 
   if (!hasData) {
-    return <ChartEmpty height={frameHeight} title={emptyTitle} description={emptyDescription} />;
+    // The empty card needs room for its icon and copy — a short week's worth
+    // of rows would crush it.
+    return <ChartEmpty height={Math.max(frameHeight, 180)} title={emptyTitle} description={emptyDescription} />;
   }
 
   return (
@@ -280,7 +318,7 @@ export function SegmentedBarChart({
       </div>
 
       <ScrollArea ref={scrollAreaRef} style={{ height: frameHeight }}>
-        <div className="space-y-1 pr-2">
+        <div ref={rowsRef} className="space-y-1 pr-2">
           {days.map((day) => {
             const blocks = buildDayBlocks(day);
             const isToday = day.key === todayKey;

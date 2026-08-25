@@ -221,7 +221,7 @@ export function DashboardClient() {
         </Card>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+      <div className="grid items-start gap-6 xl:grid-cols-[1.15fr_0.85fr]">
         <Timer />
         <ChartCard
           title="This week"
