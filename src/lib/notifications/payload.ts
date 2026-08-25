@@ -7,6 +7,7 @@ import {
   type NotificationActionId,
 } from "@/lib/notifications/messages";
 import type { NotificationPreferences } from "@/lib/notifications/settings";
+import type { TimeFormat } from "@/lib/settings/schema";
 
 /**
  * Notification content, built purely so it can be unit-tested.
@@ -252,6 +253,7 @@ export function buildEndOfDayNotification(
 export function buildEndOfDaySnoozedNotification(
   resumeAt: number,
   now = Date.now(),
+  timeFormat: TimeFormat = "12h",
 ): BuiltNotification {
   const data: KokuNotificationData = {
     kokuType: "end-of-day",
@@ -260,7 +262,11 @@ export function buildEndOfDaySnoozedNotification(
     createdAt: now,
   };
 
-  const clock = new Date(resumeAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const clock = new Date(resumeAt).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: timeFormat === "12h",
+  });
 
   return {
     title: "Snoozed",

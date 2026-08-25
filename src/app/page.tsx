@@ -74,7 +74,9 @@ export default function Home() {
       <main className="mx-auto flex w-full max-w-7xl flex-col gap-20 px-4 pb-20 pt-14 sm:px-6 lg:px-8">
         <section className="grid items-center gap-14 lg:grid-cols-[1.2fr_0.8fr]">
           <div className="space-y-8">
-            <Badge className="rounded-full px-4 py-1 text-sm">Local-first. No account. Ready instantly.</Badge>
+            <Badge className="rounded-full px-4 py-1 text-sm">
+              {signedIn ? "Cloud connected. Synced across devices." : "Local-first. No account. Ready instantly."}
+            </Badge>
             <div className="space-y-5">
               <h1 className="max-w-4xl text-5xl font-semibold tracking-tight sm:text-6xl lg:text-7xl">
                 <span className="text-primary">刻</span> Koku makes your workday legible.
@@ -145,7 +147,9 @@ export default function Home() {
 
         <section className="space-y-6">
           <div className="max-w-2xl space-y-3">
-            <p className="text-sm uppercase tracking-[0.3em] text-primary">Local-first</p>
+            <p className="text-sm uppercase tracking-[0.3em] text-primary">
+              {signedIn ? "Cloud connected" : "Local-first"}
+            </p>
             <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">
               Works out of the box in your browser.
             </h2>

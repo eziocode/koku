@@ -41,3 +41,17 @@ test("legacy non-empty week-off and enabled notifications count as configured", 
   assert.deepEqual(status, { displayName: true, weekOff: true, logoff: true, notifications: true });
 });
 
+test("empty profile name remains mandatory even after previous onboarding", () => {
+  const status = getWelcomeStatus(
+    "   ",
+    prefs({ enabled: true }),
+    onboarding({
+      displayNameSetAt: "2026-01-01T00:00:00.000Z",
+      weekOffSetAt: "2026-01-01T00:00:00.000Z",
+      endOfDaySetAt: "2026-01-01T00:00:00.000Z",
+      notificationsSetAt: "2026-01-01T00:00:00.000Z",
+    }),
+    "granted",
+  );
+  assert.equal(firstIncompleteWelcomeStep(status), "displayName");
+});

@@ -36,6 +36,7 @@ import { useNotificationPermission } from "@/lib/notifications/use-notification-
 import { useNotificationPreferences } from "@/lib/notifications/use-notification-preferences";
 import { useTimerStore } from "@/lib/stores/timer-store";
 import { stopTimerAndPersist } from "@/lib/time-tracking/stop-timer";
+import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 
 /**
  * How often we *check* whether a check-in is due — not how often one fires.
@@ -72,6 +73,7 @@ function isSuppressed(prefs: NotificationPreferences, now: number): boolean {
  */
 export function NotificationScheduler() {
   const { prefs, patch } = useNotificationPreferences();
+  const { value: timeFormat } = useTypedSetting("timeFormat");
   const { support, permission } = useNotificationPermission();
 
   const enabled = prefs.enabled && prefs.checkIn.enabled;
@@ -84,11 +86,13 @@ export function NotificationScheduler() {
   // user fiddling with settings never actually receives a check-in.
   const prefsRef = useRef(prefs);
   const maxActionsRef = useRef(support.maxActions);
+  const timeFormatRef = useRef(timeFormat);
 
   useEffect(() => {
     prefsRef.current = prefs;
     maxActionsRef.current = support.maxActions;
-  }, [prefs, support.maxActions]);
+    timeFormatRef.current = timeFormat;
+  }, [prefs, support.maxActions, timeFormat]);
 
   // EOD: whether the feature can fire (permission required but master switch not required,
   // so the end-of-day guard works independently of the check-in schedule).
@@ -128,7 +132,7 @@ export function NotificationScheduler() {
 
       // Replaces the prompt rather than leaving the tray silent for 15 minutes,
       // so a snooze is visibly a snooze and not a click that did nothing.
-      await showKokuNotification(buildEndOfDaySnoozedNotification(resumeAt, now));
+      await showKokuNotification(buildEndOfDaySnoozedNotification(resumeAt, now, timeFormatRef.current));
       return;
     }
 

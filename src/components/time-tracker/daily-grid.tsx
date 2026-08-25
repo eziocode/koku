@@ -10,6 +10,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { LazyScrollList } from "@/components/ui/lazy-scroll-list";
 import { toast } from "@/components/ui/toast";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
+import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
+import { formatTime } from "@/lib/time-format";
 import { formatDuration } from "@/lib/utils";
 
 interface EntryRecord {
@@ -30,6 +32,7 @@ interface DailyGridProps {
 
 export function DailyGrid({ entries }: DailyGridProps) {
   const { deleteEntry } = useTimeEntries();
+  const { value: timeFormat } = useTypedSetting("timeFormat");
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const editingEntry = useMemo(
@@ -71,9 +74,9 @@ export function DailyGrid({ entries }: DailyGridProps) {
                 <div>
                   <p className="font-semibold text-foreground">{entry.title}</p>
                   <p className="text-sm text-muted-foreground">
-                    {new Date(entry.startAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    {formatTime(entry.startAt, timeFormat)}
                     {entry.endAt
-                      ? ` — ${new Date(entry.endAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+                      ? ` — ${formatTime(entry.endAt, timeFormat)}`
                       : " • Running"}
                   </p>
                 </div>

@@ -139,7 +139,7 @@ export function NotificationSettings() {
           <CardTitle>Check-in reminders</CardTitle>
           <CardDescription>
             Koku can nudge you at an interval to ask whether the current work is worth recording.
-            Everything here is off until you turn it on.
+            Check-in reminders start enabled at 30 minutes by default; turn them off any time.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

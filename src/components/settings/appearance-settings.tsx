@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { applyAccentToDocument, cacheAccent, isValidAccent } from "@/lib/appearance";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 import { cn } from "@/lib/utils";
+import { TIME_FORMATS } from "@/lib/time-format";
 
 const THEMES = [
   { key: "light",  label: "Light",  Icon: Sun },
@@ -26,6 +27,7 @@ const ACCENT_PALETTES = [
 export function AppearanceSettings() {
   const { theme, setTheme } = useTheme();
   const { value: currentAccent, setValue } = useTypedSetting("accent");
+  const { value: timeFormat, setValue: setTimeFormat } = useTypedSetting("timeFormat");
 
   return (
     <div className="space-y-6">
@@ -53,6 +55,34 @@ export function AppearanceSettings() {
               >
                 <Icon className="h-4 w-4" aria-hidden="true" />
                 {label}
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Time format</CardTitle>
+          <CardDescription>Use 12-hour or 24-hour time across Koku.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2" role="radiogroup" aria-label="Time format selection">
+            {TIME_FORMATS.map((format) => (
+              <button
+                key={format}
+                type="button"
+                role="radio"
+                aria-checked={timeFormat === format}
+                onClick={() => void setTimeFormat(format)}
+                className={cn(
+                  "min-h-11 flex-1 rounded-xl border px-4 py-3 text-sm font-medium transition-colors",
+                  timeFormat === format
+                    ? "border-primary/40 bg-primary/10 text-primary"
+                    : "border-border/70 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                )}
+              >
+                {format === "12h" ? "12-hour" : "24-hour"}
               </button>
             ))}
           </div>

@@ -24,6 +24,8 @@ import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
 import { exportToCSV, exportToXLSX } from "@/lib/export";
+import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
+import { formatTime } from "@/lib/time-format";
 
 function getValidDateParam(value: string | null, fallback: Date) {
   if (!value) {
@@ -51,6 +53,7 @@ function getManualEntryDefaults(selectedDate: Date) {
 }
 
 export function LogClient() {
+  const { value: timeFormat } = useTypedSetting("timeFormat");
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -142,8 +145,8 @@ export function LogClient() {
   async function handleExportCSV() {
     const rows = joinedEntries.map((e) => ({
       Date: new Date(e.startAt).toLocaleDateString(),
-      Start: new Date(e.startAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      End: e.endAt ? new Date(e.endAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "",
+      Start: formatTime(e.startAt, timeFormat),
+      End: e.endAt ? formatTime(e.endAt, timeFormat) : "",
       "Duration (h)": ((e.durationSec ?? 0) / 3600).toFixed(2),
       Title: e.title,
       Project: e.project?.name ?? "Unassigned",

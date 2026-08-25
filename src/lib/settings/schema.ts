@@ -26,18 +26,21 @@ import { ONBOARDING_DEFAULTS, onboardingStateSchema } from "@/lib/onboarding/set
 export const SETTING_SCHEMAS = {
   accent: z.enum(ACCENT_KEYS).catch(DEFAULT_ACCENT),
   displayName: z.string().catch(""),
+  timeFormat: z.enum(["12h", "24h"]).catch("12h"),
   notifications: notificationPreferencesSchema,
   miniPlayer: miniPlayerPreferencesSchema,
   onboarding: onboardingStateSchema,
 } as const;
 
 export type SettingKey = keyof typeof SETTING_SCHEMAS;
+export type TimeFormat = "12h" | "24h";
 
 export type SettingValue<K extends SettingKey> = z.infer<(typeof SETTING_SCHEMAS)[K]>;
 
 export const SETTING_DEFAULTS: { [K in SettingKey]: SettingValue<K> } = {
   accent: DEFAULT_ACCENT,
   displayName: "",
+  timeFormat: "12h",
   notifications: NOTIFICATION_DEFAULTS,
   miniPlayer: MINI_PLAYER_DEFAULTS,
   onboarding: ONBOARDING_DEFAULTS,

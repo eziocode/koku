@@ -21,6 +21,8 @@ import { LazyScrollList } from "@/components/ui/lazy-scroll-list";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "@/components/ui/toast";
 import { useNotes } from "@/lib/storage/hooks/use-notes";
+import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
+import { formatTime } from "@/lib/time-format";
 
 type CreatedDateFilter = "all" | "today" | "yesterday" | "week" | "month" | "exact";
 type NoteView = "grid" | "list";
@@ -45,6 +47,7 @@ const createdDateFilterLabels: Record<CreatedDateFilter, string> = {
 };
 
 export function NotesBrowser() {
+  const { value: timeFormat } = useTypedSetting("timeFormat");
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [activeTag, setActiveTag] = useState<string>("all");
@@ -308,7 +311,7 @@ export function NotesBrowser() {
                         <Card className="h-full transition-transform hover:-translate-y-1 hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5">
                           <CardHeader>
                             <CardTitle>{note.title}</CardTitle>
-                            <CardDescription>Updated {new Date(note.updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</CardDescription>
+                            <CardDescription>Updated {formatTime(note.updatedAt, timeFormat)}</CardDescription>
                           </CardHeader>
                           <CardContent className="space-y-3">
                             <div className="flex flex-wrap gap-2">
@@ -324,7 +327,7 @@ export function NotesBrowser() {
                             <div className="hidden max-w-[40%] gap-1 overflow-hidden sm:flex">
                               {note.tags.length ? note.tags.map((tag) => <Badge key={tag} className="shrink-0">{tag}</Badge>) : <Badge variant="outline" className="shrink-0">No tags</Badge>}
                             </div>
-                            <CardDescription className="shrink-0">{new Date(note.updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</CardDescription>
+                              <CardDescription className="shrink-0">{formatTime(note.updatedAt, timeFormat)}</CardDescription>
                           </CardContent>
                         </Card>
                       )}

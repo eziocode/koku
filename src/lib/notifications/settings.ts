@@ -84,7 +84,7 @@ export interface NotificationPreferences {
 
 export const NOTIFICATION_DEFAULTS: NotificationPreferences = {
   version: 1,
-  enabled: false,
+  enabled: true,
   checkIn: {
     enabled: true,
     intervalMinutes: 30,
