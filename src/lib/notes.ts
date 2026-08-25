@@ -34,13 +34,13 @@ export function extractWikiLinks(content: unknown): string[] {
     .filter(Boolean);
 }
 
-export async function ensureUniqueNoteSlug(title: string, excludeId?: string): Promise<string> {
+export async function ensureUniqueNoteSlug(title: string, excludeId?: string, scope: "shared" | "personal" = "shared"): Promise<string> {
   const base = slugify(title) || "untitled-note";
   let candidate = base;
   let i = 1;
 
   while (true) {
-    const existing = await kokuDb.notes.where("slug").equals(candidate).first();
+    const existing = await (scope === "personal" ? kokuDb.personalNotes : kokuDb.notes).where("slug").equals(candidate).first();
     if (!existing || existing.id === excludeId) {
       return candidate;
     }

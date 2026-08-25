@@ -28,6 +28,12 @@ export const TABLE_CONFIG = {
     fromRow: (r: Record<string, unknown>) => { const d = (r.notes_koku ?? r) as Record<string, unknown>; return { id: d.id, title: d.title, slug: d.slug, content: tryParse(d.content as string, null), tags: tryParse(d.tags as string, []), createdAt: d.created_at, updatedAt: d.updated_at }; },
     sinceField: "updated_at",
   },
+  personalNotes: {
+    table: "personal_notes_koku",
+    toFields: (r: Record<string, unknown>) => ({ title: r.title ?? "", slug: r.slug ?? "", content: JSON.stringify(r.content ?? null), tags: JSON.stringify(r.tags ?? []), created_at: r.createdAt ?? "", updated_at: r.updatedAt ?? "" }),
+    fromRow: (r: Record<string, unknown>) => { const d = (r.personal_notes_koku ?? r) as Record<string, unknown>; return { id: d.id, title: d.title, slug: d.slug, content: tryParse(d.content as string, null), tags: tryParse(d.tags as string, []), createdAt: d.created_at, updatedAt: d.updated_at }; },
+    sinceField: "updated_at",
+  },
   noteLinks: {
     table: "note_links_koku",
     toFields: (r: Record<string, unknown>) => ({ source_note_id: r.sourceNoteId ?? "", target_note_id: r.targetNoteId ?? "" }),
@@ -49,6 +55,7 @@ const REQUIRED_STRING_FIELDS: Record<TableKey, string[]> = {
   projects: ["id", "name", "color", "createdAt"],
   categories: ["id", "name", "color", "createdAt"],
   notes: ["id", "title", "slug", "createdAt", "updatedAt"],
+  personalNotes: ["id", "title", "slug", "createdAt", "updatedAt"],
   noteLinks: ["id", "sourceNoteId", "targetNoteId"],
   settings: ["key"],
 };

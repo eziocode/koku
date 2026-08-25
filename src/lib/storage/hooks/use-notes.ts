@@ -7,6 +7,7 @@ import { kokuDb, type Note } from "@/lib/storage/db";
 import { deleteRow, syncRow } from "@/lib/sync/sync-engine";
 
 const EMPTY_NOTES: Note[] = [];
+export type NoteScope = "shared" | "personal";
 
 interface CreateNoteInput {
   title: string;
@@ -16,10 +17,13 @@ interface CreateNoteInput {
 
 export { extractWikiLinks, syncNoteLinks };
 
-export function useNotes(search?: string) {
+export function useNotes(search?: string, scope: NoteScope = "shared") {
+  const isPersonal = scope === "personal";
+  const table = isPersonal ? kokuDb.personalNotes : kokuDb.notes;
+  const syncTable = isPersonal ? "personalNotes" : "notes";
   const notes = useLiveQuery(async () => {
     const query = search?.trim().toLowerCase();
-    let items = await kokuDb.notes.orderBy("updatedAt").reverse().toArray();
+    let items = await table.orderBy("updatedAt").reverse().toArray();
 
     if (query) {
       items = items.filter((note) => {
@@ -29,14 +33,15 @@ export function useNotes(search?: string) {
     }
 
     return items;
-  }, [search], EMPTY_NOTES);
+  }, [search, scope], EMPTY_NOTES);
 
   async function getNote(id: string) {
-    const note = await kokuDb.notes.get(id);
+    const note = await table.get(id);
     if (!note) {
       return null;
     }
 
+    if (isPersonal) return { ...note, linkedNotes: [] };
     const links = await kokuDb.noteLinks.where("sourceNoteId").equals(id).toArray();
     const linkedNotes = links.length
       ? await kokuDb.notes.bulkGet(links.map((link) => link.targetNoteId))
@@ -59,18 +64,18 @@ export function useNotes(search?: string) {
     const note: Note = {
       id: crypto.randomUUID(),
       title: data.title,
-      slug: await ensureUniqueNoteSlug(data.title),
+      slug: await ensureUniqueNoteSlug(data.title, undefined, scope),
       content: data.content,
       tags: data.tags,
       createdAt: now,
       updatedAt: now,
     };
 
-    await kokuDb.transaction("rw", kokuDb.notes, kokuDb.noteLinks, async () => {
-      await kokuDb.notes.add(note);
-      await syncNoteLinks(note.id, note.content);
+    await kokuDb.transaction("rw", table, kokuDb.noteLinks, async () => {
+      await table.add(note);
+      if (!isPersonal) await syncNoteLinks(note.id, note.content);
     });
-    void syncRow("notes", note);
+    void syncRow(syncTable, note);
 
     return note;
   }
@@ -79,7 +84,7 @@ export function useNotes(search?: string) {
     id: string,
     patch: Partial<Pick<Note, "title" | "content" | "tags">>,
   ) {
-    const existing = await kokuDb.notes.get(id);
+    const existing = await table.get(id);
     if (!existing) {
       return null;
     }
@@ -94,29 +99,31 @@ export function useNotes(search?: string) {
       tags: patch.tags ?? existing.tags,
       slug:
         patch.title && patch.title !== existing.title
-          ? await ensureUniqueNoteSlug(nextTitle, id)
+          ? await ensureUniqueNoteSlug(nextTitle, id, scope)
           : existing.slug,
       updatedAt: new Date().toISOString(),
     };
 
-    await kokuDb.transaction("rw", kokuDb.notes, kokuDb.noteLinks, async () => {
-      await kokuDb.notes.put(nextNote);
-      await syncNoteLinks(id, nextContent);
+    await kokuDb.transaction("rw", table, kokuDb.noteLinks, async () => {
+      await table.put(nextNote);
+      if (!isPersonal) await syncNoteLinks(id, nextContent);
     });
-    void syncRow("notes", nextNote);
+    void syncRow(syncTable, nextNote);
 
     return nextNote;
   }
 
   async function deleteNote(id: string) {
-    const links = await kokuDb.noteLinks.filter((link) => link.sourceNoteId === id || link.targetNoteId === id).toArray();
-    await kokuDb.transaction("rw", kokuDb.notes, kokuDb.noteLinks, async () => {
-      await kokuDb.noteLinks.where("sourceNoteId").equals(id).delete();
-      await kokuDb.noteLinks.where("targetNoteId").equals(id).delete();
-      await kokuDb.notes.delete(id);
+    const links = isPersonal ? [] : await kokuDb.noteLinks.filter((link) => link.sourceNoteId === id || link.targetNoteId === id).toArray();
+    await kokuDb.transaction("rw", table, kokuDb.noteLinks, async () => {
+      if (!isPersonal) {
+        await kokuDb.noteLinks.where("sourceNoteId").equals(id).delete();
+        await kokuDb.noteLinks.where("targetNoteId").equals(id).delete();
+      }
+      await table.delete(id);
     });
-    await Promise.all(links.map((link) => deleteRow("noteLinks", link.id)));
-    void deleteRow("notes", id);
+    if (!isPersonal) await Promise.all(links.map((link) => deleteRow("noteLinks", link.id)));
+    void deleteRow(syncTable, id);
   }
 
   return {

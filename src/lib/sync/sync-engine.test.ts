@@ -40,6 +40,7 @@ beforeEach(async () => {
     kokuDb.categories.clear(),
     kokuDb.timeEntries.clear(),
     kokuDb.notes.clear(),
+    kokuDb.personalNotes.clear(),
     kokuDb.noteLinks.clear(),
     kokuDb.settings.clear(),
     kokuDb.pendingUpserts.clear(),

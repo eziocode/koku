@@ -11,10 +11,11 @@ function NotesContent() {
   const params = useSearchParams();
   const id = params.get("id");
   const slug = params.get("slug");
+  const scope = params.get("tab") === "personal" ? "personal" : "shared";
 
-  if (id) return <NoteEditorShell noteId={id} />;
+  if (id) return <NoteEditorShell noteId={id} scope={scope} />;
   if (slug) return <NotesBySlug slug={slug} />;
-  return <NotesBrowser />;
+  return <NotesBrowser scope={scope} />;
 }
 
 export default function NotesPage() {

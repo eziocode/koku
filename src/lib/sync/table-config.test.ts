@@ -55,6 +55,28 @@ describe("sync row validation", () => {
 });
 
 describe("Catalyst field transforms", () => {
+  it("maps personal notes to their dedicated private cloud table payload", () => {
+    assert.deepEqual(
+      TABLE_CONFIG.personalNotes.toFields({
+        id: "personal-1",
+        title: "Private thought",
+        slug: "private-thought",
+        content: { type: "doc" },
+        tags: ["private"],
+        createdAt: "2026-08-24T10:00:00.000Z",
+        updatedAt: "2026-08-24T10:05:00.000Z",
+      }),
+      {
+        title: "Private thought",
+        slug: "private-thought",
+        content: JSON.stringify({ type: "doc" }),
+        tags: JSON.stringify(["private"]),
+        created_at: "2026-08-24T10:00:00.000Z",
+        updated_at: "2026-08-24T10:05:00.000Z",
+      },
+    );
+  });
+
   it("preserves nullable numeric and relation fields instead of sending empty strings", () => {
     assert.deepEqual(
       TABLE_CONFIG.projects.toFields({

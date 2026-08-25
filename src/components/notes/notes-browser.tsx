@@ -20,8 +20,8 @@ import { Label } from "@/components/ui/label";
 import { LazyScrollList } from "@/components/ui/lazy-scroll-list";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "@/components/ui/toast";
-import { useNotes } from "@/lib/storage/hooks/use-notes";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
+import { type NoteScope, useNotes } from "@/lib/storage/hooks/use-notes";
 import { formatTime } from "@/lib/time-format";
 
 type CreatedDateFilter = "all" | "today" | "yesterday" | "week" | "month" | "exact";
@@ -46,7 +46,8 @@ const createdDateFilterLabels: Record<CreatedDateFilter, string> = {
   exact: "Specific date",
 };
 
-export function NotesBrowser() {
+export function NotesBrowser({ scope = "shared" }: { scope?: NoteScope }) {
+  const isPersonal = scope === "personal";
   const { value: timeFormat } = useTypedSetting("timeFormat");
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -54,7 +55,7 @@ export function NotesBrowser() {
   const [createdDateFilter, setCreatedDateFilter] = useState<CreatedDateFilter>("all");
   const [createdDate, setCreatedDate] = useState("");
   const [view, setView] = useState<NoteView>("grid");
-  const { notes, createNote, deleteNote } = useNotes();
+  const { notes, createNote, deleteNote } = useNotes(undefined, scope);
   const tags = useMemo(() => Array.from(new Set(notes.flatMap((note) => note.tags))).sort(), [notes]);
 
   useEffect(() => {
@@ -62,7 +63,6 @@ export function NotesBrowser() {
       const savedView = window.localStorage.getItem(NOTE_VIEW_STORAGE_KEY);
       if (savedView === "grid" || savedView === "list") {
         // Keep server/client first render identical; restore persisted mode after hydration.
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         setView(savedView);
       }
     } catch {
@@ -154,7 +154,7 @@ export function NotesBrowser() {
       });
       setCreateOpen(false);
       toast.success("Note created.");
-      router.push(`/notes?id=${note.id}`);
+      router.push(`/notes?tab=${scope}&id=${note.id}`);
     } catch {
       toast.error("Unable to create note.");
     } finally {
@@ -180,9 +180,13 @@ export function NotesBrowser() {
     <div className="space-y-8">
       <div>
         <p className="text-sm uppercase tracking-[0.3em] text-primary">Notes</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Connected knowledge</h1>
+        <div className="mt-3 inline-flex rounded-xl border border-border bg-muted/40 p-1" aria-label="Notes section">
+          <Button variant={isPersonal ? "ghost" : "secondary"} size="sm" onClick={() => router.push("/notes")}>Shared notes</Button>
+          <Button variant={isPersonal ? "secondary" : "ghost"} size="sm" onClick={() => router.push("/notes?tab=personal")}>Personal notes</Button>
+        </div>
+        <h1 className="mt-4 text-3xl font-semibold tracking-tight">{isPersonal ? "Personal notes" : "Connected knowledge"}</h1>
         <p className="mt-2 max-w-2xl text-muted-foreground">
-          Search, filter by tags or creation date, and open ideas in an editor designed for durable thought.
+          {isPersonal ? "Private to you. Synced across your devices and excluded from admin views." : "Search, filter by tags or creation date, and open ideas in an editor designed for durable thought."}
         </p>
       </div>
 
@@ -306,7 +310,7 @@ export function NotesBrowser() {
               <div className={view === "grid" ? "grid gap-4 md:grid-cols-2 xl:grid-cols-3" : "space-y-2"}>
                 {dayNotes.map((note) => (
                   <div key={note.id} className="group relative">
-                    <button type="button" className="w-full text-left" onClick={() => router.push(`/notes?id=${note.id}`)}>
+                    <button type="button" className="w-full text-left" onClick={() => router.push(`/notes?tab=${scope}&id=${note.id}`)}>
                       {view === "grid" ? (
                         <Card className="h-full transition-transform hover:-translate-y-1 hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5">
                           <CardHeader>

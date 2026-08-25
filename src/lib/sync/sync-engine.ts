@@ -7,7 +7,7 @@ import {
 } from "@/lib/storage/db";
 import { toast } from "@/components/ui/toast";
 
-export const SYNCABLE_TABLES = ["timeEntries", "projects", "categories", "notes", "noteLinks", "settings"] as const;
+export const SYNCABLE_TABLES = ["timeEntries", "projects", "categories", "notes", "personalNotes", "noteLinks", "settings"] as const;
 export type SyncTable = (typeof SYNCABLE_TABLES)[number];
 
 const LAST_SYNC_KEY = "lastSyncAt";

@@ -78,6 +78,7 @@ class KokuDB extends Dexie {
   categories!: EntityTable<Category, "id">;
   timeEntries!: EntityTable<TimeEntry, "id">;
   notes!: EntityTable<Note, "id">;
+  personalNotes!: EntityTable<Note, "id">;
   noteLinks!: EntityTable<NoteLink, "id">;
   aiKeys!: EntityTable<AiKey, "id">;
   settings!: EntityTable<AppSetting, "key">;
@@ -113,6 +114,19 @@ class KokuDB extends Dexie {
       categories: "id, name, createdAt",
       timeEntries: "id, startAt, projectId, categoryId, createdAt, durationSec, [projectId+startAt], [categoryId+startAt]",
       notes: "id, slug, updatedAt, createdAt",
+      noteLinks: "id, sourceNoteId, targetNoteId",
+      aiKeys: "id, provider, createdAt",
+      settings: "key",
+      pendingDeletes: "id, table, rowId, [table+rowId], createdAt",
+      pendingUpserts: "id, table, rowId, [table+rowId], updatedAt",
+    });
+
+    this.version(4).stores({
+      projects: "id, createdAt",
+      categories: "id, name, createdAt",
+      timeEntries: "id, startAt, projectId, categoryId, createdAt, durationSec, [projectId+startAt], [categoryId+startAt]",
+      notes: "id, slug, updatedAt, createdAt",
+      personalNotes: "id, slug, updatedAt, createdAt",
       noteLinks: "id, sourceNoteId, targetNoteId",
       aiKeys: "id, provider, createdAt",
       settings: "key",

@@ -22,7 +22,7 @@ import { Label } from "@/components/ui/label";
 import { LazyScrollList } from "@/components/ui/lazy-scroll-list";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
-import { useNotes } from "@/lib/storage/hooks/use-notes";
+import { type NoteScope, useNotes } from "@/lib/storage/hooks/use-notes";
 
 // TipTap uses browser-only APIs (ProseMirror, lowlight, WebWorkers).
 // Skip SSR entirely so the OpenNext serverless function never attempts to
@@ -37,13 +37,15 @@ const TiptapEditor = dynamic(
 
 interface NoteEditorShellProps {
   noteId: string;
+  scope?: NoteScope;
 }
 
 const EMPTY_TAGS: string[] = [];
 
-export function NoteEditorShell({ noteId }: NoteEditorShellProps) {
+export function NoteEditorShell({ noteId, scope = "shared" }: NoteEditorShellProps) {
+  const isPersonal = scope === "personal";
   const router = useRouter();
-  const { getNote, updateNote, deleteNote } = useNotes();
+  const { getNote, updateNote, deleteNote } = useNotes(undefined, scope);
   const note = useLiveQuery(() => getNote(noteId), [noteId]);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState<unknown>(null);
@@ -167,7 +169,7 @@ export function NoteEditorShell({ noteId }: NoteEditorShellProps) {
           <CardDescription>This note may have been deleted locally.</CardDescription>
         </CardHeader>
         <CardContent>
-          <Link href="/notes" className="text-sm font-medium text-primary hover:underline">
+          <Link href={isPersonal ? "/notes?tab=personal" : "/notes"} className="text-sm font-medium text-primary hover:underline">
             Back to notes
           </Link>
         </CardContent>
@@ -179,11 +181,11 @@ export function NoteEditorShell({ noteId }: NoteEditorShellProps) {
     <div className="space-y-8">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-sm uppercase tracking-[0.3em] text-primary">Note editor</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight">Write, connect, remember</h1>
+          <p className="text-sm uppercase tracking-[0.3em] text-primary">{isPersonal ? "Personal note" : "Note editor"}</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight">{isPersonal ? "Private to you" : "Write, connect, remember"}</h1>
         </div>
         <div className="flex items-center gap-3">
-          <Link href="/notes">
+          <Link href={isPersonal ? "/notes?tab=personal" : "/notes"}>
             <Button variant="outline" size="sm">← All notes</Button>
           </Link>
           <Button
@@ -268,7 +270,7 @@ export function NoteEditorShell({ noteId }: NoteEditorShellProps) {
             }}
           />
         </div>
-        <div className="space-y-4">
+        {!isPersonal && <div className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>Linked notes</CardTitle>
@@ -291,7 +293,7 @@ export function NoteEditorShell({ noteId }: NoteEditorShellProps) {
               />
             </CardContent>
           </Card>
-        </div>
+        </div>}
       </div>
     </div>
   );

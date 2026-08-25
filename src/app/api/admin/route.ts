@@ -22,6 +22,12 @@ function getConfig(table: string) {
   return table in TABLE_CONFIG ? TABLE_CONFIG[table as keyof typeof TABLE_CONFIG] : null;
 }
 
+// Personal notes use their own table. They are synced only for their owner and
+// intentionally never enter admin queries, exports, or scoped user views.
+const ADMIN_VISIBLE_TABLES = Object.keys(TABLE_CONFIG).filter(
+  (table) => table !== "settings" && table !== "personalNotes",
+);
+
 export async function GET(request: Request) {
   try {
     const auth = await requireAdmin(request);
@@ -43,7 +49,7 @@ export async function GET(request: Request) {
     if (userId) {
       const user = usersById.get(userId) ?? adminUserFromDetails(await auth.app.userManagement().getUserDetails(userId));
       if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
-      const tables = Object.keys(TABLE_CONFIG).filter((table) => table !== "settings");
+      const tables = ADMIN_VISIBLE_TABLES;
       const data: Record<string, AdminRow[]> = {};
       for (const table of tables) {
         const config = getConfig(table);
@@ -67,7 +73,7 @@ export async function GET(request: Request) {
         const rows = scoped.slice(offset, offset + limit);
         return NextResponse.json({ user, rows, nextCursor: offset + rows.length < scoped.length ? String(offset + rows.length) : null });
       }
-      if (!getConfig(table)) return NextResponse.json({ error: `Unknown table: ${table}` }, { status: 400 });
+      if (!ADMIN_VISIBLE_TABLES.includes(table)) return NextResponse.json({ error: `Unknown table: ${table}` }, { status: 400 });
       const start = params.get("start"); const end = params.get("end");
       const from = start ? Date.parse(`${start}T00:00:00`) : Number.NEGATIVE_INFINITY;
       const until = end ? Date.parse(`${end}T23:59:59.999`) : Number.POSITIVE_INFINITY;
@@ -153,7 +159,7 @@ export async function PATCH(request: Request) {
     const body = (await request.json()) as { table?: string; userId?: string; row?: Record<string, unknown> };
     const config = body.table ? getConfig(body.table) : null;
     const id = body.row?.id ?? body.row?.key;
-    if (!config || !body.userId || !id || !body.row) {
+    if (!config || !body.table || !ADMIN_VISIBLE_TABLES.includes(body.table) || !body.userId || !id || !body.row) {
       return NextResponse.json({ error: "table, userId, row required" }, { status: 400 });
     }
     await upsertRow(auth.app, config.table, body.userId, String(id), config.toFields(body.row));
@@ -172,7 +178,7 @@ export async function DELETE(request: Request) {
     const userId = url.searchParams.get("userId");
     const id = url.searchParams.get("id");
     const config = tableName ? getConfig(tableName) : null;
-    if (!config || !userId || !id || !id.trim()) return NextResponse.json({ error: "Valid table, userId, id required" }, { status: 400 });
+    if (!config || !tableName || !ADMIN_VISIBLE_TABLES.includes(tableName) || !userId || !id || !id.trim()) return NextResponse.json({ error: "Valid table, userId, id required" }, { status: 400 });
 
     const rows = await zcqlQuery(auth.app, `SELECT ROWID FROM ${config.table} WHERE id = '${zcqlEscape(id)}' AND user_id = '${zcqlEscape(userId)}'`);
     if (rows.length) {
