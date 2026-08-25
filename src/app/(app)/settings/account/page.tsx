@@ -86,7 +86,7 @@ export default function AccountSettingsPage() {
                 id="display-name"
                 value={displayName}
                 onChange={(event) => setDraftDisplayName(event.target.value)}
-                placeholder="Koku User"
+                placeholder="e.g. Alex"
               />
             </div>
             <Button type="submit">Save local name</Button>

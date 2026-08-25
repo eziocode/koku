@@ -2,7 +2,7 @@
 
 import { endOfDay, endOfWeek, format, startOfDay, startOfWeek } from "date-fns";
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ChartCard } from "@/components/charts/chart-card";
 import { ChartLegend } from "@/components/charts/chart-legend";
@@ -11,6 +11,7 @@ import { Timer } from "@/components/time-tracker/timer";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LazyScrollList } from "@/components/ui/lazy-scroll-list";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   buildSegmentedDays,
   hasExcludedTag,
@@ -30,12 +31,21 @@ import {
   getLookbackStart,
 } from "@/lib/time-tracking/day-slices";
 import { formatDuration } from "@/lib/utils";
+import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 
 /** Tags whose entries are records, not work: excluded from every work total. */
 const WORK_EXCLUDED_TAGS = [BREAK_TAG];
 
 export function DashboardClient() {
   const router = useRouter();
+  const [cloudConnected, setCloudConnected] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/auth/me", { cache: "no-store" })
+      .then((response) => response.json() as Promise<{ user?: unknown | null }>)
+      .then((body) => setCloudConnected(Boolean(body.user)))
+      .catch(() => setCloudConnected(false));
+  }, []);
   const { projects } = useProjects();
   const { categories } = useCategories();
   const today = startOfDay(new Date());
@@ -56,6 +66,7 @@ export function DashboardClient() {
   });
   const { entries: allEntries } = useTimeEntries();
   const { timers } = useTimerStore();
+  const { value: recentEntriesPageSize, setValue: setRecentEntriesPageSize } = useTypedSetting("recentEntriesPageSize");
 
   // Represent any live timers as running (open-ended) segments so the chart
   // shows in-flight work alongside completed logs.
@@ -177,7 +188,9 @@ export function DashboardClient() {
             Track momentum today, notice trends this week, and capture your next focused block.
           </p>
         </div>
-        <Badge variant="secondary" className="rounded-full px-3 py-1">Local-first</Badge>
+        <Badge variant="secondary" className="rounded-full px-3 py-1">
+          {cloudConnected ? "Cloud connected" : "Local-first"}
+        </Badge>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
@@ -225,15 +238,34 @@ export function DashboardClient() {
       </div>
 
       <Card className="minimal-panel">
-        <CardHeader>
-          <CardTitle>Recent time entries</CardTitle>
-          <CardDescription>Your latest captured sessions.</CardDescription>
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <CardTitle>Recent time entries</CardTitle>
+            <CardDescription>Your latest captured sessions.</CardDescription>
+          </div>
+          <div className="flex items-center gap-2 sm:pt-1">
+            <span className="text-xs text-muted-foreground">Show</span>
+            <Select
+              value={String(recentEntriesPageSize)}
+              onValueChange={(value) => void setRecentEntriesPageSize(Number(value) as typeof recentEntriesPageSize)}
+            >
+              <SelectTrigger className="h-9 w-[8.5rem]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[4, 8, 12, 20].map((count) => (
+                  <SelectItem key={count} value={String(count)}>{count} at a time</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </CardHeader>
         <CardContent>
           <LazyScrollList
+            key={recentEntriesPageSize}
             items={recentEntries}
             getKey={(entry) => entry.id}
-            pageSize={8}
+            pageSize={recentEntriesPageSize}
             className="h-[28rem]"
             moreLabel="Load more entries"
             empty={<p className="text-sm text-muted-foreground">No recent entries yet.</p>}

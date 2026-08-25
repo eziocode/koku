@@ -1,7 +1,6 @@
 "use client";
 
 import { Bell, CalendarDays, Clock3, UserRound } from "lucide-react";
-import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -38,8 +37,6 @@ const STEP_META = {
 } satisfies Record<WelcomeStep, { label: string; icon: typeof UserRound }>;
 
 export function WelcomeSetup() {
-  const pathname = usePathname();
-  const router = useRouter();
   const { value: displayName, setValue: setDisplayName } = useTypedSetting("displayName");
   const { prefs, patch } = useNotificationPreferences();
   const { support, permission, request } = useNotificationPermission();
@@ -60,15 +57,10 @@ export function WelcomeSetup() {
   const [busy, setBusy] = useState(false);
 
   const activeStep = step !== null && !status[step] ? step : firstStep;
-  const isSettingsRoute = pathname === "/settings" || pathname.startsWith("/settings/");
-  const open = loaded && !isSettingsRoute && activeStep !== null;
+  const open = loaded && activeStep !== null;
   const stepIndex = activeStep ? STEP_ORDER.indexOf(activeStep) : 0;
   const meta = activeStep ? STEP_META[activeStep] : STEP_META.displayName;
   const Icon = meta.icon;
-
-  function goToSettings(href: string) {
-    router.push(href);
-  }
 
   function goBack() {
     const previous = STEP_ORDER.slice(0, stepIndex).reverse().find((candidate) => !status[candidate]);
@@ -219,11 +211,8 @@ export function WelcomeSetup() {
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
               <div className="flex gap-2">
                 {stepIndex > 0 ? <Button variant="ghost" disabled={busy} onClick={goBack}>Back</Button> : null}
-                {activeStep === "displayName" ? <Button variant="ghost" className="px-2 text-primary" onClick={() => goToSettings("/settings/account")}>Open account settings</Button> : null}
-                {activeStep === "weekOff" || activeStep === "notifications" ? <Button variant="ghost" className="px-2 text-primary" onClick={() => goToSettings("/settings/notifications")}>Open notification settings</Button> : null}
               </div>
               <DialogFooter>
-                {activeStep === "notifications" && permission === "denied" ? <Button variant="outline" onClick={() => goToSettings("/settings/notifications")}>Open notification settings</Button> : null}
                 <Button disabled={busy || (activeStep === "notifications" && !support.supported)} onClick={() => void saveStep()}>{activeStep === "notifications" && permission !== "granted" ? "Allow and continue" : "Save and continue"}</Button>
               </DialogFooter>
             </div>

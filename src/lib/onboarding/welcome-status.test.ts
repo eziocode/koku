@@ -55,3 +55,31 @@ test("empty profile name remains mandatory even after previous onboarding", () =
   );
   assert.equal(firstIncompleteWelcomeStep(status), "displayName");
 });
+
+test("placeholder profile name remains mandatory", () => {
+  const status = getWelcomeStatus(
+    "Koku User",
+    prefs({ enabled: true }),
+    onboarding({
+      weekOffSetAt: "2026-01-01T00:00:00.000Z",
+      endOfDaySetAt: "2026-01-01T00:00:00.000Z",
+      notificationsSetAt: "2026-01-01T00:00:00.000Z",
+    }),
+    "granted",
+  );
+  assert.equal(firstIncompleteWelcomeStep(status), "displayName");
+});
+
+test("notification setup becomes incomplete when browser permission is revoked", () => {
+  const status = getWelcomeStatus(
+    "Alex",
+    prefs({ enabled: true }),
+    onboarding({
+      weekOffSetAt: "2026-01-01T00:00:00.000Z",
+      endOfDaySetAt: "2026-01-01T00:00:00.000Z",
+      notificationsSetAt: "2026-01-01T00:00:00.000Z",
+    }),
+    "denied",
+  );
+  assert.equal(firstIncompleteWelcomeStep(status), "notifications");
+});

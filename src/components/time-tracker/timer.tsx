@@ -74,6 +74,8 @@ interface TimerSessionCardProps {
   onPause: () => void;
   onResume: () => void;
   onStop: () => void;
+  onStartParallelTask?: () => void;
+  onAppendNote: (text: string) => void;
 }
 
 function TimerFields({
@@ -225,8 +227,17 @@ function TimerSessionCard({
   onPause,
   onResume,
   onStop,
+  onStartParallelTask,
+  onAppendNote,
 }: TimerSessionCardProps) {
   const isPaused = Boolean(timer.pausedAt);
+  const [quickNote, setQuickNote] = useState("");
+
+  function submitQuickNote() {
+    if (!quickNote.trim()) return;
+    onAppendNote(quickNote);
+    setQuickNote("");
+  }
 
   return (
     <div className="rounded-2xl border border-border bg-muted/40 p-4">
@@ -235,7 +246,7 @@ function TimerSessionCard({
           <div className="flex flex-wrap items-center gap-2">
             <p className="font-medium text-foreground">{timer.title}</p>
             <span className="rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground">
-              {isPrimary ? "Primary" : "Pause timer"}
+              {isPrimary ? "Primary task" : "Parallel task"}
             </span>
             <span className="rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground">
               {isPaused ? "Paused" : "Running"}
@@ -257,6 +268,30 @@ function TimerSessionCard({
         <Button variant="destructive" onClick={onStop} disabled={submitting}>
           <Square />
           Stop &amp; save
+        </Button>
+        {isPrimary && !isPaused && onStartParallelTask ? (
+          <Button variant="outline" onClick={onStartParallelTask}>
+            <Plus />
+            Start parallel task
+          </Button>
+        ) : null}
+      </div>
+      <div className="mt-4 flex gap-2">
+        <Input
+          value={quickNote}
+          onChange={(event) => setQuickNote(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              submitQuickNote();
+            }
+          }}
+          placeholder="Quick note about this timer…"
+          aria-label={`Quick note for ${timer.title}`}
+          className="h-10"
+        />
+        <Button type="button" variant="outline" onClick={submitQuickNote} disabled={!quickNote.trim()}>
+          Add note
         </Button>
       </div>
     </div>
@@ -302,7 +337,7 @@ export function Timer() {
   const { projects } = useProjects();
   const { categories } = useCategories();
   const { createEntry, entries: allEntries } = useTimeEntries();
-  const { timers, activeBreak, startTimer, startSecondaryTimer, pauseTimer, resumeTimer, stopTimer } =
+  const { timers, activeBreak, startTimer, startSecondaryTimer, pauseTimer, resumeTimer, stopTimer, appendNote } =
     useTimerStore();
   const tickNow = useSecondTick();
   const { prefs } = useNotificationPreferences();
@@ -380,7 +415,7 @@ export function Timer() {
 
     if (primaryTimer?.pausedAt) {
       return secondaryTimers.length
-        ? `Primary paused · ${secondaryTimers.length} pause timer${secondaryTimers.length === 1 ? "" : "s"} active`
+        ? `Primary paused · ${secondaryTimers.length} parallel task${secondaryTimers.length === 1 ? "" : "s"} active`
         : "Primary paused";
     }
 
@@ -435,14 +470,14 @@ export function Timer() {
     toast.success("Timer started.");
   }
 
-  function handleStartSecondary() {
+  function handleStartParallelTask() {
     if (!primaryTimer?.pausedAt) {
-      toast.error("Pause the primary timer before starting a pause timer.");
+      toast.error("Pause the primary timer before starting a parallel task.");
       return;
     }
 
     if (!secondaryTitle.trim()) {
-      toast.error("Add a title before starting the pause timer.");
+      toast.error("Add a title before starting the parallel task.");
       return;
     }
 
@@ -452,12 +487,12 @@ export function Timer() {
     );
 
     if (!started) {
-      toast.error("Pause the primary timer before starting a pause timer.");
+      toast.error("Pause the primary timer before starting a parallel task.");
       return;
     }
 
     resetForm(setSecondaryTitle, setSecondaryProjectId, setSecondaryCategoryId, setSecondaryPomodoroMode, setSecondaryTags, setSecondaryNotes);
-    toast.success("Pause timer started.");
+    toast.success("Parallel task started.");
   }
 
   async function handleStop(timer: ActiveTimer) {
@@ -504,7 +539,7 @@ export function Timer() {
 
     setResumeDialogOpen(false);
     setResumePrimaryId(null);
-    toast.success("Primary timer resumed. Pause timers are still running.");
+    toast.success("Primary timer resumed. Parallel tasks are still running.");
   }
 
   async function handleCloseSecondaries() {
@@ -521,19 +556,19 @@ export function Timer() {
         stopTimer(timer.id);
       }
 
-      // The pause timers are saved either way; only the resume can be refused,
+      // The parallel tasks are saved either way; only the resume can be refused,
       // so report that honestly rather than claiming the primary is running.
       const resumed = resumeTimer(pendingResumeTimer.id);
       setResumeDialogOpen(false);
       setResumePrimaryId(null);
 
       if (resumed) {
-        toast.success("Pause timers saved. Primary timer resumed.");
+        toast.success("Parallel tasks saved. Primary timer resumed.");
       } else {
-        toast.error(`Pause timers saved. ${BREAK_BLOCKS_RESUME}`);
+        toast.error(`Parallel tasks saved. ${BREAK_BLOCKS_RESUME}`);
       }
     } catch {
-      toast.error("Unable to save a pause timer. The primary timer is still paused.");
+      toast.error("Unable to save a parallel task. The primary timer is still paused.");
     } finally {
       setResumeSubmitting(false);
     }
@@ -588,13 +623,13 @@ export function Timer() {
             {primaryTimer?.pausedAt ? (
               <div className="space-y-4 rounded-2xl border border-dashed border-primary/40 bg-primary/5 p-4">
                 <div>
-                  <p className="font-medium text-foreground">Track the pause period</p>
+                  <p className="font-medium text-foreground">Start a parallel task</p>
                   <p className="text-sm text-muted-foreground">
-                    Start one or more pause timers while the primary timer stays paused.
+                    Current task is paused. Add work for another task, then resume or save it below.
                   </p>
                 </div>
                 <TimerFields
-                  idPrefix="pause-timer"
+                  idPrefix="parallel-task"
                   title={secondaryTitle}
                   projectId={secondaryProjectId}
                   categoryId={secondaryCategoryId}
@@ -611,9 +646,9 @@ export function Timer() {
                   onNotesChange={setSecondaryNotes}
                   onPomodoroModeChange={setSecondaryPomodoroMode}
                 />
-                <Button onClick={handleStartSecondary} className="min-w-44">
+                <Button onClick={handleStartParallelTask} className="min-w-44">
                   <Plus />
-                  Start pause timer
+                  Start parallel task
                 </Button>
               </div>
             ) : null}
@@ -631,6 +666,16 @@ export function Timer() {
                   onPause={() => pauseTimer(timer.id)}
                   onResume={() => handleResume(timer)}
                   onStop={() => void handleStop(timer)}
+                  onStartParallelTask={
+                    !timer.parentTimerId
+                      ? () => pauseTimer(timer.id)
+                      : undefined
+                  }
+                  onAppendNote={(text) => {
+                    if (appendNote(timer.id, text)) {
+                      toast.success("Note added to timer.");
+                    }
+                  }}
                 />
               ))}
               <div className="flex flex-wrap gap-3">
@@ -655,8 +700,8 @@ export function Timer() {
           <DialogHeader>
             <DialogTitle>Resume primary timer?</DialogTitle>
             <DialogDescription>
-              {pendingSecondaryTimers.length} pause timer{pendingSecondaryTimers.length === 1 ? "" : "s"} are still active.
-              Stop and save them now, or keep them running in parallel while the primary timer resumes.
+              {pendingSecondaryTimers.length} parallel task{pendingSecondaryTimers.length === 1 ? "" : "s"} are still active.
+              Save them now, or keep them running while the primary timer resumes.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -674,7 +719,7 @@ export function Timer() {
               Keep parallel
             </Button>
             <Button onClick={() => void handleCloseSecondaries()} disabled={resumeSubmitting}>
-              Stop &amp; save pause timers
+              Save parallel tasks &amp; resume primary
             </Button>
           </DialogFooter>
         </DialogContent>

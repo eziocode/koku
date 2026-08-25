@@ -40,8 +40,12 @@ export function Topbar({ onOpenSidebar }: TopbarProps) {
         <Menu />
       </Button>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-foreground">Local-first workspace</p>
-        <p className="truncate text-sm text-muted-foreground">Private, portable, and calm by default.</p>
+        <p className="text-sm font-medium text-foreground">
+          {userEmail ? "Cloud-connected workspace" : "Local-first workspace"}
+        </p>
+        <p className="truncate text-sm text-muted-foreground">
+          {userEmail ? "Synced across devices, private, and calm by default." : "Private, portable, and calm by default."}
+        </p>
       </div>
       {/* Renders nothing unless do-not-disturb is on. */}
       <DndPill />
