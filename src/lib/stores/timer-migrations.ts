@@ -43,6 +43,8 @@ export function normalizeStoredTimer(value: unknown): ActiveTimer | null {
     pausedAt: asNullableString(value.pausedAt),
     pomodoroMode: typeof value.pomodoroMode === "boolean" ? value.pomodoroMode : false,
     parentTimerId: asOptionalString(value.parentTimerId),
+    revision: typeof value.revision === "number" && Number.isInteger(value.revision) ? value.revision : 0,
+    updatedAt: asOptionalString(value.updatedAt) ?? undefined,
   };
 }
 
@@ -105,6 +107,8 @@ export function normalizeStoredBreak(value: unknown): ActiveBreak | null {
       : [],
     notes: asNullableString(value.notes),
     completedAt: asNullableString(value.completedAt),
+    revision: typeof value.revision === "number" && Number.isInteger(value.revision) ? value.revision : 0,
+    updatedAt: asOptionalString(value.updatedAt) ?? undefined,
   };
 }
 

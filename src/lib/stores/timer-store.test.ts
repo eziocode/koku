@@ -27,6 +27,30 @@ test("only one primary timer can run at a time", () => {
   assert.equal(startWork("Something else"), null);
 });
 
+test("cloud replacement keeps a paused timer's frozen elapsed and revision", () => {
+  useTimerStore.getState().replaceLiveStateFromCloud([
+    {
+      id: "cloud-paused",
+      title: "Remote task",
+      projectId: null,
+      categoryId: null,
+      tags: [],
+      notes: null,
+      startTime: "2026-08-21T09:00:00.000Z",
+      elapsedBeforePauseSec: 1_237,
+      pausedAt: "2026-08-21T09:20:37.000Z",
+      pomodoroMode: false,
+      parentTimerId: null,
+      revision: 7,
+      updatedAt: "2026-08-21T09:20:37.000Z",
+    },
+  ], null);
+
+  const timer = useTimerStore.getState().timers[0];
+  assert.equal(getActiveTimerElapsedSec(timer, Date.parse("2026-08-22T09:00:00.000Z")), 1_237);
+  assert.equal(timer.revision, 7);
+});
+
 test("a secondary timer requires a paused parent", () => {
   const primary = startWork();
   assert.ok(primary);

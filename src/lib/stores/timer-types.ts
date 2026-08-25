@@ -20,6 +20,9 @@ export type ActiveTimer = {
   pomodoroMode: boolean;
   /** Set on secondary ("pause") timers, pointing at the primary they hang off. */
   parentTimerId?: string | null;
+  /** Cloud live-state revision. Absent for timers created before cloud sync. */
+  revision?: number;
+  updatedAt?: string;
 };
 
 export type TimerStartInput = {
@@ -56,6 +59,8 @@ export type ActiveBreak = {
   notes?: string | null;
   /** Set once finished. Guards against two tabs each completing the same break. */
   completedAt?: string | null;
+  revision?: number;
+  updatedAt?: string;
 };
 
 export type BreakStartInput = {

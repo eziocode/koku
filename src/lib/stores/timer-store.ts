@@ -40,6 +40,8 @@ type TimerStore = {
   timers: ActiveTimer[];
   /** The in-progress break, if any. See the note below on why it lives here. */
   activeBreak: ActiveBreak | null;
+  /** Cloud applies state through this path, avoiding a local upload echo. */
+  replaceLiveStateFromCloud: (timers: ActiveTimer[], activeBreak: ActiveBreak | null) => void;
 
   /**
    * `null` when refused: another timer is already running, or a break is in
@@ -89,6 +91,7 @@ export const useTimerStore = create<TimerStore>()(
     (set, get) => ({
       timers: [],
       activeBreak: null,
+      replaceLiveStateFromCloud: (timers, activeBreak) => set({ timers, activeBreak }),
 
       startTimer: (input, options) => {
         const { timers, activeBreak } = get();

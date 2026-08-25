@@ -73,6 +73,14 @@ export interface PendingUpsert {
   updatedAt: string;
 }
 
+/** Dedicated queue for ephemeral timer/break state. Never shown in manual sync. */
+export interface PendingLiveMutation {
+  id: string;
+  kind: "timer" | "break" | "timer-tombstone" | "break-tombstone";
+  record: unknown;
+  updatedAt: string;
+}
+
 class KokuDB extends Dexie {
   projects!: EntityTable<Project, "id">;
   categories!: EntityTable<Category, "id">;
@@ -84,6 +92,7 @@ class KokuDB extends Dexie {
   settings!: EntityTable<AppSetting, "key">;
   pendingDeletes!: EntityTable<PendingDelete, "id">;
   pendingUpserts!: EntityTable<PendingUpsert, "id">;
+  pendingLiveMutations!: EntityTable<PendingLiveMutation, "id">;
 
   constructor() {
     super("koku-local");
@@ -132,6 +141,20 @@ class KokuDB extends Dexie {
       settings: "key",
       pendingDeletes: "id, table, rowId, [table+rowId], createdAt",
       pendingUpserts: "id, table, rowId, [table+rowId], updatedAt",
+    });
+
+    this.version(5).stores({
+      projects: "id, createdAt",
+      categories: "id, name, createdAt",
+      timeEntries: "id, startAt, projectId, categoryId, createdAt, durationSec, [projectId+startAt], [categoryId+startAt]",
+      notes: "id, slug, updatedAt, createdAt",
+      personalNotes: "id, slug, updatedAt, createdAt",
+      noteLinks: "id, sourceNoteId, targetNoteId",
+      aiKeys: "id, provider, createdAt",
+      settings: "key",
+      pendingDeletes: "id, table, rowId, [table+rowId], createdAt",
+      pendingUpserts: "id, table, rowId, [table+rowId], updatedAt",
+      pendingLiveMutations: "id, kind, updatedAt",
     });
   }
 }
