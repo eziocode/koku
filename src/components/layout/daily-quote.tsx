@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 
 const QUOTE_API = "https://api.quotable.io/quotes/random?limit=1&maxLength=180";
 const CACHE_KEY = "koku-daily-quote";
+const FALLBACK_QUOTE: Quote = {
+  content: "The key is not to prioritize what is on your schedule, but to schedule your priorities.",
+  author: "Stephen Covey",
+};
 
 interface Quote {
   content: string;
@@ -23,7 +27,7 @@ function todayKey() {
 }
 
 export function DailyQuote() {
-  const [quote, setQuote] = useState<Quote | null>(null);
+  const [quote, setQuote] = useState<Quote>(FALLBACK_QUOTE);
 
   useEffect(() => {
     let active = true;
@@ -44,14 +48,14 @@ export function DailyQuote() {
         const response = await fetch(QUOTE_API, { headers: { Accept: "application/json" } });
         if (!response.ok) throw new Error(`Quote request failed: ${response.status}`);
 
-        const quotes = (await response.json()) as Quote[];
-        const nextQuote = quotes[0];
+        const payload = (await response.json()) as Quote | Quote[];
+        const nextQuote = Array.isArray(payload) ? payload[0] : payload;
         if (!nextQuote?.content || !nextQuote.author || !active) return;
 
         window.localStorage.setItem(CACHE_KEY, JSON.stringify({ date, quote: nextQuote } satisfies CachedQuote));
         setQuote(nextQuote);
       } catch {
-        // Footer stays quiet when external API unavailable.
+        // Keep fallback visible when external API unavailable.
       }
     }
 
@@ -68,8 +72,6 @@ export function DailyQuote() {
       window.clearInterval(refreshAtMidnight);
     };
   }, []);
-
-  if (!quote) return null;
 
   return (
     <figure className="space-y-1">

@@ -32,7 +32,9 @@ A **local-first** time tracker, notes workspace, and AI assistant. Track your wo
 - **Reports** — monthly analytics (segmented daily activity, project breakdown, trend line) with full filtering and CSV/JSON export.
 - **Notes** — a TipTap-based editor with wiki-style `[[links]]` and a **knowledge graph** visualising note connections.
 - **AI assistant** — bring-your-own-key chat, stand-up generation, and monthly narrative reports across multiple providers.
-- **Appearance** — light/dark theme and accent customisation, centralised through a theming layer.
+- **Appearance** — light/dark theme, accent customisation, and a daily sidebar quote.
+- **Cloud sync (optional)** — sign in with Zoho Catalyst to sync data across devices; local mode keeps data in-browser.
+- **Admin workspace** — manage users and groups, inspect usage, and run full-range reports.
 
 ---
 
@@ -88,6 +90,7 @@ koku runs with **no configuration**. Environment variables are optional and only
 | ---------------- | ----------------------------------------------------------------------- |
 | `ENCRYPTION_KEY` | Optional key material referenced for encrypting sensitive values.       |
 | `AUDIT_LOG`      | Set to opt into audit logging (disabled in production unless enabled).  |
+| `LOCAL_MODE` / `NEXT_PUBLIC_LOCAL_MODE` | Set both to `false` to enable Zoho Catalyst sign-in and cloud sync. |
 
 **AI provider keys are _not_ set here.** They are entered in the app under **Settings → AI Keys**, stored in your browser, and sent directly to the provider with each request.
 

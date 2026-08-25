@@ -1,7 +1,7 @@
 "use client";
 
 import { Cloud, Database, RefreshCw } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -11,10 +11,21 @@ import {
 } from "@/lib/sync/sync-engine";
 import { toast } from "@/components/ui/toast";
 
+const isLocalMode = process.env.NEXT_PUBLIC_LOCAL_MODE === "true";
+
 export function ManualSync() {
+  const [cloudConnected, setCloudConnected] = useState<boolean | null>(isLocalMode ? false : null);
   const [open, setOpen] = useState(false);
   const [conflict, setConflict] = useState<SyncConflict | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (isLocalMode) return;
+    fetch("/api/auth/me", { cache: "no-store" })
+      .then((response) => response.json() as Promise<{ user?: unknown | null }>)
+      .then((body) => setCloudConnected(Boolean(body.user)))
+      .catch(() => setCloudConnected(false));
+  }, []);
 
   async function choose(choice: "local" | "cloud") {
     setBusy(true);
@@ -42,6 +53,8 @@ export function ManualSync() {
     } catch (error) { toast.error(error instanceof Error ? error.message : "Sync check failed."); }
     finally { setBusy(false); }
   }
+
+  if (!cloudConnected) return null;
 
   return <>
     <Button variant="ghost" size="icon" aria-label="Sync cloud and local data" onClick={() => void openSync()} disabled={busy}>

@@ -77,9 +77,15 @@ interface StorageCounts {
 export function StorageSettingsManager() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [counts, setCounts] = useState<StorageCounts | null>(null);
+  const [origin, setOrigin] = useState("…");
+  const [cloudConnected, setCloudConnected] = useState<boolean | null>(isLocalMode ? false : null);
   const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
+    const originUpdateId = window.setTimeout(() => {
+      setOrigin(window.location.origin);
+    }, 0);
+
     async function loadCounts() {
       const [projects, categories, timeEntries, notes, noteLinks, aiKeys] = await Promise.all([
         kokuDb.projects.count(),
@@ -92,6 +98,16 @@ export function StorageSettingsManager() {
       setCounts({ projects, categories, timeEntries, notes, noteLinks, aiKeys });
     }
     loadCounts();
+
+    return () => window.clearTimeout(originUpdateId);
+  }, []);
+
+  useEffect(() => {
+    if (isLocalMode) return;
+    fetch("/api/auth/me", { cache: "no-store" })
+      .then((response) => response.json() as Promise<{ user?: unknown | null }>)
+      .then((body) => setCloudConnected(Boolean(body.user)))
+      .catch(() => setCloudConnected(false));
   }, []);
 
   async function handleSync() {
@@ -227,7 +243,7 @@ export function StorageSettingsManager() {
           <CardDescription>
             All records are stored in your browser&apos;s IndexedDB under the origin{" "}
             <code className="rounded bg-muted px-1 py-0.5 text-xs font-mono">
-              {typeof window !== "undefined" ? window.location.origin : "…"}
+              {origin}
             </code>
             , database{" "}
             <code className="rounded bg-muted px-1 py-0.5 text-xs font-mono">koku-local</code>.
@@ -306,23 +322,7 @@ export function StorageSettingsManager() {
           </CardContent>
         </Card>
 
-        {isLocalMode ? (
-          <Card className="opacity-70">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                Catalyst Sync
-                <Badge variant="secondary" className="rounded-full text-xs">Cloud only</Badge>
-              </CardTitle>
-              <CardDescription>Sync data across devices via Zoho Catalyst.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Enable cloud mode (set <code className="rounded bg-muted px-1 py-0.5 text-xs font-mono">LOCAL_MODE=false</code>) and sign in with Zoho to enable cross-device sync.
-              </p>
-              <Button variant="secondary" disabled>Sync now</Button>
-            </CardContent>
-          </Card>
-        ) : (
+        {cloudConnected ? (
           <Card>
             <CardHeader>
               <CardTitle>Catalyst Sync</CardTitle>
@@ -337,7 +337,7 @@ export function StorageSettingsManager() {
               </Button>
             </CardContent>
           </Card>
-        )}
+        ) : null}
       </div>
     </div>
   );
