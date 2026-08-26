@@ -167,6 +167,45 @@ test("running segments get a minimum visible height and flag the day", () => {
   assert.ok(days[0].segments[0].hours > 0, "running log should have a visible height");
 });
 
+test("a paused live timer flags the day as paused, not running", () => {
+  const days = buildSegmentedDays({
+    entries: [
+      entry({
+        id: "paused",
+        startAt: "2024-06-03T09:00:00.000Z",
+        endAt: null,
+        durationSec: 600,
+        status: "paused",
+      }),
+    ],
+    projectMap,
+  });
+
+  assert.equal(days[0].segments[0].status, "paused");
+  assert.equal(days[0].hasRunning, false, "a stopped clock must not read as live work");
+  assert.equal(days[0].hasPaused, true);
+  assert.ok(days[0].segments[0].hours > 0, "paused log should still be visible in the stack");
+});
+
+test("a paused timer that crossed midnight leaves finished days alone", () => {
+  const days = buildSegmentedDays({
+    entries: [
+      entry({
+        id: "overnight",
+        startAt: localIso("2026-08-21T22:00:00"),
+        endAt: null,
+        durationSec: 6 * 3600,
+        status: "paused",
+      }),
+    ],
+    projectMap,
+  });
+
+  assert.equal(days.length, 2);
+  assert.equal(days[0].segments[0].status, "completed", "yesterday's slice is finished work");
+  assert.equal(days[1].segments[0].status, "paused");
+});
+
 test("segments carry assignment state (assigned vs unassigned)", () => {
   const days = buildSegmentedDays({
     entries: [

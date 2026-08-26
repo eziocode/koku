@@ -80,6 +80,15 @@ export interface NotificationPreferences {
   /** Days of the week on which all check-in notifications are silenced.
    *  0 = Sunday, 1 = Monday, …, 6 = Saturday. Empty array = no silent days. */
   silentDays: number[];
+  /**
+   * Individual local calendar days marked as holidays, as `yyyy-MM-dd`.
+   *
+   * Stored as literal dates rather than a weekday index because a holiday is a
+   * one-off: it silences every notification for that specific day (check-ins
+   * and the end-of-day wrap-up) without touching the weekly pattern. Kept
+   * sorted and de-duplicated by `normalizeHolidayDates`.
+   */
+  holidayDates: string[];
 }
 
 export const NOTIFICATION_DEFAULTS: NotificationPreferences = {
@@ -109,6 +118,7 @@ export const NOTIFICATION_DEFAULTS: NotificationPreferences = {
     gracePeriodMinutes: 15,
   },
   silentDays: [],
+  holidayDates: [],
 };
 
 /* ─── Schema ──────────────────────────────────────────────────────────────── */
@@ -187,6 +197,10 @@ export const notificationPreferencesSchema = z
     silentDays: z
       .array(z.number().int().min(0).max(6))
       .catch([]),
+    holidayDates: z
+      .array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/))
+      .transform((dates) => normalizeHolidayDates(dates))
+      .catch([]),
   })
   .catch(NOTIFICATION_DEFAULTS);
 
@@ -216,5 +230,44 @@ export function isValidIntervalMinutes(value: unknown): value is number {
     Number.isInteger(value) &&
     value >= MIN_INTERVAL_MINUTES &&
     value <= MAX_INTERVAL_MINUTES
+  );
+}
+
+/* ─── Holidays ────────────────────────────────────────────────────────────── */
+
+/** Guards the settings row against unbounded growth from a stuck loop. */
+export const MAX_HOLIDAY_DATES = 366;
+
+export const HOLIDAY_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Local (not UTC) calendar day key, matching how every other total is bucketed. */
+export function toHolidayDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/** Sorted, de-duplicated, well-formed, and capped. */
+export function normalizeHolidayDates(dates: readonly string[]): string[] {
+  const seen = new Set<string>();
+
+  for (const value of dates) {
+    const trimmed = value.trim();
+    if (HOLIDAY_DATE_PATTERN.test(trimmed) && !Number.isNaN(Date.parse(`${trimmed}T00:00:00`))) {
+      seen.add(trimmed);
+    }
+  }
+
+  return Array.from(seen).sort().slice(-MAX_HOLIDAY_DATES);
+}
+
+export function isHolidayDate(dates: readonly string[], date: Date | number): boolean {
+  return dates.includes(toHolidayDateKey(new Date(date)));
+}
+
+export function toggleHolidayDate(dates: readonly string[], dateKey: string): string[] {
+  return normalizeHolidayDates(
+    dates.includes(dateKey) ? dates.filter((value) => value !== dateKey) : [...dates, dateKey],
   );
 }

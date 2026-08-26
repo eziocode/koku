@@ -108,6 +108,7 @@ export function resolveEntryColor(input: {
 export const STATUS_COLORS = {
   completed: "#2f8f5b", // green — done
   running: "#3b6ea5", // blue — live/active
+  paused: "#6b7b8c", // slate — in flight but not counting
   pending: "#b8862f", // amber — awaiting work
   failed: "#d92d20", // red — failed
   assigned: "#5a4fb0", // violet — tied to a project

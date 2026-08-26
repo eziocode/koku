@@ -15,11 +15,14 @@ import { splitEntryAcrossDays, type EntryDaySlice } from "@/lib/time-tracking/da
  * Derived lifecycle status for a work log. koku's `TimeEntry` has no explicit
  * status column, so status is inferred:
  *  - `running`   → no `endAt` (an in-flight timer merged into the view)
+ *  - `paused`    → an in-flight timer whose clock is stopped. Only ever set
+ *                  explicitly by the caller merging live timers in: a stored
+ *                  `TimeEntry` has no way to express "paused".
  *  - `completed` → has `endAt` and tracked duration
  *  - `pending`   → has `endAt` but zero duration (logged but not worked)
  *  - `failed`    → reserved; surfaced when an entry is explicitly flagged
  */
-export type WorkLogStatus = "completed" | "running" | "pending" | "failed";
+export type WorkLogStatus = "completed" | "running" | "paused" | "pending" | "failed";
 
 /** Whether a work log is tied to a project. */
 export type AssignmentState = "assigned" | "unassigned";
@@ -62,6 +65,8 @@ export interface SegmentedDay {
   segments: WorkLogSegment[];
   /** Convenience flag so the chart can add a live indicator to the column. */
   hasRunning: boolean;
+  /** A live timer sits on this day with its clock stopped. */
+  hasPaused: boolean;
 }
 
 /** Minimal entry shape required to build segments (subset of `TimeEntry`). */
@@ -143,7 +148,7 @@ function toSegment(
   // already crossed are finished work with a real end time.
   const status: WorkLogStatus = (() => {
     const base = deriveStatus(entry);
-    if (base !== "running" || slice.isLast) {
+    if ((base !== "running" && base !== "paused") || slice.isLast) {
       return base;
     }
     return durationSec > 0 ? "completed" : "pending";
@@ -163,7 +168,9 @@ function toSegment(
     durationSec,
     // Running logs have no committed duration yet; give them a minimum visible
     // height so their live segment is always distinguishable in the stack.
-    hours: Number((Math.max(durationSec, status === "running" ? 900 : 0) / 3600).toFixed(4)),
+    hours: Number(
+      (Math.max(durationSec, status === "running" || status === "paused" ? 900 : 0) / 3600).toFixed(4),
+    ),
     tags: entry.tags ?? [],
     status,
     assignment: entry.projectId ? "assigned" : "unassigned",
@@ -207,6 +214,7 @@ export function buildSegmentedDays({
         totalHours: 0,
         segments: [],
         hasRunning: false,
+        hasPaused: false,
       };
       dayMap.set(key, day);
     }
@@ -241,6 +249,8 @@ export function buildSegmentedDays({
       day.totalSeconds += segment.durationSec;
       if (segment.status === "running") {
         day.hasRunning = true;
+      } else if (segment.status === "paused") {
+        day.hasPaused = true;
       }
     }
   }
@@ -305,7 +315,8 @@ export interface StatusSlice {
 
 /**
  * Aggregates segments into a combined status + assignment distribution for the
- * reports pie chart. Produces slices for Completed / Running / Pending / Failed
+ * reports pie chart. Produces slices for Completed / Running / Paused / Pending /
+ * Failed
  * plus Assigned / Unassigned, each keyed to the shared status palette so colours
  * and legends stay consistent across the app.
  */
@@ -313,10 +324,11 @@ export function toStatusBreakdown(
   days: SegmentedDay[],
   colorFor: (key: string) => string,
 ): { status: StatusSlice[]; assignment: StatusSlice[] } {
-  const statusOrder: WorkLogStatus[] = ["completed", "running", "pending", "failed"];
+  const statusOrder: WorkLogStatus[] = ["completed", "running", "paused", "pending", "failed"];
   const statusLabel: Record<WorkLogStatus, string> = {
     completed: "Completed",
     running: "Running",
+    paused: "Paused",
     pending: "Pending",
     failed: "Failed",
   };

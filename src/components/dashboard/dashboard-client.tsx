@@ -1,15 +1,18 @@
 "use client";
 
-import { endOfDay, endOfWeek, format, startOfDay, startOfWeek } from "date-fns";
+import { endOfDay, endOfWeek, format, startOfDay, startOfWeek, subDays } from "date-fns";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ChartCard } from "@/components/charts/chart-card";
+import { DashboardTipCard } from "@/components/dashboard/dashboard-tip-card";
+import { QuickCaptureCard } from "@/components/dashboard/quick-capture-card";
 import { ChartLegend } from "@/components/charts/chart-legend";
 import { SegmentedBarChart } from "@/components/charts/segmented-bar-chart";
 import { Timer } from "@/components/time-tracker/timer";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { CalendarClock, ListChecks } from "lucide-react";
 import { LazyScrollList } from "@/components/ui/lazy-scroll-list";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -64,12 +67,25 @@ export function DashboardClient() {
     from: getLookbackStart(startOfWeek(new Date(), { weekStartsOn: 1 })).toISOString(),
     to: weekEnd.toISOString(),
   });
-  const { entries: allEntries } = useTimeEntries();
+  // "Recent" means the last seven days, this one included. Reaching further back
+  // turned the card into an unbounded archive of everything ever logged, which is
+  // what /log and /reports are for. The lookback start is used for the same
+  // midnight-crossing reason as the windows above.
+  // Both bounds are built inline from a fresh clock read: handing a named `Date`
+  // local to a helper makes the React Compiler treat it as possibly mutated and
+  // bail out of optimising this component entirely.
+  const recentWindowStartMs = startOfDay(subDays(new Date(), 6)).getTime();
+  const { entries: recentWindowEntries } = useTimeEntries({
+    from: getLookbackStart(startOfDay(subDays(new Date(), 6))).toISOString(),
+    to: todayEnd.toISOString(),
+  });
   const { timers } = useTimerStore();
   const { value: recentEntriesPageSize, setValue: setRecentEntriesPageSize } = useTypedSetting("recentEntriesPageSize");
 
-  // Represent any live timers as running (open-ended) segments so the chart
-  // shows in-flight work alongside completed logs.
+  // Represent any live timers as open-ended segments so the chart shows in-flight
+  // work alongside completed logs. A paused timer is reported as paused, not
+  // running: its clock is stopped, and colouring it as live made the week chart
+  // claim work was happening when none was.
   const runningEntries = useMemo<SegmentSourceEntry[]>(
     () =>
       timers.map((timer) => ({
@@ -82,7 +98,7 @@ export function DashboardClient() {
         endAt: null,
         durationSec: getActiveTimerElapsedSec(timer),
         tags: timer.tags,
-        status: "running" as const,
+        status: timer.pausedAt ? ("paused" as const) : ("running" as const),
       })),
     [timers],
   );
@@ -140,6 +156,11 @@ export function DashboardClient() {
     [weekEntries, runningEntries, projectMap, categoryMap, weekStart, weekEnd],
   );
 
+  const totalWeekSeconds = useMemo(
+    () => weekDays.reduce((total, day) => total + day.totalSeconds, 0),
+    [weekDays],
+  );
+
   const legendItems = useMemo(() => {
     const breakdown = toProjectBreakdown(weekDays);
     const items = breakdown.slice(0, 6).map((item) => ({
@@ -148,7 +169,8 @@ export function DashboardClient() {
       color: item.color,
       value: formatDuration(item.seconds),
     }));
-    // Append a "Running" legend entry when a live log is present this week.
+    // Append a live legend entry when an in-flight log is present this week, one
+    // per state so a paused timer is not passed off as running.
     if (weekDays.some((day) => day.hasRunning)) {
       items.push({
         key: "running",
@@ -157,6 +179,15 @@ export function DashboardClient() {
         value: "",
         live: true,
       } as (typeof items)[number] & { live: boolean });
+    }
+
+    if (weekDays.some((day) => day.hasPaused)) {
+      items.push({
+        key: "paused",
+        label: "Paused",
+        color: getStatusColor("paused"),
+        value: "",
+      });
     }
     return items;
   }, [weekDays]);
@@ -170,12 +201,25 @@ export function DashboardClient() {
   );
 
   const recentEntries = useMemo(
-    () => allEntries.map((entry) => ({
-      ...entry,
-      project: entry.projectId ? projectMap.get(entry.projectId) || null : null,
-      category: entry.categoryId ? categoryMap.get(entry.categoryId) || null : null,
-    })),
-    [allEntries, categoryMap, projectMap],
+    () =>
+      recentWindowEntries
+        // The query deliberately over-reaches to catch logs that started before
+        // the window and ran into it; anything that ended before it still has to
+        // be dropped here.
+        .filter((entry) => {
+          const endMs = entry.endAt
+            ? new Date(entry.endAt).getTime()
+            : new Date(entry.startAt).getTime() + (entry.durationSec ?? 0) * 1000;
+          return endMs >= recentWindowStartMs;
+        })
+        .slice()
+        .sort((a, b) => new Date(b.startAt).getTime() - new Date(a.startAt).getTime())
+        .map((entry) => ({
+          ...entry,
+          project: entry.projectId ? projectMap.get(entry.projectId) || null : null,
+          category: entry.categoryId ? categoryMap.get(entry.categoryId) || null : null,
+        })),
+    [categoryMap, projectMap, recentWindowEntries, recentWindowStartMs],
   );
 
   return (
@@ -195,34 +239,41 @@ export function DashboardClient() {
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card className="minimal-panel">
-          <CardHeader>
-            <CardDescription>Today’s total</CardDescription>
+          <CardHeader className="pb-3">
+            <CardDescription className="flex items-center gap-1.5">
+              <CalendarClock className="h-3.5 w-3.5 text-primary" />
+              Today’s total
+            </CardDescription>
             <CardTitle className="text-3xl tabular-nums">{formatDuration(totalTodaySeconds)}</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 text-xs text-muted-foreground">
             {/* Break time is excluded from the total above, but shown rather than
                 hidden — silently dropping it would look like lost time. */}
-            {totalTodayBreakSeconds > 0 ? (
-              <CardDescription className="tabular-nums">
-                plus {formatDuration(totalTodayBreakSeconds)} on breaks
-              </CardDescription>
-            ) : null}
-          </CardHeader>
+            {totalTodayBreakSeconds > 0
+              ? `plus ${formatDuration(totalTodayBreakSeconds)} on breaks · ${formatDuration(totalWeekSeconds)} this week`
+              : `${formatDuration(totalWeekSeconds)} this week`}
+          </CardContent>
         </Card>
         <Card className="minimal-panel">
-          <CardHeader>
-            <CardDescription>Entries today</CardDescription>
+          <CardHeader className="pb-3">
+            <CardDescription className="flex items-center gap-1.5">
+              <ListChecks className="h-3.5 w-3.5 text-primary" />
+              Entries today
+            </CardDescription>
             <CardTitle className="text-3xl tabular-nums">{todaySessionCount}</CardTitle>
           </CardHeader>
+          <CardContent className="pt-0 text-xs text-muted-foreground">
+            {todaySessionCount === 0
+              ? "Nothing logged yet today"
+              : `Average ${formatDuration(Math.round((totalTodaySeconds + totalTodayBreakSeconds) / todaySessionCount))} per entry`}
+          </CardContent>
         </Card>
-        <Card className="minimal-panel">
-          <CardHeader>
-            <CardDescription>Quick action</CardDescription>
-            <CardTitle className="text-xl">Start a timer below</CardTitle>
-          </CardHeader>
-        </Card>
+        <DashboardTipCard />
       </div>
 
       <div className="grid items-start gap-6 xl:grid-cols-[1.15fr_0.85fr]">
         <Timer />
+        <div className="flex flex-col gap-6">
         <ChartCard
           title="This week"
           description="Each block is a work log — hover for details, click to open that day."
@@ -236,13 +287,17 @@ export function DashboardClient() {
             compact
           />
         </ChartCard>
+        <QuickCaptureCard />
+        </div>
       </div>
 
       <Card className="minimal-panel">
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <CardTitle>Recent time entries</CardTitle>
-            <CardDescription>Your latest captured sessions.</CardDescription>
+            <CardDescription>
+              The last 7 days, newest first. Older work lives on the time log.
+            </CardDescription>
           </div>
           <div className="flex items-center gap-2 sm:pt-1">
             <span className="text-xs text-muted-foreground">Show</span>
@@ -269,7 +324,11 @@ export function DashboardClient() {
             pageSize={recentEntriesPageSize}
             className="h-[28rem]"
             moreLabel="Load more entries"
-            empty={<p className="text-sm text-muted-foreground">No recent entries yet.</p>}
+            empty={
+              <p className="text-sm text-muted-foreground">
+                Nothing logged in the last 7 days.
+              </p>
+            }
             renderItem={(entry) => (
               <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-background/55 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>

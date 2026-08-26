@@ -40,6 +40,7 @@ export function DayTooltipCard({ label, segments, activeSegmentId }: DayTooltipC
 
   const totalSeconds = segments.reduce((sum, s) => sum + s.durationSec, 0);
   const runningCount = segments.filter((s) => s.status === "running").length;
+  const pausedCount = segments.filter((s) => s.status === "paused").length;
 
   return (
     <div className="w-72 max-w-[86vw] overflow-hidden rounded-xl border border-border/80 bg-popover text-popover-foreground shadow-xl shadow-foreground/10">
@@ -49,6 +50,7 @@ export function DayTooltipCard({ label, segments, activeSegmentId }: DayTooltipC
           <p className="mt-1 text-[11px] text-muted-foreground">
             {segments.length} log{segments.length === 1 ? "" : "s"}
             {runningCount ? ` · ${runningCount} running` : ""}
+            {pausedCount ? ` · ${pausedCount} paused` : ""}
           </p>
         </div>
         <span className="shrink-0 text-sm font-semibold tabular-nums">

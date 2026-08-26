@@ -24,6 +24,7 @@ export function DailyBarChart({ data }: DailyBarChartProps) {
       totalSeconds: seconds,
       totalHours: point.hours,
       hasRunning: false,
+      hasPaused: false,
       segments: point.hours
         ? [
             {

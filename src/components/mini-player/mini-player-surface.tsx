@@ -172,11 +172,15 @@ export function MiniPlayerSurface({ pipWindow }: MiniPlayerSurfaceProps) {
             {onBreak && activeBreak ? activeBreak.label : primary?.title ?? "No timer running"}
           </p>
           <p className="truncate text-xs text-muted-foreground">
+            {/* A paused primary with a parallel task still running is not
+                "Paused" — the app is tracking, just not this row. */}
             {onBreak
               ? "Timers paused until the break ends"
               : primary
                 ? primary.pausedAt
-                  ? "Paused"
+                  ? secondaries.some((timer) => !timer.pausedAt)
+                    ? `Paused · ${secondaries.filter((timer) => !timer.pausedAt).length} parallel running`
+                    : "Paused"
                   : "Tracking"
                 : "Start one in koku"}
           </p>

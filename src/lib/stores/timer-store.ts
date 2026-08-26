@@ -49,6 +49,11 @@ type TimerStore = {
    * `breaks.blockNewTimers` preference).
    */
   startTimer: (input: TimerStartInput, options?: StartTimerOptions) => ActiveTimer | null;
+  /**
+   * `null` when refused: the parent is missing, or *any* timer is still running.
+   * A parallel task is only meaningful once nothing is being tracked — two
+   * clocks running at once would double-count the same wall time.
+   */
   startSecondaryTimer: (parentTimerId: string, input: TimerStartInput) => ActiveTimer | null;
   pauseTimer: (id: string) => void;
   /** `false` when refused — currently only because a break is in progress. */
@@ -109,8 +114,16 @@ export const useTimerStore = create<TimerStore>()(
       },
 
       startSecondaryTimer: (parentTimerId, input) => {
-        const parentTimer = get().timers.find((timer) => timer.id === parentTimerId);
+        const { timers } = get();
+        const parentTimer = timers.find((timer) => timer.id === parentTimerId);
         if (!parentTimer?.pausedAt) {
+          return null;
+        }
+
+        // Every existing timer must be paused, not just the parent: starting a
+        // second clock while another parallel task still runs would attribute the
+        // same wall-clock minute to two tasks.
+        if (timers.some((timer) => !timer.pausedAt)) {
           return null;
         }
 
@@ -144,7 +157,33 @@ export const useTimerStore = create<TimerStore>()(
           return null;
         }
 
-        set((state) => ({ timers: state.timers.filter((item) => item.id !== id) }));
+        set((state) => {
+          const remaining = state.timers.filter((item) => item.id !== id);
+          const orphans = remaining.filter((item) => item.parentTimerId === id);
+
+          // Stopping a primary must not leave its parallel tasks pointing at a
+          // timer that no longer exists: the UI derives "primary" from a missing
+          // `parentTimerId`, so orphans would render with no primary at all and
+          // no way to start another. The oldest orphan is promoted instead, and
+          // the rest re-parented onto it.
+          if (orphans.length === 0) {
+            return { timers: remaining };
+          }
+
+          const [promoted, ...rest] = orphans;
+          const reparented = new Set(rest.map((item) => item.id));
+
+          return {
+            timers: remaining.map((item) => {
+              if (item.id === promoted.id) {
+                return { ...item, parentTimerId: null };
+              }
+
+              return reparented.has(item.id) ? { ...item, parentTimerId: promoted.id } : item;
+            }),
+          };
+        });
+
         return timer;
       },
 

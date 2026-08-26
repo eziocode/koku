@@ -30,7 +30,7 @@ import {
 import { isWithinQuietHours } from "@/lib/notifications/quiet-hours";
 import { readScheduleState, writeScheduleState } from "@/lib/notifications/runtime";
 import { evaluateSchedule, reanchorSchedule } from "@/lib/notifications/schedule";
-import type { NotificationPreferences } from "@/lib/notifications/settings";
+import { isHolidayDate, type NotificationPreferences } from "@/lib/notifications/settings";
 import { useLeaderStatus } from "@/lib/notifications/use-leader";
 import { useNotificationPermission } from "@/lib/notifications/use-notification-permission";
 import { useNotificationPreferences } from "@/lib/notifications/use-notification-preferences";
@@ -62,6 +62,7 @@ function isSuppressed(prefs: NotificationPreferences, now: number): boolean {
   if (resolveDnd(prefs.dnd, now).active) return true;
   if (prefs.quietHours.enabled && isWithinQuietHours(new Date(now), prefs.quietHours)) return true;
   if (prefs.silentDays.length > 0 && prefs.silentDays.includes(new Date(now).getDay())) return true;
+  if (isHolidayDate(prefs.holidayDates, now)) return true;
   return false;
 }
 
@@ -262,7 +263,10 @@ export function NotificationScheduler() {
 
       // ── End-of-day auto-stop check ────────────────────────────────────────
       const eodPrefs = current.endOfDay;
-      if (eodPrefs.enabled) {
+      // A holiday silences the wrap-up prompt too: it is a notification, and
+      // auto-stopping a timer the user deliberately left running on a day off
+      // would be a surprise, not a service.
+      if (eodPrefs.enabled && !isHolidayDate(current.holidayDates, now)) {
         const { timers: activeTimers } = useTimerStore.getState();
         if (activeTimers.length > 0) {
           const todayKey = format(new Date(now), "yyyy-MM-dd");

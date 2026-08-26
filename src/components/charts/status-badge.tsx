@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, CircleDashed, Loader2, User, UserX, XCircle } from "lucide-react";
+import { CheckCircle2, CircleDashed, Loader2, Pause, User, UserX, XCircle } from "lucide-react";
 import type { CSSProperties, ComponentType } from "react";
 
 import type { AssignmentState, WorkLogStatus } from "@/lib/charts/segments";
@@ -12,6 +12,7 @@ type IconType = ComponentType<{ className?: string; style?: CSSProperties }>;
 const STATUS_META: Record<WorkLogStatus, { label: string; Icon: IconType }> = {
   completed: { label: "Completed", Icon: CheckCircle2 },
   running: { label: "Running", Icon: Loader2 },
+  paused: { label: "Paused", Icon: Pause },
   pending: { label: "Pending", Icon: CircleDashed },
   failed: { label: "Failed", Icon: XCircle },
 };

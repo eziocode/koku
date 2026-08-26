@@ -74,7 +74,9 @@ interface TimerSessionCardProps {
   onPause: () => void;
   onResume: () => void;
   onStop: () => void;
+  /** Present only when the parent decides a parallel task can be added now. */
   onStartParallelTask?: () => void;
+  startParallelLabel?: string;
   onAppendNote: (text: string) => void;
 }
 
@@ -228,6 +230,7 @@ function TimerSessionCard({
   onResume,
   onStop,
   onStartParallelTask,
+  startParallelLabel = "Start parallel task",
   onAppendNote,
 }: TimerSessionCardProps) {
   const isPaused = Boolean(timer.pausedAt);
@@ -269,10 +272,12 @@ function TimerSessionCard({
           <Square />
           Stop &amp; save
         </Button>
-        {isPrimary && !isPaused && onStartParallelTask ? (
+        {/* Gating lives in the parent: a parallel task is only offered while
+            nothing is being tracked, so two clocks can never run at once. */}
+        {onStartParallelTask ? (
           <Button variant="outline" onClick={onStartParallelTask}>
             <Plus />
-            Start parallel task
+            {startParallelLabel}
           </Button>
         ) : null}
       </div>
@@ -389,7 +394,9 @@ export function Timer() {
       ...timers.filter((timer) => timer.id !== primaryTimer.id),
     ];
   }, [primaryTimer, timers]);
-  const heroTimer = primaryTimer ?? timers[0] ?? null;
+  /** A parallel task may only be added once nothing is being tracked. */
+  const allTimersPaused = timers.length > 0 && timers.every((timer) => Boolean(timer.pausedAt));
+  const runningCount = timers.filter((timer) => !timer.pausedAt).length;
   const pendingResumeTimer = resumePrimaryId
     ? timers.find((timer) => timer.id === resumePrimaryId) ?? null
     : null;
@@ -402,7 +409,30 @@ export function Timer() {
   // and separate intervals meant duplicated work and clocks that could disagree
   // by a second. Values are derived from timestamps, so a throttled or slept
   // tab is still correct on its next paint.
-  const heroElapsedSeconds = heroTimer ? getActiveTimerElapsedSec(heroTimer, tickNow) : 0;
+  //
+  // The hero reads the *session* total rather than mirroring the primary timer's
+  // card below it, which made the same number appear twice. Paused timers
+  // contribute their frozen elapsed and running ones keep ticking, so the hero
+  // keeps counting whenever any task — primary or parallel — is running.
+  const heroElapsedSeconds = useMemo(
+    () => timers.reduce((total, timer) => total + getActiveTimerElapsedSec(timer, tickNow), 0),
+    [timers, tickNow],
+  );
+  const heroCaption = useMemo(() => {
+    if (activeBreak) {
+      return "Tracked so far today — paused while you are on a break";
+    }
+
+    if (!timers.length) {
+      return "Nothing tracking yet";
+    }
+
+    if (timers.length === 1) {
+      return timers[0].pausedAt ? "Paused" : "Tracking one task";
+    }
+
+    return `${timers.length} tasks · ${runningCount} running`;
+  }, [activeBreak, runningCount, timers]);
 
   const statusLabel = useMemo(() => {
     if (activeBreak) {
@@ -413,6 +443,10 @@ export function Timer() {
       return "Ready to start";
     }
 
+    if (allTimersPaused) {
+      return timers.length > 1 ? `All ${timers.length} timers paused` : "Paused";
+    }
+
     if (primaryTimer?.pausedAt) {
       return secondaryTimers.length
         ? `Primary paused · ${secondaryTimers.length} parallel task${secondaryTimers.length === 1 ? "" : "s"} active`
@@ -420,12 +454,12 @@ export function Timer() {
     }
 
     if (timers.length > 1) {
-      return `${timers.length} timers tracking`;
+      return `${runningCount} of ${timers.length} timers tracking`;
     }
 
     const onlyTimer = timers[0];
     return onlyTimer?.pomodoroMode ? "Pomodoro focus" : "Tracking now";
-  }, [activeBreak, primaryTimer, secondaryTimers.length, timers]);
+  }, [activeBreak, allTimersPaused, primaryTimer, runningCount, secondaryTimers.length, timers]);
 
   function setTimerSubmitting(timerId: string, submitting: boolean) {
     setSubmittingByTimerId((current) => ({
@@ -471,8 +505,8 @@ export function Timer() {
   }
 
   function handleStartParallelTask() {
-    if (!primaryTimer?.pausedAt) {
-      toast.error("Pause the primary timer before starting a parallel task.");
+    if (!primaryTimer?.pausedAt || !allTimersPaused) {
+      toast.error("Pause every running timer before starting a parallel task.");
       return;
     }
 
@@ -487,7 +521,7 @@ export function Timer() {
     );
 
     if (!started) {
-      toast.error("Pause the primary timer before starting a parallel task.");
+      toast.error("Pause every running timer before starting a parallel task.");
       return;
     }
 
@@ -582,9 +616,13 @@ export function Timer() {
       </CardHeader>
       <CardContent className="space-y-5">
         <div className="rounded-3xl border border-primary/10 bg-primary/5 px-6 py-8 text-center">
-          <p className="text-5xl font-semibold tracking-tight text-foreground tabular-nums">
+          <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
+            {timers.length > 1 ? "Session total" : "Elapsed"}
+          </p>
+          <p className="mt-2 text-5xl font-semibold tracking-tight text-foreground tabular-nums">
             {formatDuration(heroElapsedSeconds)}
           </p>
+          <p className="mt-2 text-sm text-muted-foreground">{heroCaption}</p>
         </div>
 
         {activeBreak ? (
@@ -620,12 +658,12 @@ export function Timer() {
           </>
         ) : (
           <>
-            {primaryTimer?.pausedAt ? (
+            {primaryTimer?.pausedAt && allTimersPaused ? (
               <div className="space-y-4 rounded-2xl border border-dashed border-primary/40 bg-primary/5 p-4">
                 <div>
                   <p className="font-medium text-foreground">Start a parallel task</p>
                   <p className="text-sm text-muted-foreground">
-                    Current task is paused. Add work for another task, then resume or save it below.
+                    Every timer is paused. Add work for another task, then resume or save it below.
                   </p>
                 </div>
                 <TimerFields
@@ -667,9 +705,21 @@ export function Timer() {
                   onResume={() => handleResume(timer)}
                   onStop={() => void handleStop(timer)}
                   onStartParallelTask={
-                    !timer.parentTimerId
-                      ? () => pauseTimer(timer.id)
+                    // Offered on the primary card only, and only while something
+                    // is still running: pausing *everything* is what makes room
+                    // for a parallel task, so the button does exactly that.
+                    !timer.parentTimerId && !allTimersPaused
+                      ? () => {
+                          for (const running of timers) {
+                            if (!running.pausedAt) {
+                              pauseTimer(running.id);
+                            }
+                          }
+                        }
                       : undefined
+                  }
+                  startParallelLabel={
+                    runningCount > 1 ? "Pause all & add parallel task" : "Start parallel task"
                   }
                   onAppendNote={(text) => {
                     if (appendNote(timer.id, text)) {

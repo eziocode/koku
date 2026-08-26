@@ -80,6 +80,60 @@ test("a secondary timer requires a paused parent", () => {
   );
 });
 
+function startParallel(parentId: string, title = "Interruption") {
+  return useTimerStore.getState().startSecondaryTimer(parentId, {
+    title,
+    startTime: new Date().toISOString(),
+    projectId: null,
+    categoryId: null,
+    pomodoroMode: false,
+  });
+}
+
+test("a second parallel task is refused while the first one is still running", () => {
+  const primary = startWork();
+  assert.ok(primary);
+  useTimerStore.getState().pauseTimer(primary.id);
+
+  const first = startParallel(primary.id, "First interruption");
+  assert.ok(first);
+
+  assert.equal(
+    startParallel(primary.id, "Second interruption"),
+    null,
+    "two clocks running at once would double-count the same wall time",
+  );
+
+  useTimerStore.getState().pauseTimer(first.id);
+  assert.ok(startParallel(primary.id, "Second interruption"));
+});
+
+test("stopping the primary promotes a parallel task rather than orphaning it", () => {
+  const primary = startWork();
+  assert.ok(primary);
+  useTimerStore.getState().pauseTimer(primary.id);
+
+  const first = startParallel(primary.id, "First interruption");
+  assert.ok(first);
+  useTimerStore.getState().pauseTimer(first.id);
+  const second = startParallel(primary.id, "Second interruption");
+  assert.ok(second);
+
+  useTimerStore.getState().stopTimer(primary.id);
+
+  const { timers } = useTimerStore.getState();
+  assert.equal(timers.length, 2);
+
+  const promoted = timers.find((timer) => timer.id === first.id);
+  const reparented = timers.find((timer) => timer.id === second.id);
+  assert.equal(promoted?.parentTimerId, null, "the oldest parallel task becomes the primary");
+  assert.equal(
+    reparented?.parentTimerId,
+    first.id,
+    "the rest hang off the promoted timer, never off a timer that no longer exists",
+  );
+});
+
 /* ─── Breaks ──────────────────────────────────────────────────────────────── */
 
 test("starting a break pauses the running timers and records which ones", () => {

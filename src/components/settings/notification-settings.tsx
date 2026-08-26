@@ -1,9 +1,12 @@
 "use client";
 
-import { BellOff } from "lucide-react";
+import { BellOff, X } from "lucide-react";
 import { useState } from "react";
 
+import { format, parseISO } from "date-fns";
+
 import { DndMenu } from "@/components/notifications/dnd-menu";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -28,7 +31,9 @@ import {
   AUTO_HIDE_PRESETS,
   MAX_INTERVAL_MINUTES,
   MIN_INTERVAL_MINUTES,
+  MAX_HOLIDAY_DATES,
   clampIntervalMinutes,
+  toggleHolidayDate,
 } from "@/lib/notifications/settings";
 import { useNotificationPermission } from "@/lib/notifications/use-notification-permission";
 import { useNotificationPreferences } from "@/lib/notifications/use-notification-preferences";
@@ -77,6 +82,7 @@ export function NotificationSettings() {
   const { prefs, patch, reset } = useNotificationPreferences();
   const { support, permission, request } = useNotificationPermission();
   const [customInterval, setCustomInterval] = useState<string>("");
+  const [holidayDraft, setHolidayDraft] = useState<string>("");
   const [presetsDraft, setPresetsDraft] = useState<string | null>(null);
   const tickNow = useSecondTick();
 
@@ -462,6 +468,95 @@ export function NotificationSettings() {
               : `Silent on: ${prefs.silentDays
                   .map((d) => ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][d])
                   .join(", ")}.`}
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* ── Holidays ─────────────────────────────────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Holidays</CardTitle>
+          <CardDescription>
+            Mark a specific day off. Every notification for that day is skipped — check-ins and the
+            end-of-day wrap-up — so a day off stays a day off.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <DatePicker
+              value={holidayDraft}
+              onChange={setHolidayDraft}
+              placeholder="Pick a day"
+              className="min-h-11 w-52"
+            />
+            <Button
+              variant="secondary"
+              disabled={!holidayDraft}
+              onClick={async () => {
+                if (!holidayDraft) {
+                  return;
+                }
+
+                if (prefs.holidayDates.includes(holidayDraft)) {
+                  toast.error("That day is already marked as a holiday.");
+                  return;
+                }
+
+                if (prefs.holidayDates.length >= MAX_HOLIDAY_DATES) {
+                  toast.error(`You can keep up to ${MAX_HOLIDAY_DATES} holidays.`);
+                  return;
+                }
+
+                await patch({ holidayDates: toggleHolidayDate(prefs.holidayDates, holidayDraft) });
+                setHolidayDraft("");
+                toast.success("Holiday added.");
+              }}
+            >
+              Mark as holiday
+            </Button>
+            <Button
+              variant="outline"
+              onClick={async () => {
+                const todayKey = format(new Date(), "yyyy-MM-dd");
+                const already = prefs.holidayDates.includes(todayKey);
+                await patch({ holidayDates: toggleHolidayDate(prefs.holidayDates, todayKey) });
+                toast.success(already ? "Today is a working day again." : "Today is a holiday.");
+              }}
+            >
+              {prefs.holidayDates.includes(format(new Date(), "yyyy-MM-dd"))
+                ? "Unmark today"
+                : "Mark today"}
+            </Button>
+          </div>
+
+          {prefs.holidayDates.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              No holidays yet — notifications run on every day that isn’t silent or quiet.
+            </p>
+          ) : (
+            <ul className="flex flex-wrap gap-2">
+              {[...prefs.holidayDates].reverse().map((dateKey) => (
+                <li key={dateKey}>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await patch({ holidayDates: toggleHolidayDate(prefs.holidayDates, dateKey) });
+                      toast.success("Holiday removed.");
+                    }}
+                    className="flex items-center gap-2 rounded-full border border-border bg-muted/50 px-3 py-1.5 text-sm text-foreground transition-colors hover:bg-muted"
+                    aria-label={`Remove holiday on ${dateKey}`}
+                  >
+                    {format(parseISO(`${dateKey}T00:00:00`), "EEE, d MMM yyyy")}
+                    <X className="h-3.5 w-3.5 opacity-60" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <p className="text-xs text-muted-foreground">
+            Only today and past days can be picked, matching the rest of koku — a holiday silences
+            the day it names, and past days simply record that the day was off.
           </p>
         </CardContent>
       </Card>
