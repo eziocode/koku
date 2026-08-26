@@ -22,6 +22,7 @@ import {
   type WorkLogSegment,
 } from "@/lib/charts/segments";
 import { BREAK_TAG } from "@/lib/notifications/settings";
+import { useNotificationPreferences } from "@/lib/notifications/use-notification-preferences";
 import { getStatusColor } from "@/lib/charts/theme";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
@@ -51,6 +52,10 @@ export function DashboardClient() {
   }, []);
   const { projects } = useProjects();
   const { categories } = useCategories();
+  // Holidays and week-off days live in notification preferences — the same list
+  // that silences check-ins — so the chart labels exactly the days the app
+  // already treats as time off.
+  const { prefs: notificationPrefs } = useNotificationPreferences();
   const today = startOfDay(new Date());
   const todayEnd = endOfDay(today);
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
@@ -152,8 +157,19 @@ export function DashboardClient() {
         interval: { start: weekStart, end: weekEnd },
         labelFormat: "weekday",
         excludeTags: WORK_EXCLUDED_TAGS,
+        holidayDates: notificationPrefs.holidayDates,
+        weekendDays: notificationPrefs.silentDays,
       }),
-    [weekEntries, runningEntries, projectMap, categoryMap, weekStart, weekEnd],
+    [
+      weekEntries,
+      runningEntries,
+      projectMap,
+      categoryMap,
+      weekStart,
+      weekEnd,
+      notificationPrefs.holidayDates,
+      notificationPrefs.silentDays,
+    ],
   );
 
   const totalWeekSeconds = useMemo(

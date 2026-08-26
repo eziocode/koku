@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { ChartEmpty } from "@/components/charts/chart-states";
 import { DayTooltipCard, getTooltipPosition } from "@/components/charts/segment-tooltip";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { NON_WORKING_COLORS } from "@/lib/charts/theme";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 import { cn } from "@/lib/utils";
 import type { TimeFormat } from "@/lib/settings/schema";
@@ -131,6 +132,40 @@ function buildDayBlocks(day: SegmentedDay): TimelineBlock[] {
   return blocks;
 }
 
+/**
+ * A day nobody was expected to work: drawn as a single rule across the whole
+ * track with the reason centred on it, rather than the empty track an ordinary
+ * zero-hour day gets. The two read differently on purpose — one is a day off,
+ * the other is a day with nothing logged.
+ */
+function NonWorkingTrack({
+  label,
+  color,
+  compact,
+}: {
+  label: string;
+  color: string;
+  compact: boolean;
+}) {
+  return (
+    <div className="absolute inset-0 flex items-center" aria-hidden>
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/40" />
+      <span className="mx-1 h-px flex-1" style={{ backgroundColor: color }} />
+      <span
+        className={cn(
+          "shrink-0 whitespace-nowrap rounded-md border bg-background font-medium leading-none",
+          compact ? "px-1.5 py-[3px] text-[9px]" : "px-2 py-1 text-[11px]",
+        )}
+        style={{ borderColor: color, color }}
+      >
+        {label}
+      </span>
+      <span className="mx-1 h-px flex-1" style={{ backgroundColor: color }} />
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/40" />
+    </div>
+  );
+}
+
 /** Portals a `DayTooltipCard` to `document.body`, positioned near the cursor. */
 function SegmentTooltipPortal({
   label,
@@ -220,7 +255,12 @@ export function SegmentedBarChart({
 
   const { value: timeFormat } = useTypedSetting("timeFormat");
 
-  const hasData = useMemo(() => days.some((day) => day.segments.length > 0), [days]);
+  // A holiday or week-off marker is data too: a month whose only story is "these
+  // days were off" should tell it, not fall back to "no activity".
+  const hasData = useMemo(
+    () => days.some((day) => day.segments.length > 0 || day.nonWorking),
+    [days],
+  );
   const now = useMemo(() => hourOfDay(new Date().toISOString()), []);
   const todayKey = useMemo(() => localDateKey(new Date()), []);
 
@@ -322,6 +362,12 @@ export function SegmentedBarChart({
           {days.map((day) => {
             const blocks = buildDayBlocks(day);
             const isToday = day.key === todayKey;
+            const marker = day.nonWorking;
+            const markerColor = marker ? NON_WORKING_COLORS[marker.kind] : null;
+            // The marker replaces the track only when there is nothing to draw
+            // on it: work logged on a holiday still gets its blocks, with the
+            // day merely flagged beside the date.
+            const markerOnly = Boolean(marker) && day.segments.length === 0;
             return (
               <div
                 key={day.key}
@@ -334,21 +380,29 @@ export function SegmentedBarChart({
               >
                 <p
                   className={cn(
-                    "shrink-0 text-right font-medium text-muted-foreground",
+                    "flex shrink-0 items-center justify-end gap-1 text-right font-medium text-muted-foreground",
                     compact ? "w-11 text-[10px]" : "w-14 text-xs",
                     isToday && "text-primary",
                   )}
                 >
+                  {marker && !markerOnly ? (
+                    <span
+                      className="h-1.5 w-1.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: markerColor ?? undefined }}
+                      title={marker.label}
+                    />
+                  ) : null}
                   {isToday ? "Today" : day.label}
                 </p>
                 <div
                   className={cn(
-                    "relative flex-1 rounded-sm bg-muted/20",
+                    "relative flex-1 rounded-sm",
+                    markerOnly ? "bg-transparent" : "bg-muted/20",
                     compact ? "h-3.5" : "h-6",
                   )}
                 >
                   {/* Hour gridlines, kept at 3h regardless of label density. */}
-                  {GRIDLINE_HOURS.map((hour) => (
+                  {markerOnly ? null : GRIDLINE_HOURS.map((hour) => (
                     <div
                       key={hour}
                       className="pointer-events-none absolute inset-y-0 w-px bg-border/50"
@@ -356,11 +410,16 @@ export function SegmentedBarChart({
                       aria-hidden
                     />
                   ))}
-                  <div
-                    className="pointer-events-none absolute inset-y-0 border-l border-dashed border-primary/50"
-                    style={{ left: `${(now / 24) * 100}%` }}
-                    aria-hidden
-                  />
+                  {markerOnly ? null : (
+                    <div
+                      className="pointer-events-none absolute inset-y-0 border-l border-dashed border-primary/50"
+                      style={{ left: `${(now / 24) * 100}%` }}
+                      aria-hidden
+                    />
+                  )}
+                  {markerOnly && marker && markerColor ? (
+                    <NonWorkingTrack label={marker.label} color={markerColor} compact={compact} />
+                  ) : null}
                   {blocks.map((block) =>
                     block.kind === "work" ? (
                       <button
@@ -420,7 +479,7 @@ export function SegmentedBarChart({
                     compact ? "w-12 text-[10px]" : "w-16 text-xs",
                   )}
                 >
-                  {hoursMinutesLabel(day.totalSeconds)}
+                  {markerOnly ? "—" : hoursMinutesLabel(day.totalSeconds)}
                 </p>
               </div>
             );
@@ -452,7 +511,19 @@ export function SegmentedBarChart({
         </thead>
         <tbody>
           {days.flatMap((day) =>
-            day.segments.map((segment) => (
+            day.segments.length === 0 && day.nonWorking
+              ? [
+                  <tr key={`${day.key}-non-working`}>
+                    <td>{day.label}</td>
+                    <td>{day.nonWorking.label}</td>
+                    <td>—</td>
+                    <td>{day.nonWorking.kind}</td>
+                    <td>—</td>
+                    <td>—</td>
+                    <td>—</td>
+                  </tr>,
+                ]
+              : day.segments.map((segment) => (
               <tr key={`${day.key}-${segment.id}`}>
                 <td>{day.label}</td>
                 <td>{segment.title}</td>

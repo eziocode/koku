@@ -54,6 +54,22 @@ export interface WorkLogSegment {
   continuesNextDay: boolean;
 }
 
+/**
+ * Why a day carried no work.
+ *
+ * `holiday` comes from the explicit `holidayDates` list, `weekend` from the
+ * recurring week-off weekdays. A day can be both on paper; the explicit
+ * one-off wins because it is the more specific statement about that date.
+ */
+export type NonWorkingKind = "holiday" | "weekend";
+
+/** A non-working day's marker, rendered in place of an empty track. */
+export interface NonWorkingMarker {
+  kind: NonWorkingKind;
+  /** Display text, e.g. `Holiday` or `Weekend`. */
+  label: string;
+}
+
 /** One day's worth of segments, ready for a stacked bar column. */
 export interface SegmentedDay {
   /** Machine key, e.g. `2024-06-03`. */
@@ -67,6 +83,12 @@ export interface SegmentedDay {
   hasRunning: boolean;
   /** A live timer sits on this day with its clock stopped. */
   hasPaused: boolean;
+  /**
+   * Set when the day is a holiday or a week-off day. Independent of
+   * `segments`: work logged on a holiday still counts, the day is just also
+   * labelled as one.
+   */
+  nonWorking: NonWorkingMarker | null;
 }
 
 /** Minimal entry shape required to build segments (subset of `TimeEntry`). */
@@ -110,6 +132,20 @@ export interface BuildSegmentsOptions {
    * excluding nothing, so existing callers are unaffected.
    */
   excludeTags?: string[];
+  /**
+   * Local calendar days (`yyyy-MM-dd`) marked as holidays — the
+   * `notifications.holidayDates` setting. Days in this list carry a `holiday`
+   * marker so the chart can label them instead of drawing a bare empty track.
+   */
+  holidayDates?: readonly string[];
+  /**
+   * Weekday indices treated as recurring days off (0 = Sunday … 6 = Saturday),
+   * i.e. the `notifications.silentDays` setting. Labelled `weekend`.
+   */
+  weekendDays?: readonly number[];
+  /** Marker copy, overridable for wording that differs per surface. */
+  holidayLabel?: string;
+  weekendLabel?: string;
 }
 
 /** Whether an entry carries any of the excluded tags (case-insensitive). */
@@ -197,9 +233,26 @@ export function buildSegmentedDays({
   interval,
   labelFormat = "date",
   excludeTags = [],
+  holidayDates = [],
+  weekendDays = [],
+  holidayLabel = "Holiday",
+  weekendLabel = "Weekend",
 }: BuildSegmentsOptions): SegmentedDay[] {
   const labelFor = (date: Date) =>
     labelFormat === "weekday" ? format(date, "EEE") : format(date, "MMM d");
+
+  const holidaySet = new Set(holidayDates);
+  const weekendSet = new Set(weekendDays);
+
+  const nonWorkingFor = (date: Date, key: string): NonWorkingMarker | null => {
+    if (holidaySet.has(key)) {
+      return { kind: "holiday", label: holidayLabel };
+    }
+    if (weekendSet.has(date.getDay())) {
+      return { kind: "weekend", label: weekendLabel };
+    }
+    return null;
+  };
 
   const dayMap = new Map<string, SegmentedDay>();
 
@@ -215,6 +268,7 @@ export function buildSegmentedDays({
         segments: [],
         hasRunning: false,
         hasPaused: false,
+        nonWorking: nonWorkingFor(date, key),
       };
       dayMap.set(key, day);
     }

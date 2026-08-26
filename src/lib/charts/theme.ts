@@ -137,3 +137,15 @@ export const CHART_TOKENS = {
   radius: 6,
   animationDuration: 420,
 } as const;
+
+/**
+ * Non-working day markers. A holiday and a weekly off day are not "no data" —
+ * they are days nobody was expected to log, so they get their own colours
+ * instead of borrowing a status colour that means something else.
+ */
+export const NON_WORKING_COLORS = {
+  holiday: "#3b6ea5", // steel blue — a declared holiday
+  weekend: "#e0bc79", // sand — a recurring week-off day
+} as const;
+
+export type NonWorkingColorKey = keyof typeof NON_WORKING_COLORS;

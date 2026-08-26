@@ -421,3 +421,76 @@ test("project breakdown attributes split hours to the same project once per day"
   assert.equal(breakdown.length, 1);
   assert.equal(breakdown[0].seconds, 4 * 3600);
 });
+
+test("holidays and week-off days are marked on the days they fall on", () => {
+  // 2026-08-15 is a Saturday, 2026-08-16 a Sunday.
+  const days = buildSegmentedDays({
+    entries: [],
+    projectMap,
+    interval: {
+      start: new Date("2026-08-13T00:00:00"),
+      end: new Date("2026-08-16T23:59:59.999"),
+    },
+    holidayDates: ["2026-08-14"],
+    weekendDays: [0, 6],
+  });
+
+  assert.deepEqual(
+    days.map((day) => day.nonWorking?.kind ?? null),
+    [null, "holiday", "weekend", "weekend"],
+  );
+  assert.equal(days[1].nonWorking?.label, "Holiday");
+  assert.equal(days[2].nonWorking?.label, "Weekend");
+});
+
+test("an explicit holiday wins over the recurring week-off day", () => {
+  const days = buildSegmentedDays({
+    entries: [],
+    projectMap,
+    interval: {
+      start: new Date("2026-08-15T00:00:00"),
+      end: new Date("2026-08-15T23:59:59.999"),
+    },
+    holidayDates: ["2026-08-15"],
+    weekendDays: [6],
+  });
+
+  assert.equal(days[0].nonWorking?.kind, "holiday");
+});
+
+test("days carry no marker when no holidays or week-off days are configured", () => {
+  const days = buildSegmentedDays({
+    entries: [],
+    projectMap,
+    interval: {
+      start: new Date("2026-08-15T00:00:00"),
+      end: new Date("2026-08-16T23:59:59.999"),
+    },
+  });
+
+  assert.deepEqual(days.map((day) => day.nonWorking), [null, null]);
+});
+
+test("work logged on a holiday still counts — the day is only labelled", () => {
+  const days = buildSegmentedDays({
+    entries: [
+      entry({
+        id: "on-holiday",
+        projectId: "p1",
+        startAt: localIso("2026-08-14T10:00:00"),
+        endAt: localIso("2026-08-14T12:00:00"),
+        durationSec: 2 * 3600,
+      }),
+    ],
+    projectMap,
+    interval: {
+      start: new Date("2026-08-14T00:00:00"),
+      end: new Date("2026-08-14T23:59:59.999"),
+    },
+    holidayDates: ["2026-08-14"],
+  });
+
+  assert.equal(days[0].nonWorking?.kind, "holiday");
+  assert.equal(days[0].totalSeconds, 2 * 3600);
+  assert.equal(days[0].segments.length, 1);
+});

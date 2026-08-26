@@ -58,8 +58,23 @@ const days = buildSegmentedDays({
   categoryMap,                   // optional Map<id, { id, name }>
   interval: { start, end },      // optional — emits empty days for a continuous axis
   labelFormat: "weekday",        // "weekday" (Mon) | "date" (Jun 3)
+  holidayDates,                  // notifications.holidayDates — `yyyy-MM-dd`[]
+  weekendDays,                   // notifications.silentDays — 0 = Sun … 6 = Sat
 });
 ```
+
+### Non-working days
+
+A day matching `holidayDates` (or, failing that, a weekday in `weekendDays`)
+carries a `nonWorking` marker — `{ kind: "holiday" | "weekend", label }`. An
+explicit holiday wins over the recurring week-off day, being the more specific
+statement about that date.
+
+When such a day has **no** logs, `<SegmentedBarChart>` draws a single rule across
+the whole track with the label centred on it (colours from `NON_WORKING_COLORS`)
+instead of an empty track, and its total reads `—`: a day off and a day with
+nothing logged should not look identical. Work logged *on* a holiday still counts
+in full — the day is merely flagged with a coloured dot beside its date.
 
 ## `<SegmentedBarChart>`
 

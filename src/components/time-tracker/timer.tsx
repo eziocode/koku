@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown, ChevronUp, Pause, Play, Plus, Square } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { TagInput } from "@/components/ui/tag-input";
@@ -36,6 +37,16 @@ import { useNotificationPreferences } from "@/lib/notifications/use-notification
 import { useSecondTick } from "@/lib/stores/use-ticker";
 import { buildEntryFromTimer } from "@/lib/time-tracking/stop-timer";
 import { formatDuration } from "@/lib/utils";
+
+/**
+ * How many session cards the list shows before it starts scrolling.
+ *
+ * Past this the card would keep growing with every parallel task, dragging the
+ * dashboard grid taller on each start and shorter on each stop. Capping the
+ * list at the height of the first four cards — measured, not guessed, since a
+ * card with notes is taller than one without — keeps the panel a fixed size.
+ */
+const MAX_VISIBLE_TIMER_CARDS = 4;
 
 /** Shown when the store refuses a resume because a break is in progress. */
 const BREAK_BLOCKS_RESUME = "Finish or cancel your break to resume tracking.";
@@ -394,6 +405,43 @@ export function Timer() {
       ...timers.filter((timer) => timer.id !== primaryTimer.id),
     ];
   }, [primaryTimer, timers]);
+  const timerListScrolls = orderedTimers.length > MAX_VISIBLE_TIMER_CARDS;
+
+  // Height of the first `MAX_VISIBLE_TIMER_CARDS` cards, measured from the DOM.
+  // A live timer re-renders every second, so this is read from element geometry
+  // rather than recomputed from a guessed per-card constant that would drift the
+  // moment a card gains a notes field or a second line of badges.
+  const timerListRef = useRef<HTMLDivElement | null>(null);
+  const [timerListMaxHeight, setTimerListMaxHeight] = useState<number | null>(null);
+
+  useEffect(() => {
+    const list = timerListRef.current;
+    if (!list || !timerListScrolls) {
+      setTimerListMaxHeight(null);
+      return;
+    }
+
+    const measure = () => {
+      const cards = Array.from(list.children) as HTMLElement[];
+      const last = cards[MAX_VISIBLE_TIMER_CARDS - 1];
+      if (!last) {
+        return;
+      }
+      // `offsetTop` is relative to the list, so this already includes the gaps
+      // between cards. Half a card of the next one peeks through, which is what
+      // tells the eye the list continues.
+      setTimerListMaxHeight(last.offsetTop + last.offsetHeight + 12);
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(list);
+    for (const card of Array.from(list.children)) {
+      observer.observe(card);
+    }
+    return () => observer.disconnect();
+  }, [timerListScrolls, orderedTimers.length]);
+
   /** A parallel task may only be added once nothing is being tracked. */
   const allTimersPaused = timers.length > 0 && timers.every((timer) => Boolean(timer.pausedAt));
   const runningCount = timers.filter((timer) => !timer.pausedAt).length;
@@ -692,42 +740,69 @@ export function Timer() {
             ) : null}
 
             <div className="space-y-3">
-              {orderedTimers.map((timer) => (
-                <TimerSessionCard
-                  key={timer.id}
-                  timer={timer}
-                  elapsedSec={getActiveTimerElapsedSec(timer, tickNow)}
-                  isPrimary={!timer.parentTimerId}
-                  projectName={getProjectName(timer)}
-                  categoryName={getCategoryName(timer)}
-                  submitting={Boolean(submittingByTimerId[timer.id])}
-                  onPause={() => pauseTimer(timer.id)}
-                  onResume={() => handleResume(timer)}
-                  onStop={() => void handleStop(timer)}
-                  onStartParallelTask={
-                    // Offered on the primary card only, and only while something
-                    // is still running: pausing *everything* is what makes room
-                    // for a parallel task, so the button does exactly that.
-                    !timer.parentTimerId && !allTimersPaused
-                      ? () => {
-                          for (const running of timers) {
-                            if (!running.pausedAt) {
-                              pauseTimer(running.id);
-                            }
-                          }
+              {(() => {
+                const list = (
+                  <div ref={timerListRef} className="space-y-3">
+                    {orderedTimers.map((timer) => (
+                      <TimerSessionCard
+                        key={timer.id}
+                        timer={timer}
+                        elapsedSec={getActiveTimerElapsedSec(timer, tickNow)}
+                        isPrimary={!timer.parentTimerId}
+                        projectName={getProjectName(timer)}
+                        categoryName={getCategoryName(timer)}
+                        submitting={Boolean(submittingByTimerId[timer.id])}
+                        onPause={() => pauseTimer(timer.id)}
+                        onResume={() => handleResume(timer)}
+                        onStop={() => void handleStop(timer)}
+                        onStartParallelTask={
+                          // Offered on the primary card only, and only while something
+                          // is still running: pausing *everything* is what makes room
+                          // for a parallel task, so the button does exactly that.
+                          !timer.parentTimerId && !allTimersPaused
+                            ? () => {
+                                for (const running of timers) {
+                                  if (!running.pausedAt) {
+                                    pauseTimer(running.id);
+                                  }
+                                }
+                              }
+                            : undefined
                         }
-                      : undefined
-                  }
-                  startParallelLabel={
-                    runningCount > 1 ? "Pause all & add parallel task" : "Start parallel task"
-                  }
-                  onAppendNote={(text) => {
-                    if (appendNote(timer.id, text)) {
-                      toast.success("Note added to timer.");
-                    }
-                  }}
-                />
-              ))}
+                        startParallelLabel={
+                          runningCount > 1 ? "Pause all & add parallel task" : "Start parallel task"
+                        }
+                        onAppendNote={(text) => {
+                          if (appendNote(timer.id, text)) {
+                            toast.success("Note added to timer.");
+                          }
+                        }}
+                      />
+                    ))}
+                  </div>
+                );
+
+                if (!timerListScrolls) {
+                  return list;
+                }
+
+                return (
+                  <div className="space-y-2">
+                    {/* Negative margin + padding keeps the scrollbar off the
+                        cards without insetting them from the card's edge. */}
+                    <ScrollArea
+                      className="-mr-3 pr-3"
+                      style={timerListMaxHeight ? { height: timerListMaxHeight } : undefined}
+                    >
+                      {list}
+                    </ScrollArea>
+                    <p className="text-xs text-muted-foreground">
+                      Showing {MAX_VISIBLE_TIMER_CARDS} of {orderedTimers.length} timers — scroll
+                      for the rest.
+                    </p>
+                  </div>
+                );
+              })()}
               <div className="flex flex-wrap gap-3">
                 <BreakButton />
                 <PopOutButton />

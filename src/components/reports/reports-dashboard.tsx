@@ -13,6 +13,7 @@ import { DEFAULT_FILTERS, LogFilterState, LogFilters } from "@/components/time-t
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { MonthPicker } from "@/components/ui/month-picker";
+import { useNotificationPreferences } from "@/lib/notifications/use-notification-preferences";
 import {
   buildSegmentedDays,
   hasExcludedTag,
@@ -66,6 +67,7 @@ export function ReportsDashboard() {
   );
   const { projects } = useProjects();
   const { categories } = useCategories();
+  const { prefs: notificationPrefs } = useNotificationPreferences();
 
   const [filters, setFilters] = useState<LogFilterState>(DEFAULT_FILTERS);
 
@@ -122,8 +124,20 @@ export function ReportsDashboard() {
         // Breaks are real entries so they stay auditable on /log, but counting
         // them as work would inflate every figure on this page.
         excludeTags: WORK_EXCLUDED_TAGS,
+        // Holidays and week-off days are labelled rather than left as blank
+        // rows, so a zero-hour day off does not read as a missed day.
+        holidayDates: notificationPrefs.holidayDates,
+        weekendDays: notificationPrefs.silentDays,
       }),
-    [entries, projectMap, categoryMap, monthStart, monthEnd],
+    [
+      entries,
+      projectMap,
+      categoryMap,
+      monthStart,
+      monthEnd,
+      notificationPrefs.holidayDates,
+      notificationPrefs.silentDays,
+    ],
   );
 
   // Reported separately rather than dropped: hiding break time entirely reads as
