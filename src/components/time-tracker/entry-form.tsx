@@ -86,10 +86,27 @@ export function EntryForm({
     [allEntries],
   );
 
+  /**
+   * Runs on every start/end change (not only after a failed submit) so an
+   * invalid range is flagged the moment it is picked. `Number.isNaN` guards the
+   * empty/unparseable start case, which would otherwise make every comparison
+   * against it false and let an invalid range through.
+   */
   function validateTimes(start: string, end: string) {
-    if (!end) return true;
     const startMs = new Date(start).getTime();
+    if (Number.isNaN(startMs)) {
+      setTimeError("Start time must be a valid date and time.");
+      return false;
+    }
+    if (!end) {
+      setTimeError(null);
+      return true;
+    }
     const endMs = new Date(end).getTime();
+    if (Number.isNaN(endMs)) {
+      setTimeError("End time must be a valid date and time.");
+      return false;
+    }
     if (endMs <= startMs) {
       setTimeError("End time must be after start time.");
       return false;
@@ -207,7 +224,7 @@ export function EntryForm({
             value={startAt}
             onChange={(v) => {
               setStartAt(v);
-              if (timeError) validateTimes(v, endAt);
+              validateTimes(v, endAt);
             }}
             placeholder="Pick start date & time"
             className="w-full"
@@ -222,16 +239,17 @@ export function EntryForm({
             value={endAt}
             onChange={(v) => {
               setEndAt(v);
-              if (timeError) validateTimes(startAt, v);
+              validateTimes(startAt, v);
             }}
             placeholder="Pick end date & time"
             className="w-full"
             timeFormat={timeFormat}
+            min={startAt}
           />
         </div>
       </div>
       {timeError ? (
-        <p className="text-sm text-destructive">{timeError}</p>
+        <p role="alert" className="text-sm text-destructive">{timeError}</p>
       ) : null}
       <div className="space-y-2">
         <Label htmlFor="entry-tags">Tags</Label>
@@ -252,7 +270,7 @@ export function EntryForm({
           <Button
             type="submit"
             variant="outline"
-            disabled={isSubmitting}
+            disabled={isSubmitting || Boolean(timeError)}
             onClick={() => { saveAndNewRef.current = true; }}
             className="flex-1"
           >
@@ -261,7 +279,7 @@ export function EntryForm({
         ) : null}
         <Button
           type="submit"
-          disabled={isSubmitting}
+          disabled={isSubmitting || Boolean(timeError)}
           className={showSaveAndNew ? "flex-1" : undefined}
         >
           {showSaveAndNew ? "Save" : submitLabel}

@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * Renders the lightweight markdown produced by `RichTextarea` — bold, italic,
- * strikethrough, bulleted/numbered lists — as HTML.
+ * strikethrough, links, bulleted/numbered lists — as HTML.
  *
  * Deliberately not a full markdown parser: notes/description fields stay
  * plain strings in storage (see `RichTextarea`'s docstring), so this only
@@ -23,7 +23,8 @@ function renderInline(text: string): string {
   return escapeHtml(text)
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/~~([^~]+)~~/g, "<del>$1</del>")
-    .replace(/(?<!\w)_([^_]+)_(?!\w)/g, "<em>$1</em>");
+    .replace(/(?<!\w)_([^_]+)_(?!\w)/g, "<em>$1</em>")
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
 }
 
 function renderBlock(lines: string[]): string {
