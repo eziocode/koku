@@ -2,75 +2,71 @@
 
 import { useEffect, useState } from "react";
 
-const QUOTE_API = "https://api.quotable.io/quotes/random?limit=1&maxLength=180";
-const CACHE_SLOT = "koku-daily-quote";
-const FALLBACK_QUOTE: Quote = {
-  content: "The key is not to prioritize what is on your schedule, but to schedule your priorities.",
-  author: "Stephen Covey",
-};
-
 interface Quote {
   content: string;
   author: string;
 }
 
-interface CachedQuote {
-  date: string;
-  quote: Quote;
+const QUOTES: Quote[] = [
+  { content: "The key is not to prioritize what is on your schedule, but to schedule your priorities.", author: "Stephen Covey" },
+  { content: "It is not that we have a short time to live, but that we waste a lot of it.", author: "Seneca" },
+  { content: "Amateurs sit and wait for inspiration, the rest of us just get up and go to work.", author: "Stephen King" },
+  { content: "You do not rise to the level of your goals. You fall to the level of your systems.", author: "James Clear" },
+  { content: "Simplicity is the ultimate sophistication.", author: "Leonardo da Vinci" },
+  { content: "The way to get started is to quit talking and begin doing.", author: "Walt Disney" },
+  { content: "How we spend our days is, of course, how we spend our lives.", author: "Annie Dillard" },
+  { content: "Focus is a matter of deciding what things you're not going to do.", author: "John Carmack" },
+  { content: "Perfection is achieved not when there is nothing more to add, but when there is nothing left to take away.", author: "Antoine de Saint-Exupéry" },
+  { content: "Slow is smooth, and smooth is fast.", author: "Navy SEAL adage" },
+  { content: "Well begun is half done.", author: "Aristotle" },
+  { content: "Beware the barrenness of a busy life.", author: "Socrates" },
+  { content: "What gets measured gets managed.", author: "Peter Drucker" },
+  { content: "Done is better than perfect.", author: "Sheryl Sandberg" },
+  { content: "The best time to plant a tree was twenty years ago. The second best time is now.", author: "Chinese proverb" },
+  { content: "Discipline equals freedom.", author: "Jocko Willink" },
+  { content: "You can do anything, but not everything.", author: "David Allen" },
+  { content: "Action is the foundational key to all success.", author: "Pablo Picasso" },
+  { content: "A year from now you may wish you had started today.", author: "Karen Lamb" },
+  { content: "Small deeds done are better than great deeds planned.", author: "Peter Marshall" },
+  { content: "Either you run the day or the day runs you.", author: "Jim Rohn" },
+  { content: "Work expands so as to fill the time available for its completion.", author: "C. Northcote Parkinson" },
+  { content: "Start where you are. Use what you have. Do what you can.", author: "Arthur Ashe" },
+  { content: "Absorb what is useful, discard what is not, add what is uniquely your own.", author: "Bruce Lee" },
+  { content: "Great things are not done by impulse, but by a series of small things brought together.", author: "Vincent van Gogh" },
+  { content: "The secret of getting ahead is getting started.", author: "Mark Twain" },
+  { content: "Order your soul. Reduce your wants.", author: "Augustine" },
+  { content: "Everything you've ever wanted is on the other side of fear.", author: "George Addair" },
+  { content: "Motivation is what gets you started. Habit is what keeps you going.", author: "Jim Ryun" },
+  { content: "The obstacle is the way.", author: "Marcus Aurelius" },
+  { content: "If you spend too long sharpening the axe, the tree stays standing.", author: "Anonymous" },
+];
+
+/** Days elapsed since the Unix epoch in the viewer's local timezone. */
+function localDayNumber(now: Date) {
+  const midnightLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.floor(midnightLocal.getTime() / 86_400_000);
 }
 
-function todayKey() {
-  const now = new Date();
-  return [now.getFullYear(), now.getMonth() + 1, now.getDate()]
-    .map((part) => String(part).padStart(2, "0"))
-    .join("-");
+/**
+ * Deterministic per-day index. The multiply-xor step keeps consecutive days from
+ * landing on neighbouring quotes, so the rotation doesn't look like a straight walk.
+ */
+function quoteForDay(day: number): Quote {
+  const scrambled = Math.abs(Math.imul(day ^ 0x5f3d, 0x2545f491)) % QUOTES.length;
+  return QUOTES[scrambled];
 }
 
 export function DailyQuote() {
-  const [quote, setQuote] = useState<Quote>(FALLBACK_QUOTE);
+  // Server render and first client paint must agree, so start from a fixed quote
+  // and swap to the day's pick once we know the viewer's local date.
+  const [quote, setQuote] = useState<Quote>(QUOTES[0]);
 
   useEffect(() => {
-    let active = true;
+    const apply = () => setQuote(quoteForDay(localDayNumber(new Date())));
+    apply();
 
-    async function loadQuote() {
-      const date = todayKey();
-
-      try {
-        const cached = window.localStorage.getItem(CACHE_SLOT);
-        if (cached) {
-          const parsed = JSON.parse(cached) as CachedQuote;
-          if (active && parsed.date === date && parsed.quote?.content && parsed.quote.author) {
-            setQuote(parsed.quote);
-            return;
-          }
-        }
-
-        const response = await fetch(QUOTE_API, { headers: { Accept: "application/json" } });
-        if (!response.ok) throw new Error(`Quote request failed: ${response.status}`);
-
-        const payload = (await response.json()) as Quote | Quote[];
-        const nextQuote = Array.isArray(payload) ? payload[0] : payload;
-        if (!nextQuote?.content || !nextQuote.author || !active) return;
-
-        window.localStorage.setItem(CACHE_SLOT, JSON.stringify({ date, quote: nextQuote } satisfies CachedQuote));
-        setQuote(nextQuote);
-      } catch {
-        // Keep fallback visible when external API unavailable.
-      }
-    }
-
-    void loadQuote();
-    const refreshAtMidnight = window.setInterval(() => {
-      const cached = window.localStorage.getItem(CACHE_SLOT);
-      if (!cached || !cached.includes(`\"date\":\"${todayKey()}\"`)) {
-        void loadQuote();
-      }
-    }, 60_000);
-
-    return () => {
-      active = false;
-      window.clearInterval(refreshAtMidnight);
-    };
+    const tick = window.setInterval(apply, 60_000);
+    return () => window.clearInterval(tick);
   }, []);
 
   return (
