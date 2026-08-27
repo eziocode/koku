@@ -133,35 +133,79 @@ function buildDayBlocks(day: SegmentedDay): TimelineBlock[] {
 }
 
 /**
+ * Width thresholds for the non-working marker. Below `LABEL_MIN_TRACK` the pill
+ * would eat most of the track, so the marker degrades to the bare rule plus its
+ * end dots — the reason still reachable via the row's date-column dot and the
+ * screen-reader table.
+ */
+const MARKER_LABEL_MIN_TRACK = 150;
+const MARKER_SHORT_LABEL_MIN_TRACK = 260;
+
+/** Longest label rendered in full below `MARKER_SHORT_LABEL_MIN_TRACK`. */
+const MARKER_SHORT_LABEL_CHARS = 10;
+
+/**
+ * Pill box sized *under* the track height it sits in (14px compact / 24px
+ * regular) so it can never spill into the rows above and below. Height is fixed
+ * rather than padding-derived: padding plus a border on a 14px track overflows.
+ */
+const MARKER_PILL = {
+  compact: { height: 12, className: "px-1 text-[9px]" },
+  regular: { height: 18, className: "px-2 text-[11px]" },
+} as const;
+
+function shortenMarkerLabel(label: string): string {
+  if (label.length <= MARKER_SHORT_LABEL_CHARS) return label;
+  return `${label.slice(0, MARKER_SHORT_LABEL_CHARS - 1).trimEnd()}…`;
+}
+
+/**
  * A day nobody was expected to work: drawn as a single rule across the whole
  * track with the reason centred on it, rather than the empty track an ordinary
  * zero-hour day gets. The two read differently on purpose — one is a day off,
  * the other is a day with nothing logged.
+ *
+ * The pill adapts to the measured track width — full label, shortened label, or
+ * rule only — so a narrow panel or a long holiday name never blows the marker
+ * past the track it belongs to.
  */
 function NonWorkingTrack({
   label,
   color,
   compact,
+  trackWidth,
 }: {
   label: string;
   color: string;
   compact: boolean;
+  /** Measured px width of the track. 0 before first measure — treated as roomy. */
+  trackWidth: number;
 }) {
+  const measured = trackWidth > 0;
+  const showLabel = !measured || trackWidth >= MARKER_LABEL_MIN_TRACK;
+  const displayLabel =
+    !measured || trackWidth >= MARKER_SHORT_LABEL_MIN_TRACK ? label : shortenMarkerLabel(label);
+  const pill = MARKER_PILL[compact ? "compact" : "regular"];
+
   return (
-    <div className="absolute inset-0 flex items-center" aria-hidden>
-      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/40" />
-      <span className="mx-1 h-px flex-1" style={{ backgroundColor: color }} />
-      <span
-        className={cn(
-          "shrink-0 whitespace-nowrap rounded-md border bg-background font-medium leading-none",
-          compact ? "px-1.5 py-[3px] text-[9px]" : "px-2 py-1 text-[11px]",
-        )}
-        style={{ borderColor: color, color }}
-      >
-        {label}
-      </span>
-      <span className="mx-1 h-px flex-1" style={{ backgroundColor: color }} />
-      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/40" />
+    <div className="absolute inset-0 flex items-center overflow-hidden" aria-hidden title={label}>
+      <span className="h-1 w-1 shrink-0 rounded-full bg-muted-foreground/40" />
+      <span className="mx-1 h-px min-w-0 flex-1" style={{ backgroundColor: color }} />
+      {showLabel ? (
+        <>
+          <span
+            className={cn(
+              "flex max-w-[60%] shrink items-center justify-center rounded border bg-background font-medium leading-none",
+              pill.className,
+            )}
+            style={{ height: pill.height, borderColor: color, color }}
+          >
+            <span className="truncate">{displayLabel}</span>
+          </span>
+          <span className="mx-1 h-px min-w-0 flex-1" style={{ backgroundColor: color }} />
+        </>
+      ) : null}
+      <span className="h-1 w-1 shrink-0 rounded-full bg-muted-foreground/40" />
     </div>
   );
 }
@@ -418,7 +462,12 @@ export function SegmentedBarChart({
                     />
                   )}
                   {markerOnly && marker && markerColor ? (
-                    <NonWorkingTrack label={marker.label} color={markerColor} compact={compact} />
+                    <NonWorkingTrack
+                      label={marker.label}
+                      color={markerColor}
+                      compact={compact}
+                      trackWidth={trackWidth}
+                    />
                   ) : null}
                   {blocks.map((block) =>
                     block.kind === "work" ? (
