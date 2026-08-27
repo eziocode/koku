@@ -19,16 +19,17 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { TagInput } from "@/components/ui/tag-input";
-import { Textarea } from "@/components/ui/textarea";
+import { RichTextarea } from "@/components/ui/rich-textarea";
 import { toast } from "@/components/ui/toast";
 import { PopOutButton } from "@/components/mini-player/pop-out-button";
 import { BreakButton, BreakCard } from "@/components/time-tracker/break-controls";
 import { QuickActionButtons } from "@/components/time-tracker/quick-action-buttons";
-import { QuickCreateCategoryDialog, QuickCreateProjectDialog } from "@/components/time-tracker/quick-create-dialog";
+import { QuickCreateCategoryDialog, QuickCreateProjectDialog, QuickCreateTaskDialog } from "@/components/time-tracker/quick-create-dialog";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
 import { useTasks } from "@/lib/storage/hooks/use-tasks";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
+import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 import {
   getActiveTimerElapsedSec,
   type ActiveTimer,
@@ -121,6 +122,7 @@ function TimerFields({
   const [notesOpen, setNotesOpen] = useState(false);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [createCategoryOpen, setCreateCategoryOpen] = useState(false);
+  const [createTaskOpen, setCreateTaskOpen] = useState(false);
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -185,17 +187,28 @@ function TimerFields({
       {tasks && onTaskIdChange ? (
         <div className="space-y-1.5 md:col-span-2">
           <Label>Log time against a task</Label>
-          <Select value={taskId} onValueChange={onTaskIdChange}>
-            <SelectTrigger>
-              <SelectValue placeholder="No task" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No task</SelectItem>
-              {tasks.map((task) => (
-                <SelectItem key={task.id} value={task.id}>{task.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            <Select value={taskId} onValueChange={onTaskIdChange}>
+              <SelectTrigger>
+                <SelectValue placeholder="No task" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No task</SelectItem>
+                {tasks.map((task) => (
+                  <SelectItem key={task.id} value={task.id}>{task.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <button
+              type="button"
+              onClick={() => setCreateTaskOpen(true)}
+              aria-label="Create new task"
+              title="Create new task"
+              className="shrink-0 rounded-md border border-border p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       ) : null}
 
@@ -222,10 +235,10 @@ function TimerFields({
           {notesOpen ? "Hide notes" : "Add notes"}
         </button>
         {notesOpen && (
-          <Textarea
+          <RichTextarea
             id={`${idPrefix}-notes`}
             value={notes}
-            onChange={(e) => onNotesChange(e.target.value)}
+            onChange={onNotesChange}
             placeholder="Helpful context, goals, or outcomes…"
             className="mt-2"
             rows={3}
@@ -253,6 +266,15 @@ function TimerFields({
         onOpenChange={setCreateCategoryOpen}
         onCreated={(id) => { onCategoryIdChange(id); setCreateCategoryOpen(false); }}
       />
+      {tasks && onTaskIdChange ? (
+        <QuickCreateTaskDialog
+          open={createTaskOpen}
+          onOpenChange={setCreateTaskOpen}
+          onCreated={(id) => { onTaskIdChange(id); setCreateTaskOpen(false); }}
+          projectId={projectId}
+          categoryId={categoryId}
+        />
+      ) : null}
     </div>
   );
 }
@@ -389,6 +411,7 @@ export function Timer() {
     [pickerTasks],
   );
   const { createEntry, entries: allEntries } = useTimeEntries();
+  const { value: timeFormat } = useTypedSetting("timeFormat");
   const { timers, activeBreak, startTimer, startSecondaryTimer, pauseTimer, resumeTimer, stopTimer, appendNote } =
     useTimerStore();
   const tickNow = useSecondTick();
@@ -802,7 +825,7 @@ export function Timer() {
                           runningCount > 1 ? "Pause all & add parallel task" : "Start parallel task"
                         }
                         onAppendNote={(text) => {
-                          if (appendNote(timer.id, text)) {
+                          if (appendNote(timer.id, text, new Date(), timeFormat)) {
                             toast.success("Note added to timer.");
                           }
                         }}

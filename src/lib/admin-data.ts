@@ -1,4 +1,6 @@
 import type { SegmentSourceEntry } from "@/lib/charts/segments";
+import type { TimeFormat } from "@/lib/settings/schema";
+import { formatTime } from "@/lib/time-format";
 
 export type AdminRow = Record<string, unknown>;
 
@@ -59,6 +61,8 @@ export interface AdminStats {
   projectCount: number;
   categoryCount: number;
   noteCount: number;
+  taskCount: number;
+  openTaskCount: number;
 }
 
 export type AdminPresence = {
@@ -213,6 +217,7 @@ export function calculateAdminStats(rows: AdminRow[]): AdminStats {
   const projects = rows.filter((row) => row.table === "projects");
   const categories = rows.filter((row) => row.table === "categories");
   const notes = rows.filter((row) => row.table === "notes");
+  const tasks = rows.filter((row) => row.table === "tasks");
   const dates = new Set<string>();
   const activity: string[] = [];
   let duration = 0;
@@ -228,7 +233,8 @@ export function calculateAdminStats(rows: AdminRow[]): AdminStats {
     if (!Number.isNaN(parsed.getTime())) activity.push(parsed.toISOString());
   }
   activity.sort();
-  return { totalTrackedDuration: duration, timeEntryCount: entries.length, activeDays: dates.size, firstActivity: activity[0] ?? null, latestActivity: activity.at(-1) ?? null, projectCount: projects.length, categoryCount: categories.length, noteCount: notes.length };
+  const openTaskCount = tasks.filter((row) => row.status !== "done").length;
+  return { totalTrackedDuration: duration, timeEntryCount: entries.length, activeDays: dates.size, firstActivity: activity[0] ?? null, latestActivity: activity.at(-1) ?? null, projectCount: projects.length, categoryCount: categories.length, noteCount: notes.length, taskCount: tasks.length, openTaskCount };
 }
 
 export function extractCatalystRowId(raw: AdminRow, table?: string): string | number | null {
@@ -252,10 +258,12 @@ export function groupRowsByUser(rows: AdminRow[], users: AdminUser[]) {
   return [...groups.values()].sort((a, b) => (a.user.displayName || a.user.email).localeCompare(b.user.displayName || b.user.email));
 }
 
-export function formatDate(value: unknown) {
+/** `timeFormat` defaults to 24h so admin's own `date.toLocaleString()`-shaped output stays put where a caller doesn't opt in. */
+export function formatDate(value: unknown, timeFormat: TimeFormat = "24h") {
   if (!value) return "—";
   const date = new Date(String(value));
-  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
+  if (Number.isNaN(date.getTime())) return String(value);
+  return `${date.toLocaleDateString()}, ${formatTime(date, timeFormat)}`;
 }
 
 export function formatDuration(seconds: unknown) {

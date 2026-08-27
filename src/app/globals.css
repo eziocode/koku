@@ -91,7 +91,7 @@ html {
 }
 
 body {
-  min-height: 100vh;
+  min-height: 100dvh;
   background:
     radial-gradient(circle at top left, color-mix(in srgb, var(--color-primary) 8%, transparent), transparent 26rem),
     var(--color-background);

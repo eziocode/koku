@@ -45,6 +45,13 @@ export const viewport: Viewport = {
   ],
   width: "device-width",
   initialScale: 1,
+  // The shell is a fixed, app-like layout (`overflow-hidden` body, `100dvh`
+  // panels, installable PWA) rather than a scrolling document — it was never
+  // laid out to survive an arbitrary pinch zoom. Zooming out shrinks the
+  // visual viewport below the layout viewport the shell is sized to, which
+  // exposes unstyled canvas past its fixed panels ("random pixels" on pinch).
+  maximumScale: 1,
+  userScalable: false,
   viewportFit: "cover",
 };
 

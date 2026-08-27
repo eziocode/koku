@@ -75,7 +75,11 @@ const DialogContent = React.forwardRef<
         // click landing here during that window falls through to `<html>`,
         // which registers as a genuine outside click and closes the dialog
         // along with the picklist.
-        "pointer-events-auto! fixed left-1/2 top-1/2 z-50 grid w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl border border-border bg-card p-6 shadow-xl duration-200 sm:w-full",
+        // `max-h-[90vh]` + `overflow-y-auto`: a form with enough fields (or a
+        // shorter/"mid-size" browser window) can be taller than the viewport.
+        // Without a cap the fixed-centered dialog just extends past the top and
+        // bottom edges with no way to scroll to what's cut off.
+        "pointer-events-auto! fixed left-1/2 top-1/2 z-50 grid max-h-[90vh] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-xl duration-200 sm:w-full",
         className,
       )}
       onPointerDownOutside={(event) => {

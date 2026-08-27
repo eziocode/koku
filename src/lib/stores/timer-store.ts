@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import { appendTimestampedNote } from "@/lib/stores/timer-notes";
+import type { TimeFormat } from "@/lib/settings/schema";
 import {
   createTimer,
   createTimerId,
@@ -60,8 +61,8 @@ type TimerStore = {
   resumeTimer: (id: string) => boolean;
   stopTimer: (id: string) => ActiveTimer | null;
 
-  appendNote: (id: string, text: string, at?: Date) => boolean;
-  appendBreakNote: (text: string, at?: Date) => boolean;
+  appendNote: (id: string, text: string, at?: Date, timeFormat?: TimeFormat) => boolean;
+  appendBreakNote: (text: string, at?: Date, timeFormat?: TimeFormat) => boolean;
 
   startBreak: (input: BreakStartInput) => ActiveBreak | null;
   extendBreak: (extraSec: number) => boolean;
@@ -187,13 +188,13 @@ export const useTimerStore = create<TimerStore>()(
         return timer;
       },
 
-      appendNote: (id, text, at = new Date()) => {
+      appendNote: (id, text, at = new Date(), timeFormat = "24h") => {
         const timer = get().timers.find((item) => item.id === id);
         if (!timer) {
           return false;
         }
 
-        const notes = appendTimestampedNote(timer.notes, text, at);
+        const notes = appendTimestampedNote(timer.notes, text, at, timeFormat);
         if (notes === timer.notes) {
           return false;
         }
@@ -204,13 +205,13 @@ export const useTimerStore = create<TimerStore>()(
         return true;
       },
 
-      appendBreakNote: (text, at = new Date()) => {
+      appendBreakNote: (text, at = new Date(), timeFormat = "24h") => {
         const { activeBreak } = get();
         if (!activeBreak) {
           return false;
         }
 
-        const notes = appendTimestampedNote(activeBreak.notes, text, at);
+        const notes = appendTimestampedNote(activeBreak.notes, text, at, timeFormat);
         if (notes === activeBreak.notes) {
           return false;
         }

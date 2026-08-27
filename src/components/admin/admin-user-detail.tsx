@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { MarkdownText } from "@/components/ui/markdown-text";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "@/components/ui/toast";
@@ -27,6 +28,7 @@ import {
 } from "@/lib/admin-data";
 import { buildSegmentedDays, toProjectBreakdown } from "@/lib/charts/segments";
 import { BREAK_TAG } from "@/lib/notifications/settings";
+import type { TimeFormat } from "@/lib/settings/schema";
 import { kokuDb } from "@/lib/storage/db";
 import { syncNow } from "@/lib/sync/sync-engine";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
@@ -116,6 +118,16 @@ async function localFirstActivity(): Promise<string | null> {
   return oldest?.startAt ? oldest.startAt.slice(0, 10) : null;
 }
 
+/** Tasks aren't day-scoped like entries/notes, so this filters by the From/To range instead of a single day. */
+async function localTasksForRange(start: string, end: string): Promise<AdminRow[]> {
+  const from = `${start}T00:00:00`;
+  const until = `${end}T23:59:59.999`;
+  const all = await kokuDb.tasks.orderBy("updatedAt").reverse().toArray();
+  return all
+    .filter((task) => task.createdAt >= from && task.createdAt <= until)
+    .map((task) => ({ ...task, table: "tasks" } as AdminRow));
+}
+
 export function AdminUserDetail({ userId }: { userId: string }) {
   const router = useRouter();
   const today = localToday();
@@ -147,6 +159,10 @@ export function AdminUserDetail({ userId }: { userId: string }) {
   const [notes, setNotes] = useState<AdminRow[]>([]);
   const [noteCursor, setNoteCursor] = useState<string | null>(null);
   const [noteLoadingMore, setNoteLoadingMore] = useState(false);
+
+  const [tasks, setTasks] = useState<AdminRow[]>([]);
+  const [taskCursor, setTaskCursor] = useState<string | null>(null);
+  const [taskLoadingMore, setTaskLoadingMore] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [dayLoading, setDayLoading] = useState(true);
@@ -202,7 +218,7 @@ export function AdminUserDetail({ userId }: { userId: string }) {
 
   const fetchTable = useCallback(
     async (
-      table: "timeEntries" | "notes",
+      table: "timeEntries" | "notes" | "tasks",
       cursor?: string | null,
       force = false,
       filterStart = start,
@@ -315,11 +331,16 @@ export function AdminUserDetail({ userId }: { userId: string }) {
       setLogCursor(null);
       setNotes([]);
       setNoteCursor(null);
+      setTasks([]);
+      setTaskCursor(null);
       setDashboard(null);
       setRangeDashboard(null);
 
       try {
         const statsPromise = fetchTable("timeEntries", null, force, start, rangeEnd, true);
+        const tasksPromise = isOwnProfile && !force
+          ? localTasksForRange(start, rangeEnd)
+          : fetchTable("tasks", null, force, start, rangeEnd);
         const localPromise = isOwnProfile && !force
           ? Promise.all([localEntriesForDay(selectedDay), localNotesForDay(selectedDay)])
           : Promise.all([
@@ -346,6 +367,17 @@ export function AdminUserDetail({ userId }: { userId: string }) {
           setNoDataConfirmed(logResult.rows.length === 0 && noteResult.rows.length === 0);
         }
         setDayLoading(false);
+        const taskResult = await tasksPromise;
+        if (version !== requestVersion.current) return;
+        if (isOwnProfile && !force) {
+          const localTasks = taskResult as AdminRow[];
+          setTasks(localTasks.slice(0, 25));
+          setTaskCursor(localTasks.length > 25 ? "25" : null);
+        } else {
+          const remoteTasks = taskResult as CacheValue;
+          setTasks(remoteTasks.rows);
+          setTaskCursor(remoteTasks.nextCursor);
+        }
         const rangeResult = await statsPromise;
         const rangeData = isOwnProfile && !force
           ? await localDashboardForRange()
@@ -440,6 +472,29 @@ export function AdminUserDetail({ userId }: { userId: string }) {
     finally { setNoteLoadingMore(false); }
   }
 
+  async function moreTasks() {
+    if (!taskCursor || taskLoadingMore) return;
+    if (isOwnProfile) {
+      setTaskLoadingMore(true);
+      try {
+        const allLocal = await localTasksForRange(start, rangeEnd);
+        const offset = parseInt(taskCursor, 10);
+        const next = allLocal.slice(offset, offset + 25);
+        setTasks((old) => [...old, ...next]);
+        setTaskCursor(allLocal.length > offset + 25 ? String(offset + 25) : null);
+      } catch { /* fall through */ }
+      finally { setTaskLoadingMore(false); }
+      return;
+    }
+    setTaskLoadingMore(true);
+    try {
+      const result = await fetchTable("tasks", taskCursor, false, start, rangeEnd);
+      setTasks((old) => [...old, ...result.rows]);
+      setTaskCursor(result.nextCursor);
+    } catch { toast.error("Unable to load more tasks."); }
+    finally { setTaskLoadingMore(false); }
+  }
+
   const olderDayDisabled = earliestDataDate === null || selectedDay <= earliestDataDate;
   const status = getPresenceStatus(presence);
   const statusLabel =
@@ -453,8 +508,8 @@ export function AdminUserDetail({ userId }: { userId: string }) {
       <div className="space-y-6">
         <Skeleton className="h-10 w-48" />
         <Skeleton className="h-8 w-72" />
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-          {[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+          {[1, 2, 3, 4, 5, 6].map((i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
         </div>
         <div className="grid gap-4 lg:grid-cols-2">
           <Skeleton className="h-64 rounded-2xl" />
@@ -509,7 +564,7 @@ export function AdminUserDetail({ userId }: { userId: string }) {
             <ArrowLeft className="mr-2 h-4 w-4" />Back to Admin
           </Button>
           <h1 className="mt-3 text-3xl font-semibold">{user.displayName || user.email}</h1>
-          <p className="text-sm text-muted-foreground">{user.email} · Last seen {formatDate(presence?.seenAt)}</p>
+          <p className="text-sm text-muted-foreground">{user.email} · Last seen {formatDate(presence?.seenAt, timeFormat)}</p>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant={status === "offline" ? "outline" : "default"}>{statusLabel}</Badge>
@@ -559,13 +614,14 @@ export function AdminUserDetail({ userId }: { userId: string }) {
         </div>
       ) : summary && dashboard ? (
         <>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
             {([
               ["Tracked", formatDuration(summary.totalTrackedDuration)],
               ["Entries", summary.timeEntryCount],
               ["Active days", summary.activeDays],
               ["Projects", summary.projectCount],
               ["Notes", summary.noteCount],
+              ["Open tasks", `${summary.openTaskCount} / ${summary.taskCount}`],
             ] as [string, string | number][]).map(([label, value]) => (
               <div key={label} className="rounded-xl border p-4">
                 <p className="text-xs text-muted-foreground">{label}</p>
@@ -645,9 +701,9 @@ export function AdminUserDetail({ userId }: { userId: string }) {
         </div>
       )}
 
-      {/* Time logs + Notes */}
+      {/* Time logs + Notes + Tasks */}
       {
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
           <LazyDetailList
             title="Time logs"
             rows={logs}
@@ -658,7 +714,10 @@ export function AdminUserDetail({ userId }: { userId: string }) {
             render={(row) => (
               <>
                 <p className="font-medium">{String(row.title || "Untitled work")}</p>
-                <p className="text-xs text-muted-foreground">{formatDate(row.startAt)} · {formatDuration(row.durationSec)}</p>
+                <p className="text-xs text-muted-foreground">{formatDate(row.startAt, timeFormat)} · {formatDuration(row.durationSec)}</p>
+                {row.notes ? (
+                  <MarkdownText text={String(row.notes)} className="mt-1 text-muted-foreground" />
+                ) : null}
               </>
             )}
           />
@@ -669,7 +728,16 @@ export function AdminUserDetail({ userId }: { userId: string }) {
             hasMore={!!noteCursor}
             loadingMore={noteLoadingMore}
             onMore={() => void moreNotes()}
-            render={(row) => <AdminNoteRow row={row} />}
+            render={(row) => <AdminNoteRow row={row} timeFormat={timeFormat} />}
+          />
+          <LazyDetailList
+            title={`Tasks (${rangeStart} to ${rangeEnd})`}
+            rows={tasks}
+            loading={loading}
+            hasMore={!!taskCursor}
+            loadingMore={taskLoadingMore}
+            onMore={() => void moreTasks()}
+            render={(row) => <AdminTaskRow row={row} timeFormat={timeFormat} today={today} />}
           />
         </div>
       }
@@ -775,7 +843,7 @@ const NOTE_STAMP_PATTERN = /^Logged .+/;
  * stamp is lifted out as its own metadata line so the body starts with what the
  * user actually wrote, wrapped and clamped rather than truncated to one line.
  */
-function AdminNoteRow({ row }: { row: AdminRow }) {
+function AdminNoteRow({ row, timeFormat }: { row: AdminRow; timeFormat: TimeFormat }) {
   const [expanded, setExpanded] = useState(false);
 
   const { stamp, body } = useMemo(() => {
@@ -799,7 +867,7 @@ function AdminNoteRow({ row }: { row: AdminRow }) {
           {String(row.title || "Untitled note")}
         </p>
         <p className="shrink-0 text-xs tabular-nums text-muted-foreground">
-          {formatDate(row.updatedAt ?? row.createdAt)}
+          {formatDate(row.updatedAt ?? row.createdAt, timeFormat)}
         </p>
       </div>
       {stamp ? <p className="text-xs italic text-muted-foreground/80">{stamp}</p> : null}
@@ -820,6 +888,47 @@ function AdminNoteRow({ row }: { row: AdminRow }) {
         >
           {expanded ? "Show less" : "Show more"}
         </Button>
+      ) : null}
+    </div>
+  );
+}
+
+const TASK_STATUS_LABEL: Record<string, string> = {
+  open: "Open",
+  in_progress: "In progress",
+  paused: "Paused",
+  done: "Done",
+};
+const TASK_PRIORITY_LABEL: Record<string, string> = { low: "Low", medium: "Medium", high: "High" };
+
+/** One task in the admin Tasks panel. */
+function AdminTaskRow({ row, timeFormat, today }: { row: AdminRow; timeFormat: TimeFormat; today: string }) {
+  const status = String(row.status ?? "open");
+  const priority = String(row.priority ?? "medium");
+  const dueAt = row.dueAt ? String(row.dueAt) : null;
+  const overdue = status !== "done" && dueAt !== null && dueAt.slice(0, 10) < today;
+
+  return (
+    <div className="min-w-0 space-y-1.5">
+      <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <p className="min-w-0 break-words font-medium text-foreground">
+          {String(row.title || "Untitled task")}
+        </p>
+        <p className="shrink-0 text-xs tabular-nums text-muted-foreground">
+          {formatDate(row.updatedAt ?? row.createdAt, timeFormat)}
+        </p>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Badge variant="secondary">{TASK_STATUS_LABEL[status] ?? status}</Badge>
+        <Badge variant="outline">{TASK_PRIORITY_LABEL[priority] ?? priority} priority</Badge>
+        {dueAt ? (
+          <Badge variant={overdue ? "destructive" : "outline"}>
+            {overdue ? "Overdue" : "Due"} {formatDate(dueAt, timeFormat)}
+          </Badge>
+        ) : null}
+      </div>
+      {row.notes ? (
+        <MarkdownText text={String(row.notes)} className="text-sm text-muted-foreground" />
       ) : null}
     </div>
   );

@@ -11,6 +11,7 @@ import {
 import { closeMiniPlayerWindow } from "@/lib/mini-player/window-controller";
 import { BREAK_TAG } from "@/lib/notifications/settings";
 import { useNotificationPreferences } from "@/lib/notifications/use-notification-preferences";
+import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 import { getActiveTimerElapsedSec, useTimerStore } from "@/lib/stores/timer-store";
 import { useSecondTick } from "@/lib/stores/use-ticker";
 import { createTimeEntry, ensureBreakAssignments } from "@/lib/time-tracking/time-entries";
@@ -55,6 +56,7 @@ export function MiniPlayerSurface({ pipWindow }: MiniPlayerSurfaceProps) {
   const finishBreak = useTimerStore((state) => state.finishBreak);
   const appendNote = useTimerStore((state) => state.appendNote);
   const appendBreakNote = useTimerStore((state) => state.appendBreakNote);
+  const { value: timeFormat } = useTypedSetting("timeFormat");
 
   const tickNow = useSecondTick();
   const [note, setNote] = useState("");
@@ -90,7 +92,7 @@ export function MiniPlayerSurface({ pipWindow }: MiniPlayerSurfaceProps) {
     }
 
     if (onBreak) {
-      appendBreakNote(trimmed);
+      appendBreakNote(trimmed, new Date(), timeFormat);
       setNote("");
       announce("Note added to your break.");
       return;
@@ -111,7 +113,7 @@ export function MiniPlayerSurface({ pipWindow }: MiniPlayerSurfaceProps) {
       return;
     }
 
-    appendNote(primary.id, trimmed);
+    appendNote(primary.id, trimmed, new Date(), timeFormat);
     setNote("");
     announce("Note added.");
   }

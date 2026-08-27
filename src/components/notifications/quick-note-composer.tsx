@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
 import { persistQuickNote, type QuickNoteOrigin } from "@/lib/notes";
 import { QUICK_NOTE_TAG } from "@/lib/notifications/settings";
+import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 import { useTimerStore } from "@/lib/stores/timer-store";
 import { createTimeEntry } from "@/lib/time-tracking/time-entries";
 import { formatDuration } from "@/lib/utils";
@@ -73,6 +74,7 @@ export function QuickNoteComposer({ open, onOpenChange, target, onSaved }: Quick
   const [saving, setSaving] = useState(false);
   const appendNote = useTimerStore((state) => state.appendNote);
   const appendBreakNote = useTimerStore((state) => state.appendBreakNote);
+  const { value: timeFormat } = useTypedSetting("timeFormat");
 
   // Cleared on close rather than on open, so the field is always empty next time
   // without needing an effect to reset it.
@@ -94,10 +96,10 @@ export function QuickNoteComposer({ open, onOpenChange, target, onSaved }: Quick
 
     try {
       if (target.kind === "timer") {
-        appendNote(target.timerId, trimmed);
+        appendNote(target.timerId, trimmed, new Date(), timeFormat);
         toast.success(`Note added to “${target.title}” and your notes.`);
       } else if (target.kind === "break") {
-        appendBreakNote(trimmed);
+        appendBreakNote(trimmed, new Date(), timeFormat);
         toast.success("Note added to your break and your notes.");
       } else {
         // Nothing is running, so the note becomes a zero-duration entry. Nothing
@@ -121,7 +123,7 @@ export function QuickNoteComposer({ open, onOpenChange, target, onSaved }: Quick
       // the note the user already typed, so the primary write above stays
       // authoritative and this is reported separately.
       try {
-        await persistQuickNote(trimmed, toOrigin(target), formatDuration);
+        await persistQuickNote(trimmed, toOrigin(target), formatDuration, new Date(), timeFormat);
       } catch {
         toast.error("Saved, but couldn’t copy it into your notes.");
       }

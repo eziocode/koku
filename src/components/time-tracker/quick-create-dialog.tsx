@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/toast";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
+import { useTasks } from "@/lib/storage/hooks/use-tasks";
 import { getUnusedItemColor } from "@/lib/storage/item-colors";
 
 /* ─── Project ──────────────────────────────────────────────────────────────── */
@@ -186,6 +187,75 @@ export function QuickCreateCategoryDialog({
               value={color}
               onChange={(e) => setColor(e.target.value)}
               className="h-10 cursor-pointer px-2"
+            />
+          </div>
+          <Button type="submit" disabled={saving} className="w-full">
+            Create &amp; select
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ─── Task ─────────────────────────────────────────────────────────────────── */
+
+interface QuickCreateTaskDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCreated: (id: string) => void;
+  /** Pre-fills the new task's project from whatever the timer form already has selected. */
+  projectId?: string;
+  categoryId?: string;
+}
+
+export function QuickCreateTaskDialog({
+  open,
+  onOpenChange,
+  onCreated,
+  projectId,
+  categoryId,
+}: QuickCreateTaskDialogProps) {
+  const { createTask } = useTasks();
+  const [title, setTitle] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    try {
+      const task = await createTask({
+        title: title.trim(),
+        projectId: projectId && projectId !== "none" ? projectId : null,
+        categoryId: categoryId && categoryId !== "none" ? categoryId : null,
+      });
+      toast.success("Task created.");
+      onCreated(task.id);
+      onOpenChange(false);
+      setTitle("");
+    } catch {
+      toast.error("Unable to create task.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Create task</DialogTitle>
+          <DialogDescription>Add a new task and it will be selected automatically.</DialogDescription>
+        </DialogHeader>
+        <form className="space-y-4" onSubmit={handleSubmit}>
+          <div className="space-y-2">
+            <Label htmlFor="qc-task-title">Title</Label>
+            <Input
+              id="qc-task-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="My task"
+              required
             />
           </div>
           <Button type="submit" disabled={saving} className="w-full">

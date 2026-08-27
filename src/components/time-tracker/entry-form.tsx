@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TagInput } from "@/components/ui/tag-input";
-import { Textarea } from "@/components/ui/textarea";
+import { RichTextarea } from "@/components/ui/rich-textarea";
 import { toast } from "@/components/ui/toast";
 import { QuickCreateCategoryDialog, QuickCreateProjectDialog } from "@/components/time-tracker/quick-create-dialog";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
@@ -245,7 +245,7 @@ export function EntryForm({
       </div>
       <div className="space-y-2">
         <Label htmlFor="entry-notes">Notes</Label>
-        <Textarea id="entry-notes" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Add helpful context or outcome notes." />
+        <RichTextarea id="entry-notes" value={notes} onChange={setNotes} placeholder="Add helpful context or outcome notes." />
       </div>
       <div className={showSaveAndNew ? "flex gap-3" : undefined}>
         {showSaveAndNew ? (

@@ -14,9 +14,9 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RichTextarea } from "@/components/ui/rich-textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TagInput } from "@/components/ui/tag-input";
-import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
@@ -118,7 +118,7 @@ function TaskFormBody({
 
         <div className="space-y-1.5">
           <Label htmlFor="task-notes">Description</Label>
-          <Textarea id="task-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="Optional details…" />
+          <RichTextarea id="task-notes" value={notes} onChange={setNotes} rows={3} placeholder="Optional details…" />
         </div>
 
         <div className="grid grid-cols-2 gap-4">

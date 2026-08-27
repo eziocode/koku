@@ -1,6 +1,8 @@
 import { format } from "date-fns";
 
 import { kokuDb, type Note } from "@/lib/storage/db";
+import type { TimeFormat } from "@/lib/settings/schema";
+import { formatTime } from "@/lib/time-format";
 import { slugify } from "@/lib/utils";
 import { deleteRow, syncRow } from "@/lib/sync/sync-engine";
 
@@ -112,8 +114,10 @@ export function buildQuickNoteStamp(
   loggedAt: Date,
   origin: QuickNoteOrigin,
   formatElapsed: (seconds: number) => string,
+  timeFormat: TimeFormat = "24h",
 ): string {
-  const when = format(loggedAt, "d MMM yyyy · HH:mm");
+  const time = timeFormat === "12h" ? formatTime(loggedAt, "12h") : format(loggedAt, "HH:mm");
+  const when = `${format(loggedAt, "d MMM yyyy")} · ${time}`;
 
   if (origin.kind === "timer" && origin.label) {
     const elapsed = origin.elapsedSec === null ? null : formatElapsed(origin.elapsedSec);
@@ -167,9 +171,10 @@ export async function persistQuickNote(
   origin: QuickNoteOrigin,
   formatElapsed: (seconds: number) => string,
   loggedAt: Date = new Date(),
+  timeFormat: TimeFormat = "24h",
 ): Promise<Note> {
   const title = buildQuickNoteTitle(text);
-  const content = buildQuickNoteDoc(text, buildQuickNoteStamp(loggedAt, origin, formatElapsed));
+  const content = buildQuickNoteDoc(text, buildQuickNoteStamp(loggedAt, origin, formatElapsed, timeFormat));
   const iso = loggedAt.toISOString();
 
   const note: Note = {

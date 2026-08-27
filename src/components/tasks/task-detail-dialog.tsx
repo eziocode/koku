@@ -10,11 +10,11 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { MarkdownText } from "@/components/ui/markdown-text";
 import { TaskFormDialog } from "@/components/tasks/task-form-dialog";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
@@ -70,7 +70,7 @@ export function TaskDetailDialog({ task, onOpenChange }: TaskDetailDialogProps) 
               <Badge variant="outline">{PRIORITY_LABEL[task.priority]} priority</Badge>
             </div>
             <DialogTitle>{task.title}</DialogTitle>
-            {task.notes ? <DialogDescription className="whitespace-pre-line">{task.notes}</DialogDescription> : null}
+            {task.notes ? <MarkdownText text={task.notes} className="text-muted-foreground" /> : null}
           </DialogHeader>
 
           <div className="grid grid-cols-2 gap-4 rounded-2xl border border-border bg-muted/30 p-4 sm:grid-cols-4">

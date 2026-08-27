@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { LazyScrollList } from "@/components/ui/lazy-scroll-list";
+import { MarkdownText } from "@/components/ui/markdown-text";
 import { toast } from "@/components/ui/toast";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
@@ -98,11 +99,7 @@ export function DailyGrid({ entries }: DailyGridProps) {
                   </Link>
                 ))}
               </div>
-              {entry.notes ? (
-                /* whitespace-pre-line because quick notes append timestamped
-                   lines; without it they collapse onto one unreadable line. */
-                <p className="whitespace-pre-line text-sm text-muted-foreground">{entry.notes}</p>
-              ) : null}
+              {entry.notes ? <MarkdownText text={entry.notes} className="text-muted-foreground" /> : null}
             </div>
             <div className="flex items-center gap-3">
               <div className="min-w-24 text-right text-lg font-semibold text-foreground">
