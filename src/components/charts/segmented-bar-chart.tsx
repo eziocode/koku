@@ -215,10 +215,12 @@ function SegmentTooltipPortal({
   label,
   segment,
   anchor,
+  timeFormat,
 }: {
   label: string;
   segment: WorkLogSegment;
   anchor: { x: number; y: number };
+  timeFormat: TimeFormat;
 }) {
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
@@ -249,7 +251,7 @@ function SegmentTooltipPortal({
         visibility: position ? "visible" : "hidden",
       }}
     >
-      <DayTooltipCard label={label} segments={[segment]} activeSegmentId={segment.id} />
+      <DayTooltipCard label={label} segments={[segment]} activeSegmentId={segment.id} timeFormat={timeFormat} />
     </div>,
     document.body,
   );
@@ -541,6 +543,7 @@ export function SegmentedBarChart({
           label={hovered.dayLabel}
           segment={hovered.segment}
           anchor={{ x: hovered.x + 16, y: hovered.y + 16 }}
+          timeFormat={timeFormat}
         />
       ) : null}
 

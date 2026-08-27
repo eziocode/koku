@@ -29,6 +29,8 @@ import { buildSegmentedDays, toProjectBreakdown } from "@/lib/charts/segments";
 import { BREAK_TAG } from "@/lib/notifications/settings";
 import { kokuDb } from "@/lib/storage/db";
 import { syncNow } from "@/lib/sync/sync-engine";
+import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
+import { formatTime } from "@/lib/time-format";
 import { exportToCSV, exportToXLSX } from "@/lib/export";
 import { cn } from "@/lib/utils";
 
@@ -117,6 +119,7 @@ async function localFirstActivity(): Promise<string | null> {
 export function AdminUserDetail({ userId }: { userId: string }) {
   const router = useRouter();
   const today = localToday();
+  const { value: timeFormat } = useTypedSetting("timeFormat");
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -490,8 +493,8 @@ export function AdminUserDetail({ userId }: { userId: string }) {
           hasMore={!!reportCursor}
           loadingMore={reportLoadingMore}
           onMore={() => void loadReport(reportCursor)}
-          onExportCSV={() => void exportAdminReport(reportRows, "csv")}
-          onExportXLSX={() => void exportAdminReport(reportRows, "xlsx")}
+          onExportCSV={() => void exportAdminReport(reportRows, "csv", timeFormat)}
+          onExportXLSX={() => void exportAdminReport(reportRows, "xlsx", timeFormat)}
         />
       </div>
     );
@@ -674,10 +677,10 @@ export function AdminUserDetail({ userId }: { userId: string }) {
   );
 }
 
-async function exportAdminReport(rows: AdminRow[], format: "csv" | "xlsx") {
+async function exportAdminReport(rows: AdminRow[], format: "csv" | "xlsx", timeFormat: "12h" | "24h" = "24h") {
   const clean = rows.map((row) => ({
     Date: new Date(String(row.startAt ?? row.updatedAt ?? row.createdAt)).toLocaleDateString(),
-    Time: new Date(String(row.startAt ?? row.updatedAt ?? row.createdAt)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    Time: formatTime(new Date(String(row.startAt ?? row.updatedAt ?? row.createdAt)), timeFormat),
     Type: row.table === "notes" ? "Note" : "Time log",
     Title: String(row.title ?? (row.table === "notes" ? "Untitled note" : "Untitled work")),
     Project: String(row.projectId ?? "Unassigned"),
@@ -686,7 +689,7 @@ async function exportAdminReport(rows: AdminRow[], format: "csv" | "xlsx") {
     Content: row.table === "notes" ? tiptapToPlainText(row.content).trim() : String(row.notes ?? ""),
   }));
   if (format === "csv") await exportToCSV(clean, "koku-admin-report.csv");
-  else await exportToXLSX(clean.map((row) => ({ title: row.Title, startAt: `${row.Date} ${row.Time}`, endAt: null, durationSec: null, projectName: row.Project, categoryName: row.Type, tags: row.Tags ? row.Tags.split(", ") : [], notes: row.Content, createdAt: `${row.Date} ${row.Time}` })), "koku-admin-report.xlsx");
+  else await exportToXLSX(clean.map((row) => ({ title: row.Title, startAt: `${row.Date} ${row.Time}`, endAt: null, durationSec: null, projectName: row.Project, categoryName: row.Type, tags: row.Tags ? row.Tags.split(", ") : [], notes: row.Content, createdAt: `${row.Date} ${row.Time}` })), "koku-admin-report.xlsx", timeFormat);
 }
 
 function FullRangeReport({

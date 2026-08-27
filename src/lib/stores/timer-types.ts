@@ -11,6 +11,8 @@ export type ActiveTimer = {
   title: string;
   projectId?: string | null;
   categoryId?: string | null;
+  /** The task this session's time accumulates against, if any. */
+  taskId?: string | null;
   tags: string[];
   notes?: string | null;
   /** ISO. Shifted forward by the paused delta on resume, so elapsed excludes pauses. */
@@ -29,6 +31,7 @@ export type TimerStartInput = {
   title: string;
   projectId?: string | null;
   categoryId?: string | null;
+  taskId?: string | null;
   tags?: string[];
   notes?: string | null;
   startTime: string;
@@ -61,12 +64,25 @@ export type ActiveBreak = {
   completedAt?: string | null;
   revision?: number;
   updatedAt?: string;
+  /**
+   * Set only when this break was started from a configured quick action
+   * (Settings → Notifications → Quick actions). When present, the entry
+   * written on completion carries this project/category and is tagged with
+   * `tag` instead of the generic break tag — the plain `BreakButton` flow
+   * never sets these.
+   */
+  projectId?: string | null;
+  categoryId?: string | null;
+  tag?: string | null;
 };
 
 export type BreakStartInput = {
   label: string;
   plannedDurationSec: number;
   notes?: string | null;
+  projectId?: string | null;
+  categoryId?: string | null;
+  tag?: string | null;
 };
 
 export type BreakCompletion = {

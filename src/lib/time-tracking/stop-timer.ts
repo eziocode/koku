@@ -18,6 +18,7 @@ export function buildEntryFromTimer(timer: ActiveTimer, endedAt: string): Create
     title: timer.title,
     projectId: timer.projectId,
     categoryId: timer.categoryId,
+    taskId: timer.taskId,
     startAt: timer.startTime,
     endAt: endedAt,
     durationSec: getActiveTimerElapsedSec(timer, Date.parse(endedAt)),

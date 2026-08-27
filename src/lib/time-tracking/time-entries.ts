@@ -14,6 +14,7 @@ export interface CreateTimeEntryInput {
   title: string;
   projectId?: string | null;
   categoryId?: string | null;
+  taskId?: string | null;
   startAt: string;
   endAt?: string | null;
   durationSec?: number | null;
@@ -97,6 +98,7 @@ export async function createTimeEntry(data: CreateTimeEntryInput): Promise<TimeE
     title: data.title,
     projectId: data.projectId ?? null,
     categoryId: data.categoryId ?? null,
+    taskId: data.taskId ?? null,
     startAt: data.startAt,
     endAt: data.endAt ?? null,
     durationSec: data.durationSec ?? getDurationSec(data.startAt, data.endAt),

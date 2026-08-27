@@ -1,25 +1,26 @@
 "use client";
 
-import { format } from "date-fns";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { AssignmentBadge, StatusBadge } from "@/components/charts/status-badge";
 import { Badge } from "@/components/ui/badge";
 import type { WorkLogSegment } from "@/lib/charts/segments";
+import type { TimeFormat } from "@/lib/settings/schema";
+import { formatTime as formatClockTime } from "@/lib/time-format";
 import { formatDuration } from "@/lib/utils";
 
-function formatTime(iso: string | null): string {
+function formatTime(iso: string | null, timeFormat: TimeFormat): string {
   if (!iso) return "—";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "—";
-  return format(date, "HH:mm");
+  return formatClockTime(date, timeFormat);
 }
 
-function formatRange(startAt: string, endAt: string | null): string {
-  const start = formatTime(startAt);
+function formatRange(startAt: string, endAt: string | null, timeFormat: TimeFormat): string {
+  const start = formatTime(startAt, timeFormat);
   if (!endAt) return `${start} → now`;
-  return `${start} → ${formatTime(endAt)}`;
+  return `${start} → ${formatTime(endAt, timeFormat)}`;
 }
 
 interface DayTooltipCardProps {
@@ -28,6 +29,7 @@ interface DayTooltipCardProps {
   segments: WorkLogSegment[];
   /** When set, the log matching this id is emphasised (the hovered segment). */
   activeSegmentId?: string;
+  timeFormat?: TimeFormat;
 }
 
 /**
@@ -35,7 +37,7 @@ interface DayTooltipCardProps {
  * the total count and, per log, its title, project, status, timing, duration,
  * and tags. The hovered log is emphasised.
  */
-export function DayTooltipCard({ label, segments, activeSegmentId }: DayTooltipCardProps) {
+export function DayTooltipCard({ label, segments, activeSegmentId, timeFormat = "24h" }: DayTooltipCardProps) {
   if (!segments.length) return null;
 
   const totalSeconds = segments.reduce((sum, s) => sum + s.durationSec, 0);
@@ -96,7 +98,7 @@ export function DayTooltipCard({ label, segments, activeSegmentId }: DayTooltipC
                 <StatusBadge status={segment.status} />
                 <AssignmentBadge assignment={segment.assignment} />
                 <span className="text-[11px] tabular-nums text-muted-foreground">
-                  {formatRange(segment.startAt, segment.endAt)}
+                  {formatRange(segment.startAt, segment.endAt, timeFormat)}
                 </span>
               </div>
 
@@ -249,12 +251,14 @@ export function RechartsSegmentTooltip({
   coordinate,
   activeSegmentId,
   showFullDay = false,
+  timeFormat = "24h",
 }: {
   active?: boolean;
   payload?: Array<{ payload?: unknown; dataKey?: string | number }>;
   coordinate?: { x?: number; y?: number };
   activeSegmentId?: string | null;
   showFullDay?: boolean;
+  timeFormat?: TimeFormat;
 }) {
   if (!active || !payload?.length) {
     return null;
@@ -282,6 +286,7 @@ export function RechartsSegmentTooltip({
         label={row?.label ?? ""}
         segments={tooltipSegments.length ? tooltipSegments : segments}
         activeSegmentId={targetedSegmentId}
+        timeFormat={timeFormat}
       />
     </ViewportAwareTooltip>
   );

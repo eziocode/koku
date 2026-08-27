@@ -1,6 +1,7 @@
 "use client";
 
 import { Pencil, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { EntryForm } from "@/components/time-tracker/entry-form";
@@ -22,6 +23,7 @@ interface EntryRecord {
   durationSec: number | null;
   tags: string[];
   notes: string | null;
+  taskId?: string | null;
   project: { id: string; name: string; color: string } | null;
   category: { id: string; name: string; color: string } | null;
 }
@@ -89,7 +91,11 @@ export function DailyGrid({ entries }: DailyGridProps) {
               </div>
               <div className="flex flex-wrap gap-2">
                 {entry.tags.map((tag) => (
-                  <Badge key={tag}>{tag}</Badge>
+                  <Link key={tag} href={`/tags/${encodeURIComponent(tag)}`} onClick={(e) => e.stopPropagation()}>
+                    <Badge className="cursor-pointer transition-colors hover:bg-primary hover:text-primary-foreground">
+                      {tag}
+                    </Badge>
+                  </Link>
                 ))}
               </div>
               {entry.notes ? (

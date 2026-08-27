@@ -8,6 +8,38 @@ import { z } from "zod";
 export const BREAK_TAG = "break";
 export const QUICK_NOTE_TAG = "quick-note";
 
+/* ─── Quick actions ───────────────────────────────────────────────────────── */
+
+/** Guards the settings row against unbounded growth, same rationale as holidays. */
+export const MAX_QUICK_ACTIONS = 10;
+
+/** A small, curated set — kept short so the settings picker stays a plain select. */
+export const QUICK_ACTION_ICONS = [
+  "Phone",
+  "Users",
+  "MessageCircle",
+  "Mail",
+  "Coffee",
+  "Utensils",
+  "Car",
+  "Dumbbell",
+  "BookOpen",
+  "Sparkles",
+] as const;
+export type QuickActionIcon = (typeof QUICK_ACTION_ICONS)[number];
+
+export interface QuickActionPreset {
+  id: string;
+  label: string;
+  icon: QuickActionIcon;
+  /** Normalized lowercase, applied to the entry logged when this action ends. */
+  tag: string;
+  /** 0 means open-ended, same convention as a break. */
+  defaultMinutes: number;
+  projectId: string | null;
+  categoryId: string | null;
+}
+
 /* ─── Interval bounds ─────────────────────────────────────────────────────── */
 /* The 5-minute floor is not cosmetic. Hidden tabs are throttled to roughly one  */
 /* timer wake per minute (and may be frozen outright), so koku cannot honestly   */
@@ -69,6 +101,18 @@ export interface NotificationPreferences {
     /** Refuse to start new timers while a break is running. */
     blockNewTimers: boolean;
   };
+  /**
+   * Custom one-click actions ("Call", "Standup", …), configured in
+   * Settings → Notifications. Behaves like `BreakButton`: pauses running
+   * timers and logs the elapsed time as its own entry on completion — but,
+   * unlike a plain break, that entry can carry a default project/category and
+   * is tagged with the action's own tag instead of the generic break tag, so
+   * it counts as work in reports.
+   */
+  quickActions: {
+    enabled: boolean;
+    items: QuickActionPreset[];
+  };
   endOfDay: {
     /** Master switch for the end-of-day auto-stop feature. */
     enabled: boolean;
@@ -111,6 +155,10 @@ export const NOTIFICATION_DEFAULTS: NotificationPreferences = {
     autoResume: true,
     notifyOnComplete: true,
     blockNewTimers: true,
+  },
+  quickActions: {
+    enabled: true,
+    items: [],
   },
   endOfDay: {
     enabled: false,
@@ -184,6 +232,25 @@ export const notificationPreferencesSchema = z
         blockNewTimers: z.boolean().catch(true),
       })
       .catch(NOTIFICATION_DEFAULTS.breaks),
+    quickActions: z
+      .object({
+        enabled: z.boolean().catch(true),
+        items: z
+          .array(
+            z.object({
+              id: z.string().catch(""),
+              label: z.string().trim().min(1).max(40).catch("Action"),
+              icon: z.enum(QUICK_ACTION_ICONS).catch("Sparkles"),
+              tag: z.string().trim().toLowerCase().min(1).max(32).catch("quick-action"),
+              defaultMinutes: z.number().int().min(0).max(240).catch(0),
+              projectId: z.string().nullable().catch(null),
+              categoryId: z.string().nullable().catch(null),
+            }),
+          )
+          .max(MAX_QUICK_ACTIONS)
+          .catch([]),
+      })
+      .catch(NOTIFICATION_DEFAULTS.quickActions),
     endOfDay: z
       .object({
         enabled: z.boolean().catch(false),

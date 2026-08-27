@@ -44,15 +44,24 @@ export function useProjects() {
   }
 
   async function deleteProject(id: string) {
-    const affectedEntries = await kokuDb.timeEntries.where("projectId").equals(id).toArray();
-    await kokuDb.transaction("rw", kokuDb.projects, kokuDb.timeEntries, async () => {
-      await kokuDb.timeEntries.where("projectId").equals(id).modify({ projectId: null });
-      await kokuDb.projects.delete(id);
-    });
-    await Promise.all(affectedEntries.map(async (entry) => {
-      const updated = { ...entry, projectId: null };
-      return syncRow("timeEntries", updated);
-    }));
+    const [affectedEntries, affectedTasks] = await kokuDb.transaction(
+      "rw",
+      kokuDb.projects,
+      kokuDb.timeEntries,
+      kokuDb.tasks,
+      async () => {
+        const entries = await kokuDb.timeEntries.where("projectId").equals(id).toArray();
+        const tasks = await kokuDb.tasks.where("projectId").equals(id).toArray();
+        await kokuDb.timeEntries.where("projectId").equals(id).modify({ projectId: null });
+        await kokuDb.tasks.where("projectId").equals(id).modify({ projectId: null });
+        await kokuDb.projects.delete(id);
+        return [entries, tasks];
+      },
+    );
+    await Promise.all([
+      ...affectedEntries.map((entry) => syncRow("timeEntries", { ...entry, projectId: null })),
+      ...affectedTasks.map((task) => syncRow("tasks", { ...task, projectId: null })),
+    ]);
     void deleteRow("projects", id);
   }
 

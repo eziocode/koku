@@ -10,7 +10,7 @@ function LogPageFallback() {
         <div className="h-9 w-48 rounded-lg bg-muted" />
         <div className="h-5 w-full max-w-xl rounded-full bg-muted" />
       </div>
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+      <div className="grid items-start gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="h-80 rounded-3xl border border-border bg-card" />
         <div className="h-48 rounded-3xl border border-border bg-card" />
       </div>

@@ -12,6 +12,8 @@ import { LazyScrollList } from "@/components/ui/lazy-scroll-list";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
+import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
+import { formatTime } from "@/lib/time-format";
 import { formatDuration } from "@/lib/utils";
 
 interface ComparePanelProps { date: string; label: "A" | "B"; }
@@ -19,6 +21,7 @@ interface ComparePanelProps { date: string; label: "A" | "B"; }
 function ComparePanel({ date, label }: ComparePanelProps) {
   const { projects } = useProjects();
   const { categories } = useCategories();
+  const { value: timeFormat } = useTypedSetting("timeFormat");
   const parsedDate = useMemo(() => parseISO(date + "T00:00:00"), [date]);
   const { entries } = useTimeEntries({ from: startOfDay(parsedDate).toISOString(), to: endOfDay(parsedDate).toISOString() });
   const projectMap = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
@@ -59,7 +62,7 @@ function ComparePanel({ date, label }: ComparePanelProps) {
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 space-y-1">
                 <p className="truncate font-medium text-foreground">{entry.title}</p>
-                <p className="text-xs text-muted-foreground">{format(new Date(entry.startAt), "HH:mm")}{entry.endAt ? " – " + format(new Date(entry.endAt), "HH:mm") : " • Running"}</p>
+                <p className="text-xs text-muted-foreground">{formatTime(new Date(entry.startAt), timeFormat)}{entry.endAt ? " – " + formatTime(new Date(entry.endAt), timeFormat) : " • Running"}</p>
                 <div className="flex flex-wrap gap-1">
                   {entry.project && <Badge variant="outline" className="text-xs" style={{ borderColor: entry.project.color, color: entry.project.color }}>{entry.project.name}</Badge>}
                   {entry.category && <Badge variant="secondary" className="text-xs">{entry.category.name}</Badge>}

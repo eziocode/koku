@@ -169,7 +169,7 @@ export function LogClient() {
       notes: e.notes,
       createdAt: e.createdAt,
     }));
-    await exportToXLSX(xlsxEntries, `koku-log-${selectedDateValue}.xlsx`);
+    await exportToXLSX(xlsxEntries, `koku-log-${selectedDateValue}.xlsx`, timeFormat);
   }
 
   return (
@@ -223,7 +223,7 @@ export function LogClient() {
       ) : (
         <>
           {/* Timer + manual entry */}
-          <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+          <div className="grid items-start gap-6 xl:grid-cols-[1.1fr_0.9fr]">
             {isSelectedDateToday ? (
               <Timer />
             ) : (

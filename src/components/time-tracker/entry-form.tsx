@@ -13,7 +13,9 @@ import { toast } from "@/components/ui/toast";
 import { QuickCreateCategoryDialog, QuickCreateProjectDialog } from "@/components/time-tracker/quick-create-dialog";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
+import { useTasks } from "@/lib/storage/hooks/use-tasks";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
+import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 
 interface EntryFormProps {
   entryId?: string;
@@ -27,6 +29,7 @@ interface EntryFormProps {
     title?: string;
     projectId?: string | null;
     categoryId?: string | null;
+    taskId?: string | null;
     startAt?: string;
     endAt?: string | null;
     tags?: string[];
@@ -55,7 +58,9 @@ export function EntryForm({
 }: EntryFormProps) {
   const { projects } = useProjects();
   const { categories } = useCategories();
+  const { pickerTasks } = useTasks();
   const { createEntry, updateEntry, entries: allEntries } = useTimeEntries();
+  const { value: timeFormat } = useTypedSetting("timeFormat");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [timeError, setTimeError] = useState<string | null>(null);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
@@ -70,6 +75,7 @@ export function EntryForm({
   const [title, setTitle] = useState(defaultValues?.title || "");
   const [projectId, setProjectId] = useState(defaultValues?.projectId || "none");
   const [categoryId, setCategoryId] = useState(defaultValues?.categoryId || "none");
+  const [taskId, setTaskId] = useState(defaultValues?.taskId || "none");
   const [startAt, setStartAt] = useState(toDateTimeLocal(initialStart));
   const [endAt, setEndAt] = useState(toDateTimeLocal(defaultValues?.endAt));
   const [tags, setTags] = useState<string[]>(defaultValues?.tags || []);
@@ -106,6 +112,7 @@ export function EntryForm({
         title,
         projectId: projectId === "none" ? null : projectId,
         categoryId: categoryId === "none" ? null : categoryId,
+        taskId: taskId === "none" ? null : taskId,
         startAt: new Date(startAt).toISOString(),
         endAt: endAt ? new Date(endAt).toISOString() : null,
         tags,
@@ -178,6 +185,20 @@ export function EntryForm({
           </button>
         </div>
       </div>
+      {pickerTasks.length > 0 && (
+        <div className="space-y-1.5">
+          <Label>Log time against a task</Label>
+          <Select value={taskId} onValueChange={setTaskId}>
+            <SelectTrigger><SelectValue placeholder="No task" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No task</SelectItem>
+              {pickerTasks.map((task) => (
+                <SelectItem key={task.id} value={task.id}>{task.title}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="entry-start">Start time</Label>
@@ -190,6 +211,7 @@ export function EntryForm({
             }}
             placeholder="Pick start date & time"
             className="w-full"
+            timeFormat={timeFormat}
             required
           />
         </div>
@@ -204,6 +226,7 @@ export function EntryForm({
             }}
             placeholder="Pick end date & time"
             className="w-full"
+            timeFormat={timeFormat}
           />
         </div>
       </div>

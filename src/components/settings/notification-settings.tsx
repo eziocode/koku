@@ -6,6 +6,7 @@ import { useState } from "react";
 import { format, parseISO } from "date-fns";
 
 import { DndMenu } from "@/components/notifications/dnd-menu";
+import { QuickActionsCard } from "@/components/settings/quick-actions-card";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -626,6 +627,8 @@ export function NotificationSettings() {
           />
         </CardContent>
       </Card>
+
+      <QuickActionsCard />
 
       {/* ── End of day ───────────────────────────────────────────────────── */}
       <Card>

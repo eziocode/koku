@@ -23,9 +23,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
 import { PopOutButton } from "@/components/mini-player/pop-out-button";
 import { BreakButton, BreakCard } from "@/components/time-tracker/break-controls";
+import { QuickActionButtons } from "@/components/time-tracker/quick-action-buttons";
 import { QuickCreateCategoryDialog, QuickCreateProjectDialog } from "@/components/time-tracker/quick-create-dialog";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
+import { useTasks } from "@/lib/storage/hooks/use-tasks";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
 import {
   getActiveTimerElapsedSec,
@@ -61,15 +63,19 @@ interface TimerFieldsProps {
   title: string;
   projectId: string;
   categoryId: string;
+  taskId?: string;
   tags: string[];
   notes: string;
   pomodoroMode: boolean;
   projects: SelectOption[];
   categories: SelectOption[];
+  /** Open (not-done) tasks to log time against. Omit to hide the field entirely. */
+  tasks?: SelectOption[];
   tagSuggestions?: string[];
   onTitleChange: (value: string) => void;
   onProjectIdChange: (value: string) => void;
   onCategoryIdChange: (value: string) => void;
+  onTaskIdChange?: (value: string) => void;
   onTagsChange: (tags: string[]) => void;
   onNotesChange: (notes: string) => void;
   onPomodoroModeChange: (value: boolean) => void;
@@ -96,15 +102,18 @@ function TimerFields({
   title,
   projectId,
   categoryId,
+  taskId = "none",
   tags,
   notes,
   pomodoroMode,
   projects,
   categories,
+  tasks,
   tagSuggestions = [],
   onTitleChange,
   onProjectIdChange,
   onCategoryIdChange,
+  onTaskIdChange,
   onTagsChange,
   onNotesChange,
   onPomodoroModeChange,
@@ -171,6 +180,24 @@ function TimerFields({
           + New category
         </button>
       </div>
+
+      {/* Task */}
+      {tasks && onTaskIdChange ? (
+        <div className="space-y-1.5 md:col-span-2">
+          <Label>Log time against a task</Label>
+          <Select value={taskId} onValueChange={onTaskIdChange}>
+            <SelectTrigger>
+              <SelectValue placeholder="No task" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No task</SelectItem>
+              {tasks.map((task) => (
+                <SelectItem key={task.id} value={task.id}>{task.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
 
       {/* Tags */}
       <div className="space-y-2 md:col-span-2">
@@ -321,11 +348,13 @@ function buildTimerInput(
   pomodoroMode: boolean,
   tags: string[],
   notes: string,
+  taskId: string = "none",
 ): TimerStartInput {
   return {
     title: title.trim(),
     projectId: projectId === "none" ? null : projectId,
     categoryId: categoryId === "none" ? null : categoryId,
+    taskId: taskId === "none" ? null : taskId,
     startTime: new Date().toISOString(),
     pomodoroMode,
     tags,
@@ -340,6 +369,7 @@ function resetForm(
   setPomodoroMode: (value: boolean) => void,
   setTags: (value: string[]) => void,
   setNotes: (value: string) => void,
+  setTaskId?: (value: string) => void,
 ) {
   setTitle("");
   setProjectId("none");
@@ -347,11 +377,17 @@ function resetForm(
   setPomodoroMode(false);
   setTags([]);
   setNotes("");
+  setTaskId?.("none");
 }
 
 export function Timer() {
   const { projects } = useProjects();
   const { categories } = useCategories();
+  const { pickerTasks } = useTasks();
+  const taskOptions = useMemo(
+    () => pickerTasks.map((task) => ({ id: task.id, name: task.title })),
+    [pickerTasks],
+  );
   const { createEntry, entries: allEntries } = useTimeEntries();
   const { timers, activeBreak, startTimer, startSecondaryTimer, pauseTimer, resumeTimer, stopTimer, appendNote } =
     useTimerStore();
@@ -360,15 +396,18 @@ export function Timer() {
   const [title, setTitle] = useState("");
   const [projectId, setProjectId] = useState<string>("none");
   const [categoryId, setCategoryId] = useState<string>("none");
+  const [taskId, setTaskId] = useState<string>("none");
   const [tags, setTags] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
   const [pomodoroMode, setPomodoroMode] = useState(false);
   const [secondaryTitle, setSecondaryTitle] = useState("");
   const [secondaryProjectId, setSecondaryProjectId] = useState<string>("none");
   const [secondaryCategoryId, setSecondaryCategoryId] = useState<string>("none");
+  const [secondaryTaskId, setSecondaryTaskId] = useState<string>("none");
   const [secondaryTags, setSecondaryTags] = useState<string[]>([]);
   const [secondaryNotes, setSecondaryNotes] = useState("");
   const [secondaryPomodoroMode, setSecondaryPomodoroMode] = useState(false);
+  const [parallelTaskOpen, setParallelTaskOpen] = useState(false);
   const [submittingByTimerId, setSubmittingByTimerId] = useState<Record<string, boolean>>({});
   const [resumePrimaryId, setResumePrimaryId] = useState<string | null>(null);
   const [resumeDialogOpen, setResumeDialogOpen] = useState(false);
@@ -535,7 +574,7 @@ export function Timer() {
     }
 
     const started = startTimer(
-      buildTimerInput(title, projectId, categoryId, pomodoroMode, tags, notes),
+      buildTimerInput(title, projectId, categoryId, pomodoroMode, tags, notes, taskId),
       { allowDuringBreak: !prefs.breaks.blockNewTimers },
     );
 
@@ -565,7 +604,7 @@ export function Timer() {
 
     const started = startSecondaryTimer(
       primaryTimer.id,
-      buildTimerInput(secondaryTitle, secondaryProjectId, secondaryCategoryId, secondaryPomodoroMode, secondaryTags, secondaryNotes),
+      buildTimerInput(secondaryTitle, secondaryProjectId, secondaryCategoryId, secondaryPomodoroMode, secondaryTags, secondaryNotes, secondaryTaskId),
     );
 
     if (!started) {
@@ -573,7 +612,8 @@ export function Timer() {
       return;
     }
 
-    resetForm(setSecondaryTitle, setSecondaryProjectId, setSecondaryCategoryId, setSecondaryPomodoroMode, setSecondaryTags, setSecondaryNotes);
+    resetForm(setSecondaryTitle, setSecondaryProjectId, setSecondaryCategoryId, setSecondaryPomodoroMode, setSecondaryTags, setSecondaryNotes, setSecondaryTaskId);
+    setParallelTaskOpen(false);
     toast.success("Parallel task started.");
   }
 
@@ -585,7 +625,7 @@ export function Timer() {
       await saveTimerEntry(timer, endedAt);
       stopTimer(timer.id);
       if (timers.length === 1) {
-        resetForm(setTitle, setProjectId, setCategoryId, setPomodoroMode, setTags, setNotes);
+        resetForm(setTitle, setProjectId, setCategoryId, setPomodoroMode, setTags, setNotes, setTaskId);
       }
       toast.success("Time entry saved.");
     } catch {
@@ -682,15 +722,18 @@ export function Timer() {
               title={title}
               projectId={projectId}
               categoryId={categoryId}
+              taskId={taskId}
               tags={tags}
               notes={notes}
               pomodoroMode={pomodoroMode}
               projects={projects}
               categories={categories}
+              tasks={taskOptions}
               tagSuggestions={tagSuggestions}
               onTitleChange={setTitle}
               onProjectIdChange={setProjectId}
               onCategoryIdChange={setCategoryId}
+              onTaskIdChange={setTaskId}
               onTagsChange={setTags}
               onNotesChange={setNotes}
               onPomodoroModeChange={setPomodoroMode}
@@ -701,41 +744,26 @@ export function Timer() {
                 Start timer
               </Button>
               <BreakButton />
+              <QuickActionButtons />
               <PopOutButton />
             </div>
           </>
         ) : (
           <>
             {primaryTimer?.pausedAt && allTimersPaused ? (
-              <div className="space-y-4 rounded-2xl border border-dashed border-primary/40 bg-primary/5 p-4">
-                <div>
-                  <p className="font-medium text-foreground">Start a parallel task</p>
-                  <p className="text-sm text-muted-foreground">
-                    Every timer is paused. Add work for another task, then resume or save it below.
-                  </p>
+              <div className="rounded-2xl border border-dashed border-primary/40 bg-primary/5 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-foreground">Every timer is paused</p>
+                    <p className="text-sm text-muted-foreground">
+                      Add work for another task, then resume or save it.
+                    </p>
+                  </div>
+                  <Button onClick={() => setParallelTaskOpen(true)} className="min-w-44">
+                    <Plus />
+                    Start parallel task
+                  </Button>
                 </div>
-                <TimerFields
-                  idPrefix="parallel-task"
-                  title={secondaryTitle}
-                  projectId={secondaryProjectId}
-                  categoryId={secondaryCategoryId}
-                  tags={secondaryTags}
-                  notes={secondaryNotes}
-                  pomodoroMode={secondaryPomodoroMode}
-                  projects={projects}
-                  categories={categories}
-                  tagSuggestions={tagSuggestions}
-                  onTitleChange={setSecondaryTitle}
-                  onProjectIdChange={setSecondaryProjectId}
-                  onCategoryIdChange={setSecondaryCategoryId}
-                  onTagsChange={setSecondaryTags}
-                  onNotesChange={setSecondaryNotes}
-                  onPomodoroModeChange={setSecondaryPomodoroMode}
-                />
-                <Button onClick={handleStartParallelTask} className="min-w-44">
-                  <Plus />
-                  Start parallel task
-                </Button>
               </div>
             ) : null}
 
@@ -766,6 +794,7 @@ export function Timer() {
                                     pauseTimer(running.id);
                                   }
                                 }
+                                setParallelTaskOpen(true);
                               }
                             : undefined
                         }
@@ -805,12 +834,51 @@ export function Timer() {
               })()}
               <div className="flex flex-wrap gap-3">
                 <BreakButton />
+                <QuickActionButtons />
                 <PopOutButton />
               </div>
             </div>
           </>
         )}
       </CardContent>
+
+      <Dialog open={parallelTaskOpen} onOpenChange={setParallelTaskOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Start a parallel task</DialogTitle>
+            <DialogDescription>
+              Every timer is paused. Add work for another task, then resume or save it below.
+            </DialogDescription>
+          </DialogHeader>
+          <TimerFields
+            idPrefix="parallel-task"
+            title={secondaryTitle}
+            projectId={secondaryProjectId}
+            categoryId={secondaryCategoryId}
+            taskId={secondaryTaskId}
+            tags={secondaryTags}
+            notes={secondaryNotes}
+            pomodoroMode={secondaryPomodoroMode}
+            projects={projects}
+            categories={categories}
+            tasks={taskOptions}
+            tagSuggestions={tagSuggestions}
+            onTitleChange={setSecondaryTitle}
+            onProjectIdChange={setSecondaryProjectId}
+            onCategoryIdChange={setSecondaryCategoryId}
+            onTaskIdChange={setSecondaryTaskId}
+            onTagsChange={setSecondaryTags}
+            onNotesChange={setSecondaryNotes}
+            onPomodoroModeChange={setSecondaryPomodoroMode}
+          />
+          <DialogFooter>
+            <Button onClick={handleStartParallelTask} className="min-w-44">
+              <Plus />
+              Start parallel task
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={resumeDialogOpen}

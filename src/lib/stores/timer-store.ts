@@ -236,6 +236,9 @@ export const useTimerStore = create<TimerStore>()(
           pausedTimerIds,
           notes: input.notes ?? null,
           completedAt: null,
+          projectId: input.projectId ?? null,
+          categoryId: input.categoryId ?? null,
+          tag: input.tag ?? null,
         };
 
         set({

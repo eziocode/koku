@@ -6,6 +6,7 @@ const baseTimeEntrySchema = z.object({
     title: z.string().min(1).max(160),
     projectId: optionalId,
     categoryId: optionalId,
+    taskId: optionalId,
     startAt: z.string().datetime(),
     endAt: z.string().datetime().nullable().optional(),
     durationSec: z.number().int().nonnegative().nullable().optional(),

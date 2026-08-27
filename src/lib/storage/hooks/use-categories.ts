@@ -42,12 +42,24 @@ export function useCategories() {
   }
 
   async function deleteCategory(id: string) {
-    const affectedEntries = await kokuDb.timeEntries.where("categoryId").equals(id).toArray();
-    await kokuDb.transaction("rw", kokuDb.categories, kokuDb.timeEntries, async () => {
-      await kokuDb.timeEntries.where("categoryId").equals(id).modify({ categoryId: null });
-      await kokuDb.categories.delete(id);
-    });
-    await Promise.all(affectedEntries.map((entry) => syncRow("timeEntries", { ...entry, categoryId: null })));
+    const [affectedEntries, affectedTasks] = await kokuDb.transaction(
+      "rw",
+      kokuDb.categories,
+      kokuDb.timeEntries,
+      kokuDb.tasks,
+      async () => {
+        const entries = await kokuDb.timeEntries.where("categoryId").equals(id).toArray();
+        const tasks = await kokuDb.tasks.where("categoryId").equals(id).toArray();
+        await kokuDb.timeEntries.where("categoryId").equals(id).modify({ categoryId: null });
+        await kokuDb.tasks.where("categoryId").equals(id).modify({ categoryId: null });
+        await kokuDb.categories.delete(id);
+        return [entries, tasks];
+      },
+    );
+    await Promise.all([
+      ...affectedEntries.map((entry) => syncRow("timeEntries", { ...entry, categoryId: null })),
+      ...affectedTasks.map((task) => syncRow("tasks", { ...task, categoryId: null })),
+    ]);
     void deleteRow("categories", id);
   }
 

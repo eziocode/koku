@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "@/components/ui/toast";
-import { kokuDb, type AiKey, type AppSetting, type Category, type Note, type NoteLink, type Project, type TimeEntry } from "@/lib/storage/db";
+import { kokuDb, type AiKey, type AppSetting, type Category, type Note, type NoteLink, type Project, type Task, type TimeEntry } from "@/lib/storage/db";
 import { syncWithConflictPrompt } from "@/lib/sync/sync-engine";
 
 const isLocalMode = process.env.NEXT_PUBLIC_LOCAL_MODE === "true";
@@ -18,6 +18,7 @@ interface BackupPayload {
     projects: Project[];
     categories: Category[];
     timeEntries: TimeEntry[];
+    tasks: Task[];
     notes: Note[];
     noteLinks: NoteLink[];
     aiKeys: AiKey[];
@@ -69,6 +70,7 @@ interface StorageCounts {
   projects: number;
   categories: number;
   timeEntries: number;
+  tasks: number;
   notes: number;
   noteLinks: number;
   aiKeys: number;
@@ -87,15 +89,16 @@ export function StorageSettingsManager() {
     }, 0);
 
     async function loadCounts() {
-      const [projects, categories, timeEntries, notes, noteLinks, aiKeys] = await Promise.all([
+      const [projects, categories, timeEntries, tasks, notes, noteLinks, aiKeys] = await Promise.all([
         kokuDb.projects.count(),
         kokuDb.categories.count(),
         kokuDb.timeEntries.count(),
+        kokuDb.tasks.count(),
         kokuDb.notes.count(),
         kokuDb.noteLinks.count(),
         kokuDb.aiKeys.count(),
       ]);
-      setCounts({ projects, categories, timeEntries, notes, noteLinks, aiKeys });
+      setCounts({ projects, categories, timeEntries, tasks, notes, noteLinks, aiKeys });
     }
     loadCounts();
 
@@ -130,12 +133,15 @@ export function StorageSettingsManager() {
 
   async function handleExport() {
     const payload: BackupPayload = {
-      version: 1,
+      // v2 adds `tasks`. A v1 file has no `tasks` key at all, which
+      // `handleImport`'s `Array.isArray` guard already treats as zero tasks.
+      version: 2,
       exportedAt: new Date().toISOString(),
       data: {
         projects: await kokuDb.projects.toArray(),
         categories: await kokuDb.categories.toArray(),
         timeEntries: await kokuDb.timeEntries.toArray(),
+        tasks: await kokuDb.tasks.toArray(),
         notes: await kokuDb.notes.toArray(),
         noteLinks: await kokuDb.noteLinks.toArray(),
         aiKeys: await kokuDb.aiKeys.toArray(),
@@ -183,6 +189,7 @@ export function StorageSettingsManager() {
         projects: Array.isArray(sourceData.projects) ? sourceData.projects : [],
         categories: Array.isArray(sourceData.categories) ? sourceData.categories : [],
         timeEntries: Array.isArray(sourceData.timeEntries) ? sourceData.timeEntries : [],
+        tasks: Array.isArray(sourceData.tasks) ? sourceData.tasks : [],
         notes: Array.isArray(sourceData.notes)
           ? sourceData.notes.map((note) => ({
               ...note,
@@ -197,6 +204,7 @@ export function StorageSettingsManager() {
       await Promise.all([
         kokuDb.noteLinks.clear(),
         kokuDb.timeEntries.clear(),
+        kokuDb.tasks.clear(),
         kokuDb.notes.clear(),
         kokuDb.projects.clear(),
         kokuDb.categories.clear(),
@@ -208,6 +216,7 @@ export function StorageSettingsManager() {
         data.projects.length ? kokuDb.projects.bulkPut(data.projects) : Promise.resolve(),
         data.categories.length ? kokuDb.categories.bulkPut(data.categories) : Promise.resolve(),
         data.timeEntries.length ? kokuDb.timeEntries.bulkPut(data.timeEntries) : Promise.resolve(),
+        data.tasks.length ? kokuDb.tasks.bulkPut(data.tasks) : Promise.resolve(),
         data.notes.length ? kokuDb.notes.bulkPut(data.notes) : Promise.resolve(),
         data.noteLinks.length ? kokuDb.noteLinks.bulkPut(data.noteLinks) : Promise.resolve(),
         data.aiKeys.length ? kokuDb.aiKeys.bulkPut(data.aiKeys) : Promise.resolve(),
@@ -252,12 +261,13 @@ export function StorageSettingsManager() {
         </CardHeader>
         <CardContent>
           {counts ? (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
               {(
                 [
                   ["Projects", counts.projects],
                   ["Categories", counts.categories],
                   ["Time entries", counts.timeEntries],
+                  ["Tasks", counts.tasks],
                   ["Notes", counts.notes],
                   ["Note links", counts.noteLinks],
                   ["AI keys", counts.aiKeys],
@@ -285,7 +295,7 @@ export function StorageSettingsManager() {
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Includes projects, categories, notes, note links, time entries, AI keys, and settings.
+              Includes projects, categories, notes, note links, time entries, tasks, AI keys, and settings.
             </p>
             <Button onClick={handleExport}>Export all data</Button>
           </CardContent>

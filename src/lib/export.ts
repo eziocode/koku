@@ -267,7 +267,8 @@ function createWorkbookBlob(sheets: WorkbookSheet[]) {
   return createZip(files);
 }
 
-export async function exportToXLSX(entries: XLSXEntry[], fileName = "koku-export.xlsx") {
+export async function exportToXLSX(entries: XLSXEntry[], fileName = "koku-export.xlsx", timeFormat: "12h" | "24h" = "24h") {
+  const hour12 = timeFormat === "12h";
   // ── Sheet 1: Raw Entries ──────────────────────────────────────────────────
   const rawHeaders = [
     "Date", "Start", "End", "Duration (h)", "Title",
@@ -285,9 +286,9 @@ export async function exportToXLSX(entries: XLSXEntry[], fileName = "koku-export
 
     return [
       startDate.toLocaleDateString(),
-      startDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      startDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12 }),
       end
-        ? `${crossDay ? end.toLocaleDateString() + " " : ""}${end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+        ? `${crossDay ? end.toLocaleDateString() + " " : ""}${end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12 })}`
         : "",
       ((e.durationSec ?? 0) / 3600).toFixed(2),
       e.title,
@@ -295,7 +296,7 @@ export async function exportToXLSX(entries: XLSXEntry[], fileName = "koku-export
       e.categoryName ?? "",
       e.tags.join(", "),
       e.notes ?? "",
-      new Date(e.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      new Date(e.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12 }),
     ];
   });
   const rawSheetRows = [rawHeaders, ...rawRows];

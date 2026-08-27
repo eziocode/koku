@@ -192,14 +192,20 @@ export function BreakCard() {
       // Written before finishing, so a failed write leaves the break intact and
       // retryable rather than losing the record.
       if (shouldLog) {
-        const breakAssignments = await ensureBreakAssignments();
+        // A quick action (e.g. "Call") carries its own project/category and
+        // tag; a plain break falls back to the shared "Break" assignments.
+        const isQuickAction = Boolean(current.tag);
+        const assignments = isQuickAction
+          ? { projectId: current.projectId ?? null, categoryId: current.categoryId ?? null }
+          : await ensureBreakAssignments();
+        const baseTag = isQuickAction ? current.tag! : BREAK_TAG;
         await createTimeEntry({
           title: current.label,
-          ...breakAssignments,
+          ...assignments,
           startAt: current.startedAt,
           endAt: new Date(tickNow).toISOString(),
           durationSec: elapsedSec,
-          tags: outcome === "cancelled" ? [BREAK_TAG, "cancelled"] : [BREAK_TAG],
+          tags: outcome === "cancelled" ? [baseTag, "cancelled"] : [baseTag],
           notes: current.notes ?? null,
         });
       }
@@ -229,11 +235,13 @@ export function BreakCard() {
             <p className="font-medium text-foreground">{current.label}</p>
             <span className="flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground">
               <span className="koku-live-dot" aria-hidden="true" />
-              On a break
+              {current.tag ? "Running" : "On a break"}
             </span>
           </div>
           <p className="text-sm text-muted-foreground">
-            Timers are paused until the break ends.
+            {current.tag
+              ? `Timers are paused until ${current.label} ends.`
+              : "Timers are paused until the break ends."}
           </p>
         </div>
         <p className="shrink-0 text-2xl font-semibold tabular-nums text-foreground">
