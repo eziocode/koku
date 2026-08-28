@@ -93,10 +93,20 @@ interface DraftState {
   defaultMinutes: string;
   projectId: string;
   categoryId: string;
+  description: string;
 }
 
 function emptyDraft(): DraftState {
-  return { id: null, label: "", icon: "Sparkles", tag: "", defaultMinutes: "0", projectId: NONE, categoryId: NONE };
+  return {
+    id: null,
+    label: "",
+    icon: "Sparkles",
+    tag: "",
+    defaultMinutes: "0",
+    projectId: NONE,
+    categoryId: NONE,
+    description: "",
+  };
 }
 
 function toDraft(item: QuickActionPreset): DraftState {
@@ -108,6 +118,7 @@ function toDraft(item: QuickActionPreset): DraftState {
     defaultMinutes: String(item.defaultMinutes),
     projectId: item.projectId ?? NONE,
     categoryId: item.categoryId ?? NONE,
+    description: item.description,
   };
 }
 
@@ -152,6 +163,7 @@ export function QuickActionsCard() {
       defaultMinutes: minutes,
       projectId: draft.projectId === NONE ? null : draft.projectId,
       categoryId: draft.categoryId === NONE ? null : draft.categoryId,
+      description: draft.description.trim(),
     };
 
     const nextItems = draft.id

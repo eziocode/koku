@@ -16,7 +16,7 @@ const THEMES = [
 ] as const;
 
 const ACCENT_PALETTES = [
-  { key: "terracotta", label: "Terracotta", color: "#a43a30" },
+  { key: "teal",       label: "Teal",       color: "#0d6e64" },
   { key: "ocean",      label: "Ocean",      color: "#1a5f8a" },
   { key: "forest",     label: "Forest",     color: "#1f6b3b" },
   { key: "lavender",   label: "Lavender",   color: "#5a3da8" },

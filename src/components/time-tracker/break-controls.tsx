@@ -17,8 +17,7 @@ import {
 import { useNotificationPreferences } from "@/lib/notifications/use-notification-preferences";
 import { useTimerStore } from "@/lib/stores/timer-store";
 import { useSecondTick } from "@/lib/stores/use-ticker";
-import { createTimeEntry, ensureBreakAssignments } from "@/lib/time-tracking/time-entries";
-import { BREAK_TAG } from "@/lib/notifications/settings";
+import { writeBreakEntry } from "@/lib/breaks/finalize-break";
 import { cn, formatDuration } from "@/lib/utils";
 
 const MAX_CUSTOM_MINUTES = 240;
@@ -192,21 +191,10 @@ export function BreakCard() {
       // Written before finishing, so a failed write leaves the break intact and
       // retryable rather than losing the record.
       if (shouldLog) {
-        // A quick action (e.g. "Call") carries its own project/category and
-        // tag; a plain break falls back to the shared "Break" assignments.
-        const isQuickAction = Boolean(current.tag);
-        const assignments = isQuickAction
-          ? { projectId: current.projectId ?? null, categoryId: current.categoryId ?? null }
-          : await ensureBreakAssignments();
-        const baseTag = isQuickAction ? current.tag! : BREAK_TAG;
-        await createTimeEntry({
-          title: current.label,
-          ...assignments,
-          startAt: current.startedAt,
-          endAt: new Date(tickNow).toISOString(),
-          durationSec: elapsedSec,
-          tags: outcome === "cancelled" ? [baseTag, "cancelled"] : [baseTag],
-          notes: current.notes ?? null,
+        await writeBreakEntry(current, {
+          endAtIso: new Date(tickNow).toISOString(),
+          elapsedSec,
+          outcome,
         });
       }
 

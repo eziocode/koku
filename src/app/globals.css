@@ -5,18 +5,18 @@
 @theme {
   --color-background: #fbfaf8;
   --color-foreground: #181512;
-  --color-primary: #a43a30;
+  --color-primary: #0d6e64;
   --color-primary-foreground: #ffffff;
   --color-card: #fffefd;
   --color-card-foreground: #181512;
   --color-border: #e7dfd6;
   --color-muted: #f3eee8;
   --color-muted-foreground: #706861;
-  --color-accent: #c75a4d;
+  --color-accent: #159688;
   --color-secondary: #f6f1eb;
   --color-secondary-foreground: #181512;
   --color-destructive: #d92d20;
-  --color-ring: #a43a30;
+  --color-ring: #0d6e64;
   --color-popover: #ffffff;
   --color-popover-foreground: #181512;
   --radius: 1rem;

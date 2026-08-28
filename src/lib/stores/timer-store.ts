@@ -240,6 +240,7 @@ export const useTimerStore = create<TimerStore>()(
           projectId: input.projectId ?? null,
           categoryId: input.categoryId ?? null,
           tag: input.tag ?? null,
+          description: input.description ?? null,
         };
 
         set({

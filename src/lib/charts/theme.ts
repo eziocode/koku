@@ -13,9 +13,9 @@
  * light and dark themes and to sit harmoniously beside the brand primary.
  */
 export const SEGMENT_PALETTE = [
-  "#a43a30", // brand primary (terracotta)
-  "#c75a4d", // accent
-  "#2f6f6a", // teal
+  "#0d6e64", // brand primary (teal)
+  "#159688", // accent
+  "#b6553f", // muted rust
   "#3b6ea5", // steel blue
   "#b8862f", // ochre
   "#6d5b97", // muted violet

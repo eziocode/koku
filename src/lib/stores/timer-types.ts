@@ -74,6 +74,10 @@ export type ActiveBreak = {
   projectId?: string | null;
   categoryId?: string | null;
   tag?: string | null;
+  /** The quick action's configured default note, if any. Distinct from
+   *  `notes` (what the user typed while it was running) — both are kept and
+   *  joined when the entry is logged. */
+  description?: string | null;
 };
 
 export type BreakStartInput = {
@@ -83,6 +87,7 @@ export type BreakStartInput = {
   projectId?: string | null;
   categoryId?: string | null;
   tag?: string | null;
+  description?: string | null;
 };
 
 export type BreakCompletion = {

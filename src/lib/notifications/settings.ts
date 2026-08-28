@@ -12,6 +12,8 @@ export const QUICK_NOTE_TAG = "quick-note";
 
 /** Guards the settings row against unbounded growth, same rationale as holidays. */
 export const MAX_QUICK_ACTIONS = 10;
+/** Cap on a quick action's default note. */
+export const MAX_QUICK_ACTION_DESCRIPTION = 200;
 
 /** A small, curated set — kept short so the settings picker stays a plain select. */
 export const QUICK_ACTION_ICONS = [
@@ -38,6 +40,10 @@ export interface QuickActionPreset {
   defaultMinutes: number;
   projectId: string | null;
   categoryId: string | null;
+  /** Pre-filled as the entry's note when this action starts; the user can add
+   *  more while it's running (see `BreakCard`). Required (defaults to ""),
+   *  not optional — see the zod schema's `.catch("")` below for why. */
+  description: string;
 }
 
 /* ─── Interval bounds ─────────────────────────────────────────────────────── */
@@ -245,6 +251,12 @@ export const notificationPreferencesSchema = z
               defaultMinutes: z.number().int().min(0).max(240).catch(0),
               projectId: z.string().nullable().catch(null),
               categoryId: z.string().nullable().catch(null),
+              // .catch("") on the LEAF, not just the surrounding array: every
+              // quick action stored before this field existed lacks the key,
+              // so without this catch the item fails to parse, the array's
+              // own .catch([]) fires, and the user's quick actions silently
+              // vanish (and get written back empty on the next patch).
+              description: z.string().trim().max(MAX_QUICK_ACTION_DESCRIPTION).catch(""),
             }),
           )
           .max(MAX_QUICK_ACTIONS)

@@ -10,14 +10,14 @@
 
 /** Distinct hues, ordered so adjacent groups never share a neighbouring hue. */
 export const GRAPH_PALETTE = [
-  "#e0603f", // terracotta
+  "#159688", // teal (brand)
   "#3f8fd0", // azure
   "#4bab6a", // green
   "#c9993a", // amber
   "#8a6ede", // violet
   "#e0699e", // pink
-  "#2fa8a0", // teal
   "#d4743a", // orange
+  "#b6553f", // rust
   "#6f8fd8", // periwinkle
   "#9bab3a", // olive
   "#c15fc9", // magenta

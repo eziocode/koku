@@ -20,8 +20,8 @@ export type { AccentKey };
  *
  * IndexedDB is asynchronous, so a pre-paint blocking script (see `layout.tsx`
  * + `buildAccentScript`) applies the accent from a synchronous localStorage
- * cache *before* first paint to avoid the terracotta flash. This provider then
- * keeps that cache in sync with the authoritative Dexie value.
+ * cache *before* first paint to avoid the default-accent flash. This provider
+ * then keeps that cache in sync with the authoritative Dexie value.
  */
 export function AppearanceProvider({ children }: { children: ReactNode }) {
   const { value: rawAccent } = useTypedSetting("accent");

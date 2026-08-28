@@ -40,7 +40,7 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#a43a30" },
+    { media: "(prefers-color-scheme: light)", color: "#0d6e64" },
     { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
   ],
   width: "device-width",
@@ -68,8 +68,8 @@ export default function RootLayout({
     >
       <head>
         {/* Applies the persisted accent before first paint to avoid the
-            terracotta flash-of-default-accent on hard refresh / tab switch.
-            Runs synchronously from a localStorage cache; Dexie remains the
+            default-accent flash on hard refresh / tab switch. Runs
+            synchronously from a localStorage cache; Dexie remains the
             source of truth and reconciles post-hydration. */}
         <Script id="accent-script" strategy="beforeInteractive">
           {buildAccentScript()}

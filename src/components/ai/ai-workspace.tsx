@@ -1,7 +1,7 @@
 "use client";
 
 import { endOfDay, endOfMonth, format, startOfDay, startOfMonth } from "date-fns";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, memo, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,6 +23,22 @@ type ChatMessage = {
   role: "user" | "assistant";
   content: string;
 };
+
+/**
+ * Memoized so a token arriving for the streaming assistant message doesn't
+ * re-render every prior message bubble in the conversation — only the row
+ * whose `content` actually changed re-renders.
+ */
+const ChatMessageRow = memo(function ChatMessageRow({ role, content }: { role: ChatMessage["role"]; content: string }) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4">
+      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{role}</p>
+      <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">
+        {content || (role === "assistant" ? "…" : "")}
+      </p>
+    </div>
+  );
+});
 
 async function getResponseError(response: Response, fallback: string) {
   const data = await response.json().catch(() => null);
@@ -271,6 +287,26 @@ export function AiWorkspace() {
       const decoder = new TextDecoder();
       let result = "";
 
+      // The provider can emit many small chunks per second. Applying a state
+      // update — and re-rendering the whole message list — on every single
+      // chunk is what made the chat feel sluggish. Coalesce chunks and flush
+      // at most once per animation frame instead.
+      let flushScheduled = false;
+      let rafId: number | null = null;
+      const flush = () => {
+        flushScheduled = false;
+        setMessages((current) =>
+          current.map((entry) =>
+            entry.id === assistantId ? { ...entry, content: result } : entry,
+          ),
+        );
+      };
+      const scheduleFlush = () => {
+        if (flushScheduled) return;
+        flushScheduled = true;
+        rafId = requestAnimationFrame(flush);
+      };
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) {
@@ -279,13 +315,10 @@ export function AiWorkspace() {
         }
 
         result += decoder.decode(value, { stream: true });
-        setMessages((current) =>
-          current.map((entry) =>
-            entry.id === assistantId ? { ...entry, content: result } : entry,
-          ),
-        );
+        scheduleFlush();
       }
 
+      if (rafId !== null) cancelAnimationFrame(rafId);
       setMessages((current) =>
         current.map((entry) =>
           entry.id === assistantId ? { ...entry, content: result || "No response text returned." } : entry,
@@ -368,14 +401,7 @@ export function AiWorkspace() {
             <div className="max-h-[420px] space-y-3 overflow-y-auto rounded-3xl border border-border bg-muted/20 p-4">
               {messages.length ? (
                 messages.map((message) => (
-                  <div key={message.id} className="rounded-2xl border border-border bg-card p-4">
-                    <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                      {message.role}
-                    </p>
-                    <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">
-                      {message.content || (message.role === "assistant" ? "…" : "")}
-                    </p>
-                  </div>
+                  <ChatMessageRow key={message.id} role={message.role} content={message.content} />
                 ))
               ) : (
                 <p className="text-sm text-muted-foreground">

@@ -3,8 +3,8 @@
  *
  * The accent preference is the source-of-truth in IndexedDB (Dexie), read
  * asynchronously by `AppearanceProvider` *after* React hydrates. That async gap
- * is what causes the ~0.5s flash of the default terracotta accent on hard
- * refresh / tab switch — the DOM paints with the default tokens, then
+ * is what causes the ~0.5s flash of the default accent on hard refresh /
+ * tab switch — the DOM paints with the default tokens, then
  * `data-accent` is applied a beat later.
  *
  * IndexedDB cannot be read synchronously before paint, so we mirror the accent
@@ -17,7 +17,7 @@
  */
 
 export const ACCENT_KEYS = [
-  "terracotta",
+  "teal",
   "ocean",
   "forest",
   "lavender",
@@ -27,8 +27,8 @@ export const ACCENT_KEYS = [
 
 export type AccentKey = (typeof ACCENT_KEYS)[number];
 
-/** `terracotta` is the default `@theme` value, so it carries no attribute. */
-export const DEFAULT_ACCENT: AccentKey = "terracotta";
+/** `teal` is the default `@theme` value, so it carries no attribute. */
+export const DEFAULT_ACCENT: AccentKey = "teal";
 
 /** Browser storage name for pre-paint accent cache. */
 export const ACCENT_STORAGE_NAME = "koku-accent";
@@ -39,8 +39,8 @@ export function isValidAccent(value: unknown): value is AccentKey {
 
 /**
  * Applies the accent to `<html>` exactly the way the pre-paint script does, so
- * the runtime provider and the blocking script never drift apart. Terracotta
- * (the default) clears the attribute rather than setting it.
+ * the runtime provider and the blocking script never drift apart. The default
+ * accent clears the attribute rather than setting it.
  */
 export function applyAccentToDocument(accent: AccentKey): void {
   if (typeof document === "undefined") return;

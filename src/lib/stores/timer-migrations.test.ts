@@ -208,3 +208,47 @@ test("no input shape ever loses timers that were present", () => {
     assert.equal(migratePersistedTimerState(shape).timers.length, 1, JSON.stringify(shape));
   }
 });
+
+/* ─── Quick-action identity survives a reload ────────────────────────────── */
+/* Previously dropped by `normalizeStoredBreak`, which silently demoted a       */
+/* running quick action ("Call") to a plain break on every page reload.         */
+
+test("a quick action's project, category, tag, and description survive normalisation", () => {
+  const recovered = normalizeStoredBreak(
+    storedBreak({
+      label: "Call",
+      projectId: "proj-1",
+      categoryId: "cat-1",
+      tag: "call",
+      description: "Weekly sync",
+    }),
+  );
+
+  assert.ok(recovered);
+  assert.equal(recovered.projectId, "proj-1");
+  assert.equal(recovered.categoryId, "cat-1");
+  assert.equal(recovered.tag, "call");
+  assert.equal(recovered.description, "Weekly sync");
+});
+
+test("a plain break (no quick-action fields) normalises them to null, not undefined", () => {
+  const recovered = normalizeStoredBreak(storedBreak());
+
+  assert.ok(recovered);
+  assert.equal(recovered.projectId, null);
+  assert.equal(recovered.categoryId, null);
+  assert.equal(recovered.tag, null);
+  assert.equal(recovered.description, null);
+});
+
+test("wrongly-typed quick-action fields degrade to null rather than surviving as garbage", () => {
+  const recovered = normalizeStoredBreak(
+    storedBreak({ projectId: 5, categoryId: false, tag: {}, description: [] }),
+  );
+
+  assert.ok(recovered);
+  assert.equal(recovered.projectId, null);
+  assert.equal(recovered.categoryId, null);
+  assert.equal(recovered.tag, null);
+  assert.equal(recovered.description, null);
+});

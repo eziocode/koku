@@ -34,7 +34,7 @@ import sharp from "sharp";
 const ROOT = process.cwd();
 
 // Accent-matched palette (mirrors --color-primary in globals.css).
-const BG = "#a43a30"; // terracotta
+const BG = "#0d6e64"; // teal
 const FG = "#fffaf3"; // warm off-white
 const GLYPH = "刻";
 

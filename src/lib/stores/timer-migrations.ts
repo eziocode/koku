@@ -109,6 +109,13 @@ export function normalizeStoredBreak(value: unknown): ActiveBreak | null {
     completedAt: asNullableString(value.completedAt),
     revision: typeof value.revision === "number" && Number.isInteger(value.revision) ? value.revision : 0,
     updatedAt: asOptionalString(value.updatedAt) ?? undefined,
+    // Recovered rather than dropped: these identify a quick action ("Call")
+    // rather than a plain break. Losing them on a reload used to silently
+    // demote a running quick action to a generic break — see finalize-break.ts.
+    projectId: asNullableString(value.projectId),
+    categoryId: asNullableString(value.categoryId),
+    tag: asNullableString(value.tag),
+    description: asNullableString(value.description),
   };
 }
 

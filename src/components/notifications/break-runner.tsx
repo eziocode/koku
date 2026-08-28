@@ -6,12 +6,11 @@ import { toast } from "@/components/ui/toast";
 import { getBreakElapsedSec, getBreakEndIso, isBreakComplete } from "@/lib/breaks/break-math";
 import { showKokuNotification } from "@/lib/notifications/client";
 import { buildBreakCompleteNotification } from "@/lib/notifications/payload";
-import { BREAK_TAG } from "@/lib/notifications/settings";
 import { useLeaderStatus } from "@/lib/notifications/use-leader";
 import { useNotificationPreferences } from "@/lib/notifications/use-notification-preferences";
 import { useTimerStore } from "@/lib/stores/timer-store";
 import { useSecondTick } from "@/lib/stores/use-ticker";
-import { createTimeEntry, ensureBreakAssignments } from "@/lib/time-tracking/time-entries";
+import { writeBreakEntry } from "@/lib/breaks/finalize-break";
 
 /**
  * Finalises a break when its time is up. Renders nothing.
@@ -59,15 +58,10 @@ export function BreakRunner() {
       );
 
       try {
-        const breakAssignments = await ensureBreakAssignments();
-        await createTimeEntry({
-          title: activeBreak.label,
-          ...breakAssignments,
-          startAt: activeBreak.startedAt,
-          endAt: endedAt,
-          durationSec: elapsedSec,
-          tags: [BREAK_TAG],
-          notes: activeBreak.notes ?? null,
+        await writeBreakEntry(activeBreak, {
+          endAtIso: endedAt,
+          elapsedSec,
+          outcome: "completed",
         });
       } catch {
         // Leave the break active so the next tick retries rather than losing it.

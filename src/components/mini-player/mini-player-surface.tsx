@@ -9,12 +9,12 @@ import {
   getBreakRemainingSec,
 } from "@/lib/breaks/break-math";
 import { closeMiniPlayerWindow } from "@/lib/mini-player/window-controller";
-import { BREAK_TAG } from "@/lib/notifications/settings";
 import { useNotificationPreferences } from "@/lib/notifications/use-notification-preferences";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 import { getActiveTimerElapsedSec, useTimerStore } from "@/lib/stores/timer-store";
 import { useSecondTick } from "@/lib/stores/use-ticker";
-import { createTimeEntry, ensureBreakAssignments } from "@/lib/time-tracking/time-entries";
+import { createTimeEntry } from "@/lib/time-tracking/time-entries";
+import { writeBreakEntry } from "@/lib/breaks/finalize-break";
 import { stopTimerAndPersist } from "@/lib/time-tracking/stop-timer";
 import { cn, formatDuration } from "@/lib/utils";
 
@@ -139,15 +139,10 @@ export function MiniPlayerSurface({ pipWindow }: MiniPlayerSurfaceProps) {
     const elapsedSec = getBreakElapsedSec(activeBreak, tickNow);
 
     try {
-      const breakAssignments = await ensureBreakAssignments();
-      await createTimeEntry({
-        title: activeBreak.label,
-        ...breakAssignments,
-        startAt: activeBreak.startedAt,
-        endAt: new Date(tickNow).toISOString(),
-        durationSec: elapsedSec,
-        tags: [BREAK_TAG],
-        notes: activeBreak.notes ?? null,
+      await writeBreakEntry(activeBreak, {
+        endAtIso: new Date(tickNow).toISOString(),
+        elapsedSec,
+        outcome: "completed",
       });
 
       finishBreak("completed", { autoResume: prefs.breaks.autoResume });

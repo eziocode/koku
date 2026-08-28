@@ -54,6 +54,7 @@ export function QuickActionButtons() {
       projectId: action.projectId,
       categoryId: action.categoryId,
       tag: action.tag,
+      description: action.description,
     });
 
     if (!started) {
