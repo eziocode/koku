@@ -71,7 +71,7 @@ test("an active break outranks the timers it paused", () => {
   const context = deriveCheckInContext([paused], activeBreak(), null, NOW);
 
   assert.equal(context.kind, "break");
-  assert.deepEqual(context, { kind: "break", breakId: "b1", label: "Lunch", remainingSec: 1_200 });
+  assert.deepEqual(context, { kind: "break", breakId: "b1", label: "Lunch", tag: null, remainingSec: 1_200 });
 });
 
 test("a completed break is ignored, falling through to the timers", () => {

@@ -122,7 +122,7 @@ export function StorageSettingsManager() {
           ? "Sign in with Zoho first to sync."
           : result.error);
       } else {
-        toast.success(`Sync complete — pushed ${result.pushed}, pulled ${result.pulled} rows.`);
+        toast.success(`Sync complete: pushed ${result.pushed}, pulled ${result.pulled} rows.`);
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Sync failed.");

@@ -120,7 +120,7 @@ export function TaskDetailDialog({ task, onOpenChange }: TaskDetailDialogProps) 
                       <p className="truncate font-medium text-foreground">{format(new Date(entry.startAt), "d MMM yyyy")}</p>
                       <p className="text-xs text-muted-foreground">
                         {formatTime(entry.startAt, timeFormat)}
-                        {entry.endAt ? ` — ${formatTime(entry.endAt, timeFormat)}` : " • Running"}
+                        {entry.endAt ? ` - ${formatTime(entry.endAt, timeFormat)}` : " • Running"}
                       </p>
                     </div>
                     <span className="shrink-0 font-semibold tabular-nums">{formatDuration(entry.durationSec ?? 0)}</span>

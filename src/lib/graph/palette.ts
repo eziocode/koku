@@ -51,24 +51,42 @@ function clampChannel(value: number) {
   return Math.max(0, Math.min(255, Math.round(value)));
 }
 
+/**
+ * Parses `#rgb`, `#rrggbb`, and `rgb()`/`rgba()` literals.
+ *
+ * The `rgb()` form matters because the helpers below *return* that form: the
+ * graph canvas composes them (a darkened tone, then given an alpha), and a
+ * parser that only understood hex would silently drop the second step.
+ */
 function parseHex(color: string) {
-  const match = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color.trim());
-  if (!match) {
+  const trimmed = color.trim();
+  const hexMatch = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(trimmed);
+
+  if (hexMatch) {
+    const hex = hexMatch[1].length === 3
+      ? hexMatch[1].split("").map((char) => char + char).join("")
+      : hexMatch[1];
+
+    return {
+      r: Number.parseInt(hex.slice(0, 2), 16),
+      g: Number.parseInt(hex.slice(2, 4), 16),
+      b: Number.parseInt(hex.slice(4, 6), 16),
+    };
+  }
+
+  const rgbMatch = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i.exec(trimmed);
+  if (!rgbMatch) {
     return null;
   }
 
-  const hex = match[1].length === 3
-    ? match[1].split("").map((char) => char + char).join("")
-    : match[1];
-
   return {
-    r: Number.parseInt(hex.slice(0, 2), 16),
-    g: Number.parseInt(hex.slice(2, 4), 16),
-    b: Number.parseInt(hex.slice(4, 6), 16),
+    r: Number.parseFloat(rgbMatch[1]),
+    g: Number.parseFloat(rgbMatch[2]),
+    b: Number.parseFloat(rgbMatch[3]),
   };
 }
 
-/** `rgba()` string for a hex colour — Sigma needs literal colours, not CSS vars. */
+/** `rgba()` string for a literal colour — a canvas cannot read CSS variables. */
 export function withAlpha(color: string, alpha: number): string {
   const rgb = parseHex(color);
   if (!rgb) {
@@ -184,4 +202,41 @@ export function detectCommunities(
   });
 
   return result;
+}
+
+/**
+ * Blends a colour toward white by `amount` (0–1).
+ *
+ * The graph canvas paints each node as a small sphere: a lightened tint at the
+ * top-left rolling into the base colour reads as volume, which flat dots never
+ * do. Also used for the hairline ring that separates a node from its own glow.
+ */
+export function lightenColor(color: string, amount: number): string {
+  const rgb = parseHex(color);
+  if (!rgb) {
+    return color;
+  }
+
+  return `rgb(${clampChannel(rgb.r + (255 - rgb.r) * amount)},${clampChannel(
+    rgb.g + (255 - rgb.g) * amount,
+  )},${clampChannel(rgb.b + (255 - rgb.b) * amount)})`;
+}
+
+/**
+ * Blends a colour toward near-black by `amount` (0–1).
+ *
+ * The light theme needs it for contour lines: on a pale ground a lightened rim
+ * disappears, so a body's silhouette is drawn with a darkened tone of its own
+ * colour instead of a grey that would mute the palette.
+ */
+export function darkenColor(color: string, amount: number): string {
+  const rgb = parseHex(color);
+  if (!rgb) {
+    return color;
+  }
+
+  const target = 18;
+  return `rgb(${clampChannel(rgb.r + (target - rgb.r) * amount)},${clampChannel(
+    rgb.g + (target - rgb.g) * amount,
+  )},${clampChannel(rgb.b + (target - rgb.b) * amount)})`;
 }

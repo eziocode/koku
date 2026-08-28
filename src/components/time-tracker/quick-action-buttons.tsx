@@ -15,6 +15,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
+import { resolvePeriodCopy } from "@/lib/breaks/break-copy";
 import { type QuickActionIcon, type QuickActionPreset } from "@/lib/notifications/settings";
 import { useNotificationPreferences } from "@/lib/notifications/use-notification-preferences";
 import { useTimerStore } from "@/lib/stores/timer-store";
@@ -62,11 +63,7 @@ export function QuickActionButtons() {
       return;
     }
 
-    toast.success(
-      started.pausedTimerIds.length > 0
-        ? `${started.label} started. ${started.pausedTimerIds.length === 1 ? "Your timer is" : "Your timers are"} paused.`
-        : `${started.label} started.`,
-    );
+    toast.success(resolvePeriodCopy(started).startedToast(started.pausedTimerIds.length));
   }
 
   return (

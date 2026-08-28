@@ -50,8 +50,12 @@ test("a timer with unknown elapsed time drops the duration, not the title", () =
 
 test("breaks and idle notes are stamped honestly too", () => {
   assert.equal(
+    buildQuickNoteStamp(AT, origin({ kind: "break", label: "Break" }), elapsed),
+    "Logged 23 Aug 2026 · 14:32 · during your break",
+  );
+  assert.equal(
     buildQuickNoteStamp(AT, origin({ kind: "break", label: "Short break" }), elapsed),
-    "Logged 23 Aug 2026 · 14:32 · during your short break",
+    'Logged 23 Aug 2026 · 14:32 · during your "Short break"',
   );
   assert.equal(
     buildQuickNoteStamp(AT, origin(), elapsed),

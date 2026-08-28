@@ -10,6 +10,7 @@ import {
   GraphCanvas,
   type CanvasEdge,
   type CanvasNode,
+  type CanvasNodeKind,
   type GraphForces,
 } from "@/components/graph/graph-canvas";
 import { GraphForcesPanel } from "@/components/graph/graph-forces-panel";
@@ -27,6 +28,7 @@ import {
   buildLoggerGraph,
   type LoggerColorMode,
   type LoggerGraphShape,
+  type LoggerNodeKind,
 } from "@/lib/graph/logger-graph-model";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
@@ -37,6 +39,14 @@ const SHAPES: { value: LoggerGraphShape; label: string; hint: string }[] = [
   { value: "aggregate", label: "Aggregate", hint: "One node per category, project, and tag" },
   { value: "entries", label: "Entries", hint: "One node per logged entry" },
 ];
+
+/** Node kind → canvas silhouette. */
+const CANVAS_KIND_BY_NODE_KIND: Record<LoggerNodeKind, CanvasNodeKind> = {
+  category: "hub",
+  project: "group",
+  tag: "tag",
+  entry: "leaf",
+};
 
 const COLOR_MODES: { value: LoggerColorMode; label: string }[] = [
   { value: "category", label: "Category" },
@@ -165,6 +175,10 @@ export function LoggerGraph() {
         color: node.color,
         // Area ∝ hours reads more honestly than radius ∝ hours.
         size: maxHours > 0 ? 5 + Math.sqrt(node.hours / maxHours) * 17 : 6,
+        // Shape carries the node kind so colour is free to carry the grouping:
+        // categories are spheres, projects containers, tags diamonds, and the
+        // many individual entries stay hollow rings.
+        kind: CANVAS_KIND_BY_NODE_KIND[node.kind],
       })),
     [maxHours, model.nodes],
   );
@@ -242,7 +256,7 @@ export function LoggerGraph() {
           <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
             <p className="font-medium text-foreground">Nothing logged in this range</p>
             <p className="max-w-sm text-sm text-muted-foreground">
-              Widen the date range or clear filters — the graph draws from your time entries.
+              Widen the date range or clear filters. The graph draws from your time entries.
             </p>
           </div>
         ) : (
@@ -351,7 +365,7 @@ export function LoggerGraph() {
               )}
               {shape === "entries" && model.truncatedEntries > 0 ? (
                 <span className="rounded-full border border-border/60 bg-card/90 px-3 py-1 text-right shadow-sm backdrop-blur text-amber-600 dark:text-amber-400">
-                  {model.truncatedEntries} entries folded into aggregate nodes (cap reached) —
+                  {model.truncatedEntries} entries folded into aggregate nodes (cap reached),
                   narrow the range to see them individually.
                 </span>
               ) : null}

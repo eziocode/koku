@@ -56,7 +56,7 @@ export function QuickCaptureCard() {
   // says truthfully where it will land rather than always claiming standalone.
   const noteTarget = useMemo<QuickNoteTarget>(() => {
     if (activeBreak && !activeBreak.completedAt) {
-      return { kind: "break", label: activeBreak.label };
+      return { kind: "break", label: activeBreak.label, tag: activeBreak.tag };
     }
 
     const running = timers.find((timer) => !timer.pausedAt) ?? timers[0];
@@ -76,8 +76,8 @@ export function QuickCaptureCard() {
     await patch({ holidayDates: toggleHolidayDate(prefs.holidayDates, todayKey) });
     toast.success(
       isTodayHoliday
-        ? "Today is a working day again — notifications resume."
-        : "Today is a holiday — notifications are silenced for the rest of it.",
+        ? "Today is a working day again. Notifications resume."
+        : "Today is a holiday. Notifications are silenced for the rest of it.",
     );
   }
 
@@ -118,7 +118,7 @@ export function QuickCaptureCard() {
           </Button>
           {isTodayHoliday ? (
             <p className="w-full text-xs text-muted-foreground">
-              Today is marked as a holiday — check-ins and the end-of-day wrap-up stay quiet. Manage
+              Today is marked as a holiday. Check-ins and the end-of-day wrap-up stay quiet. Manage
               the full list in notification settings.
             </p>
           ) : null}

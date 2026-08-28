@@ -292,7 +292,7 @@ export function DashboardClient() {
         <div className="flex flex-col gap-6">
         <ChartCard
           title="This week"
-          description="Each block is a work log — hover for details, click to open that day."
+          description="Each block is a work log, hover for details, click to open that day."
           footer={legendItems.length ? <ChartLegend items={legendItems} /> : undefined}
         >
           <SegmentedBarChart

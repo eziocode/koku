@@ -5,16 +5,20 @@ import circular from "graphology-layout/circular";
 import forceAtlas2 from "graphology-layout-forceatlas2";
 import { Maximize2, Pause, Play, Pin, ZoomIn, ZoomOut } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import Sigma from "sigma";
 
-import { fadeColor, withAlpha } from "@/lib/graph/palette";
+import { darkenColor, lightenColor, withAlpha } from "@/lib/graph/palette";
 import { cn } from "@/lib/utils";
+
+/** Visual family of a node. Shape encodes kind so colour can encode grouping. */
+export type CanvasNodeKind = "hub" | "group" | "tag" | "leaf";
 
 export interface CanvasNode {
   id: string;
   label: string;
   color: string;
   size: number;
+  /** Drawn shape. Defaults to `hub` (a filled sphere). */
+  kind?: CanvasNodeKind;
 }
 
 export interface CanvasEdge {
@@ -37,24 +41,6 @@ export interface GraphForces {
   edgeWeightInfluence: number;
 }
 
-/**
- * Canvas chrome colours. Sigma paints into WebGL/2D contexts that cannot read
- * CSS variables, so these mirror the theme by hand.
- *
- * Labels must flip with the theme: a single fixed colour is either black text
- * on the dark canvas or white text on the light one. The hovered label is drawn
- * by `defaultDrawNodeHover` below, which paints its own bubble *and* its own
- * text colour — so it stays legible instead of inheriting a label colour that
- * only works against the plain background.
- */
-function labelColorFor(dark: boolean): string {
-  return dark ? "#e2e8f0" : "#1e293b";
-}
-
-function edgeBaseFor(dark: boolean): string {
-  return dark ? "#94a3b8" : "#64748b";
-}
-
 export const DEFAULT_FORCES: GraphForces = {
   gravity: 0.6,
   scalingRatio: 12,
@@ -74,22 +60,85 @@ interface GraphCanvasProps {
   className?: string;
 }
 
+interface Camera {
+  /** World coordinate sitting at the centre of the viewport. */
+  x: number;
+  y: number;
+  /** World-to-screen pixel scale. */
+  zoom: number;
+}
+
+interface Placed {
+  id: string;
+  /** Screen-space centre. */
+  sx: number;
+  sy: number;
+  /** Screen-space radius. */
+  r: number;
+  node: CanvasNode;
+  /** 0 = fully lit, 1 = fully faded. Animated. */
+  fade: number;
+}
+
 /**
- * Shared Sigma renderer for both graph tabs.
+ * Frame size the authored node sizes are tuned for (px, shorter edge), plus the
+ * band the viewport scale is allowed to move within. Below the reference the
+ * bodies shrink so a small card still reads as a map rather than a pile.
+ */
+const REFERENCE_EDGE = 620;
+const MIN_VIEWPORT_SCALE = 0.5;
+const MAX_VIEWPORT_SCALE = 1.15;
+
+/** Fit padding, itself scaled down on small frames by `PADDING_RATIO`. */
+const PADDING = 34;
+/** Padding never eats more than this share of the shorter edge. */
+const PADDING_RATIO = 0.07;
+const MIN_ZOOM_FACTOR = 0.25;
+const MAX_ZOOM_FACTOR = 8;
+/** Per-frame easing for fade/framing transitions — snappy but not jumpy. */
+const EASE = 0.16;
+
+/**
+ * Canvas chrome. The graph paints into a 2D context that cannot read CSS
+ * variables, so the theme is mirrored by hand here.
+ */
+function chrome(dark: boolean) {
+  return {
+    label: dark ? "#dbe3ec" : "#243044",
+    labelMuted: dark ? "rgba(219,227,236,.72)" : "rgba(36,48,68,.66)",
+    labelHalo: dark ? "rgba(6,10,18,.85)" : "rgba(255,255,255,.9)",
+    pillFill: dark ? "rgba(13,19,30,.92)" : "rgba(255,255,255,.95)",
+    pillStroke: dark ? "rgba(148,163,184,.28)" : "rgba(100,116,139,.22)",
+    pillText: dark ? "#f4f7fb" : "#0f172a",
+    edgeBase: dark ? "#aebdcf" : "#59677d",
+    ringMix: dark ? 0.38 : 0.22,
+  };
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+const LABEL_FONT =
+  'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif';
+
+/**
+ * Graph renderer shared by both graph tabs.
  *
- * Colour comes from the caller (one colour per group), and this component owns
- * the interaction model: hovering a node keeps it and its neighbours saturated
- * while the rest of the graph fades back, which is what makes a multi-coloured
- * graph readable once it has more than a handful of nodes.
+ * Colour comes from the caller (one colour per group); this component owns the
+ * look and the interaction model. It renders with Canvas 2D rather than a WebGL
+ * graph library because the aesthetic — curved edges that gradient between the
+ * two nodes they join, nodes drawn as lit spheres with a soft bloom, shapes that
+ * distinguish node kinds, and haloed labels instead of boxed ones — needs
+ * per-primitive drawing control that a point-sprite renderer does not give.
  *
- * Layout runs as a live ForceAtlas2 simulation in a web worker, so the graph
- * settles visibly and can be dragged around like Obsidian's graph view. Nodes
- * are pinned where you drop them; the pin control releases them all.
+ * Layout is a live ForceAtlas2 simulation stepped on the animation frame, so the
+ * graph settles visibly and can be dragged around like Obsidian's graph view.
+ * Nodes are pinned where you drop them; the pin control releases them all.
  *
- * The Sigma instance is created **once** and then mutated in place. Recreating
- * it whenever `nodes`/`edges` change (they are fresh array identities on every
- * parent render) would re-seed the layout and reset the camera on every filter
- * keystroke — filters should dim nodes, never move them.
+ * Framing is automatic while the simulation expands the graph — the camera eases
+ * to keep everything in frame — and hands control over permanently as soon as
+ * you pan or zoom (the fit control takes it back).
  */
 export function GraphCanvas({
   nodes,
@@ -102,14 +151,27 @@ export function GraphCanvas({
   className,
 }: GraphCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const sigmaRef = useRef<Sigma | null>(null);
-  const graphRef = useRef<Graph | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const graphRef = useRef<Graph>(new Graph());
   const frameRef = useRef<number | null>(null);
+
+  const sizeRef = useRef({ width: 0, height: 0, dpr: 1 });
+  const cameraRef = useRef<Camera>({ x: 0, y: 0, zoom: 1 });
+  /** Zoom the last auto-fit chose — node radii are relative to it. */
+  const fitZoomRef = useRef(1);
+  const autoFitRef = useRef(true);
+
+  const nodesRef = useRef<CanvasNode[]>(nodes);
+  const edgesRef = useRef<CanvasEdge[]>(edges);
+  const fadeRef = useRef(new Map<string, number>());
+  const placedRef = useRef<Placed[]>([]);
 
   const hoveredRef = useRef<string | null>(null);
   const draggedRef = useRef<string | null>(null);
   const highlightRef = useRef<Set<string> | null>(highlightIds ?? null);
   const isDarkRef = useRef(isDark);
+  const runningRef = useRef(true);
+  const forcesRef = useRef(forces);
   const callbacksRef = useRef({ onNodeClick, onNodeHover });
 
   const [running, setRunning] = useState(true);
@@ -121,220 +183,106 @@ export function GraphCanvas({
 
   useEffect(() => {
     highlightRef.current = highlightIds ?? null;
-    sigmaRef.current?.refresh();
   }, [highlightIds]);
 
-  // ── Create Sigma once ─────────────────────────────────────────────────────
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const graph = new Graph();
-    graphRef.current = graph;
-
-    const sigma = new Sigma(graph, container, {
-      renderEdgeLabels: false,
-      renderLabels: true,
-      labelColor: { color: labelColorFor(isDarkRef.current) },
-      labelSize: 12,
-      labelWeight: "500",
-      labelDensity: 0.6,
-      labelRenderedSizeThreshold: 6,
-      zIndex: true,
-      minCameraRatio: 0.05,
-      maxCameraRatio: 12,
-      // Sigma's default hover renderer uses a white label bubble. In dark
-      // mode that bubble plus white label makes hovered text disappear.
-      defaultDrawNodeHover: (context, data, settings) => {
-        const label = data.label;
-        if (!label) return;
-        const dark = isDarkRef.current;
-        const labelSize = settings.labelSize;
-        const width = context.measureText(label).width + 12;
-        const height = labelSize + 8;
-        context.save();
-        context.fillStyle = dark ? "#0f172a" : "#ffffff";
-        context.strokeStyle = dark ? "#475569" : "#cbd5e1";
-        context.lineWidth = 1;
-        context.shadowColor = dark ? "rgba(0,0,0,.55)" : "rgba(15,23,42,.18)";
-        context.shadowBlur = 8;
-        context.beginPath();
-        context.roundRect(data.x + data.size + 2, data.y - height / 2, width, height, 5);
-        context.fill();
-        context.stroke();
-        context.shadowBlur = 0;
-        context.fillStyle = dark ? "#f8fafc" : "#0f172a";
-        context.font = `${settings.labelWeight} ${labelSize}px ${settings.labelFont}`;
-        context.fillText(label, data.x + data.size + 8, data.y + labelSize / 3);
-        context.restore();
-      },
-      nodeReducer: (node, data) => {
-        const dark = isDarkRef.current;
-        const hovered = hoveredRef.current;
-        const highlight = highlightRef.current;
-
-        const dimmedBySearch = highlight ? !highlight.has(node) : false;
-        const dimmedByHover = hovered
-          ? node !== hovered && !graph.areNeighbors(hovered, node)
-          : false;
-
-        if (!dimmedBySearch && !dimmedByHover) {
-          const focused = node === hovered || node === draggedRef.current;
-          return {
-            ...data,
-            zIndex: focused ? 2 : 1,
-            size: focused ? (data.size as number) * 1.25 : data.size,
-          };
-        }
-
-        return {
-          ...data,
-          color: fadeColor(data.color as string, 0.78, dark),
-          label: null,
-          zIndex: 0,
-        };
-      },
-      edgeReducer: (edge, data) => {
-        const dark = isDarkRef.current;
-        const edgeBase = edgeBaseFor(dark);
-        const hovered = hoveredRef.current;
-        const highlight = highlightRef.current;
-        const [source, target] = graph.extremities(edge);
-
-        const touchesHover = !hovered || source === hovered || target === hovered;
-        const inHighlight = !highlight || (highlight.has(source) && highlight.has(target));
-
-        if (touchesHover && inHighlight) {
-          return {
-            ...data,
-            color: hovered
-              ? withAlpha(graph.getNodeAttribute(hovered, "color") as string, 0.75)
-              : withAlpha(edgeBase, 0.28),
-            zIndex: hovered ? 1 : 0,
-          };
-        }
-
-        return { ...data, color: withAlpha(edgeBase, 0.06), zIndex: 0 };
-      },
-    });
-
-    sigmaRef.current = sigma;
-
-    sigma.on("enterNode", ({ node }) => {
-      hoveredRef.current = node;
-      callbacksRef.current.onNodeHover?.(node);
-      sigma.refresh();
-    });
-    sigma.on("leaveNode", () => {
-      hoveredRef.current = null;
-      callbacksRef.current.onNodeHover?.(null);
-      sigma.refresh();
-    });
-
-    // ── Drag to reposition ──────────────────────────────────────────────────
-    // A drag is distinguished from a click by whether the pointer actually
-    // moved, so click-to-open still works on a node you merely tapped.
-    let moved = false;
-
-    sigma.on("downNode", ({ node }) => {
-      draggedRef.current = node;
-      moved = false;
-      graph.setNodeAttribute(node, "highlighted", true);
-    });
-
-    sigma.getMouseCaptor().on("mousemovebody", (event) => {
-      const node = draggedRef.current;
-      if (!node) return;
-      moved = true;
-      const position = sigma.viewportToGraph(event);
-      graph.setNodeAttribute(node, "x", position.x);
-      graph.setNodeAttribute(node, "y", position.y);
-      // Pin it so the running simulation does not yank it back.
-      graph.setNodeAttribute(node, "fixed", true);
-      setHasPins(true);
-      // Stop Sigma from panning the camera while a node is in hand.
-      event.preventSigmaDefault();
-      event.original.preventDefault();
-      event.original.stopPropagation();
-    });
-
-    const releaseDrag = () => {
-      const node = draggedRef.current;
-      if (!node) return;
-      graph.removeNodeAttribute(node, "highlighted");
-      if (!moved) {
-        callbacksRef.current.onNodeClick?.(node);
-      }
-      draggedRef.current = null;
-      moved = false;
-      sigma.refresh();
-    };
-
-    sigma.getMouseCaptor().on("mouseup", releaseDrag);
-    sigma.getMouseCaptor().on("mouseleave", releaseDrag);
-
-    return () => {
-      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
-      frameRef.current = null;
-      sigmaRef.current = null;
-      graphRef.current = null;
-      hoveredRef.current = null;
-      draggedRef.current = null;
-      sigma.kill();
-    };
-  }, []);
-
-  // Theme lives in a ref so a light/dark flip repaints without rebuilding the
-  // graph — `resolvedTheme` is undefined on first paint and would otherwise
-  // re-seed the layout one frame in.
   useEffect(() => {
     isDarkRef.current = isDark;
-    // Label colour is a Sigma setting, not something the reducers can return,
-    // so it has to be pushed on the instance when the theme flips.
-    sigmaRef.current?.setSetting("labelColor", { color: labelColorFor(isDark) });
-    sigmaRef.current?.refresh();
   }, [isDark]);
 
-  // ── Sync graph data in place ──────────────────────────────────────────────
+  useEffect(() => {
+    forcesRef.current = forces;
+  }, [forces]);
+
+  useEffect(() => {
+    runningRef.current = running;
+  }, [running]);
+
+  // ── Camera helpers ────────────────────────────────────────────────────────
+  const worldBounds = useCallback(() => {
+    const graph = graphRef.current;
+    if (graph.order === 0) return null;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    graph.forEachNode((_id, attr) => {
+      minX = Math.min(minX, attr.x as number);
+      maxX = Math.max(maxX, attr.x as number);
+      minY = Math.min(minY, attr.y as number);
+      maxY = Math.max(maxY, attr.y as number);
+    });
+    return { minX, minY, maxX, maxY };
+  }, []);
+
+  /** Eases (or snaps) the camera so the whole graph sits inside the viewport. */
+  const fitCamera = useCallback(
+    (immediate = false) => {
+      const bounds = worldBounds();
+      const { width, height } = sizeRef.current;
+      if (!bounds || width === 0 || height === 0) return;
+
+      const spanX = Math.max(bounds.maxX - bounds.minX, 1e-3);
+      const spanY = Math.max(bounds.maxY - bounds.minY, 1e-3);
+      // A fixed 34px gutter is a third of a phone-width card, so cap it as a
+      // share of the frame too.
+      const padding = Math.min(PADDING, Math.min(width, height) * PADDING_RATIO);
+      const zoom = Math.min(
+        (width - padding * 2) / spanX,
+        (height - padding * 2) / spanY,
+      );
+      const target: Camera = {
+        x: (bounds.minX + bounds.maxX) / 2,
+        y: (bounds.minY + bounds.maxY) / 2,
+        zoom: clamp(zoom, 1e-4, 4000),
+      };
+
+      const camera = cameraRef.current;
+      if (immediate) {
+        camera.x = target.x;
+        camera.y = target.y;
+        camera.zoom = target.zoom;
+      } else {
+        camera.x += (target.x - camera.x) * EASE;
+        camera.y += (target.y - camera.y) * EASE;
+        camera.zoom += (target.zoom - camera.zoom) * EASE;
+      }
+      fitZoomRef.current = target.zoom;
+    },
+    [worldBounds],
+  );
+
+  // ── Data sync ─────────────────────────────────────────────────────────────
+  // The graph is mutated in place: filters must dim nodes, never re-seed the
+  // layout, and `nodes`/`edges` are fresh array identities on every render.
   useEffect(() => {
     const graph = graphRef.current;
-    if (!graph) return;
+    nodesRef.current = nodes;
+    edgesRef.current = edges;
 
     const nextNodeIds = new Set(nodes.map((node) => node.id));
-    const nextEdgeIds = new Set<string>();
-
-    // Nodes that vanished (deleted note, narrowed filter) go first so their
-    // edges are dropped with them.
     graph.forEachNode((id) => {
       if (!nextNodeIds.has(id)) graph.dropNode(id);
     });
 
     let added = 0;
     nodes.forEach((node) => {
-      if (graph.hasNode(node.id)) {
-        // Keep x/y/fixed — only refresh presentation.
-        graph.mergeNodeAttributes(node.id, {
-          label: node.label,
-          color: node.color,
-          size: node.size,
-        });
-        return;
-      }
-      // New nodes land at the origin; the layout pass below seeds them.
-      graph.addNode(node.id, { ...node, x: 0, y: 0 });
+      if (graph.hasNode(node.id)) return;
+      graph.addNode(node.id, { x: 0, y: 0 });
       added += 1;
     });
 
+    const nextEdgeIds = new Set<string>();
     edges.forEach((edge) => {
       if (!graph.hasNode(edge.source) || !graph.hasNode(edge.target)) return;
-      const size = 0.6 + (edge.weight ?? 0) * 2.4;
       const existing = graph.edge(edge.source, edge.target);
       if (existing) {
         nextEdgeIds.add(existing);
-        graph.setEdgeAttribute(existing, "size", size);
+        graph.setEdgeAttribute(existing, "weight", 0.2 + (edge.weight ?? 0));
         return;
       }
-      graph.addEdgeWithKey(edge.id, edge.source, edge.target, { size });
+      graph.addEdgeWithKey(edge.id, edge.source, edge.target, {
+        weight: 0.2 + (edge.weight ?? 0),
+      });
       nextEdgeIds.add(edge.id);
     });
 
@@ -342,43 +290,317 @@ export function GraphCanvas({
       if (!nextEdgeIds.has(id)) graph.dropEdge(id);
     });
 
-    // Seed only when the graph is genuinely new — re-seeding on every filter
-    // change is what made the old canvas jump around.
+    // Seed only a genuinely new graph — re-seeding on every filter change is
+    // what makes a canvas jump around under the pointer.
     if (added > 0 && added === graph.order && graph.order > 0) {
-      circular.assign(graph);
+      // Seeded at a real-world scale so the fit zoom lands near 1× — ForceAtlas2
+      // itself is scale-free and would otherwise settle inside a unit circle.
+      circular.assign(graph, { scale: 140 });
       if (graph.size > 0) {
         forceAtlas2.assign(graph, {
           iterations: graph.order > 400 ? 60 : 120,
-          settings: { ...forceAtlas2.inferSettings(graph), ...forces },
+          settings: { ...forceAtlas2.inferSettings(graph), ...forcesRef.current },
         });
       }
-      sigmaRef.current?.getCamera().animatedReset({ duration: 200 });
+      autoFitRef.current = true;
+      fitCamera(true);
     }
 
+    const fades = fadeRef.current;
+    fades.forEach((_value, id) => {
+      if (!nextNodeIds.has(id)) fades.delete(id);
+    });
+
     setHasPins(graph.someNode((_id, attr) => attr.fixed === true));
-    // `forces` is read only to seed brand-new graphs; the live simulation below
-    // owns it after that, so it is deliberately not a dependency here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodes, edges]);
 
-  // ── Live simulation ───────────────────────────────────────────────────────
-  // Runs on the main thread in an animation loop rather than in graphology's
-  // web worker: the worker is built from a blob URL, which this app's CSP
-  // (`worker-src 'self'`) blocks outright. A few iterations per frame is
-  // cheap at note-graph scale and gives the same settling motion.
-  useEffect(() => {
+  // ── Draw ──────────────────────────────────────────────────────────────────
+  const draw = useCallback((time: number) => {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) return;
+
     const graph = graphRef.current;
-    if (!graph) return;
-    if (!running || graph.order === 0 || graph.size === 0) return;
+    const { width, height, dpr } = sizeRef.current;
+    const dark = isDarkRef.current;
+    const theme = chrome(dark);
+    const camera = cameraRef.current;
+    const hovered = hoveredRef.current;
+    const highlight = highlightRef.current;
+    const nodeById = new Map(nodesRef.current.map((node) => [node.id, node]));
 
-    const settings = { ...forceAtlas2.inferSettings(graph), ...forces };
-    // Bigger graphs get fewer iterations per frame so a frame stays cheap.
-    const perFrame = graph.order > 300 ? 1 : graph.order > 80 ? 2 : 3;
+    context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    context.clearRect(0, 0, width, height);
 
-    const tick = () => {
-      const current = graphRef.current;
-      if (!current) return;
-      forceAtlas2.assign(current, { iterations: perFrame, settings });
+    const toScreen = (wx: number, wy: number) => ({
+      sx: (wx - camera.x) * camera.zoom + width / 2,
+      sy: (wy - camera.y) * camera.zoom + height / 2,
+    });
+
+    drawStarfield(context, width, height, camera, dark, time);
+
+    // Node radii track the authored size at fit zoom and grow as you zoom in,
+    // but only sub-linearly so a deep zoom does not turn nodes into blobs.
+    //
+    // The authored sizes assume a roomy frame, so they are also scaled by how
+    // much frame there actually is: on a phone-width card or a short embedded
+    // panel the same planets would swamp the canvas and collide with every
+    // label. Scale tracks the smaller edge, since that is what runs out first.
+    const viewportScale = clamp(
+      Math.min(width, height) / REFERENCE_EDGE,
+      MIN_VIEWPORT_SCALE,
+      MAX_VIEWPORT_SCALE,
+    );
+    const radiusScale =
+      clamp(camera.zoom / (fitZoomRef.current || 1), 0.62, 2.4) * viewportScale;
+
+    // ── Resolve placement + fade for every node ─────────────────────────────
+    const fades = fadeRef.current;
+    const placed: Placed[] = [];
+    graph.forEachNode((id, attr) => {
+      const node = nodeById.get(id);
+      if (!node) return;
+
+      const dimmedBySearch = highlight ? !highlight.has(id) : false;
+      const dimmedByHover = hovered ? id !== hovered && !graph.areNeighbors(hovered, id) : false;
+      const target = dimmedBySearch || dimmedByHover ? 1 : 0;
+      const current = fades.get(id) ?? target;
+      const fade = current + (target - current) * EASE;
+      fades.set(id, Math.abs(target - fade) < 0.004 ? target : fade);
+
+      const { sx, sy } = toScreen(attr.x as number, attr.y as number);
+      placed.push({
+        id,
+        sx,
+        sy,
+        r: Math.max(2 * viewportScale, node.size * radiusScale),
+        node,
+        fade,
+      });
+    });
+
+    const placedById = new Map(placed.map((item) => [item.id, item]));
+    placedRef.current = placed;
+
+    // ── Edges ───────────────────────────────────────────────────────────────
+    // Drawn as gentle arcs that gradient from the source colour to the target
+    // colour, so a link reads as a relationship between two coloured things
+    // rather than as grey scaffolding.
+    context.lineCap = "round";
+    graph.forEachEdge((id, attr, source, target) => {
+      const from = placedById.get(source);
+      const to = placedById.get(target);
+      if (!from || !to) return;
+
+      const inHighlight = !highlight || (highlight.has(source) && highlight.has(target));
+      const touchesHover = !hovered || source === hovered || target === hovered;
+      const lit = inHighlight && touchesHover;
+      const fade = Math.max(from.fade, to.fade);
+
+      const weight = ((attr.weight as number) ?? 0.2) - 0.2;
+      const base = 0.7 + weight * 2.3;
+      const emphasis = hovered && touchesHover ? 1.5 : 1;
+      const alpha = lit
+        ? (hovered && touchesHover ? 0.85 : dark ? 0.42 : 0.4) * (1 - fade * 0.85)
+        : dark
+          ? 0.05
+          : 0.045;
+
+      const { cx, cy, ex, ey, sx, sy } = arcPath(from, to);
+      const gradient = context.createLinearGradient(sx, sy, ex, ey);
+      gradient.addColorStop(0, withAlpha(from.node.color, alpha));
+      gradient.addColorStop(1, withAlpha(to.node.color, alpha));
+
+      context.strokeStyle = lit ? gradient : withAlpha(theme.edgeBase, alpha);
+      context.lineWidth = base * emphasis * clamp(radiusScale, 0.7, 1.8);
+      context.beginPath();
+      context.moveTo(sx, sy);
+      context.quadraticCurveTo(cx, cy, ex, ey);
+      context.stroke();
+    });
+
+    // ── Node bloom ──────────────────────────────────────────────────────────
+    // Dark mode: a soft additive halo under each lit node, which is what
+    // separates the look from flat vector dots.
+    //
+    // Light mode: additive light on a pale ground only produces a dirty smudge,
+    // so each body instead gets a tight cast shadow offset down-right — the same
+    // "this is a solid object in space" cue, lit by the same upper-left sun the
+    // bodies themselves are shaded for. Stars keep a small coloured halo, since
+    // a star that casts a shadow is a contradiction.
+    context.save();
+    context.globalCompositeOperation = dark ? "lighter" : "source-over";
+    placed.forEach((item) => {
+      if (item.fade > 0.35) return;
+      const focused = item.id === hovered || item.id === draggedRef.current;
+      const isStar = (item.node.kind ?? "hub") === "tag";
+
+      if (!dark && !isStar) {
+        const spread = item.r * (focused ? 2.3 : 1.9);
+        const cx = item.sx + item.r * 0.28;
+        const cy = item.sy + item.r * 0.34;
+        const strength = (focused ? 0.2 : 0.14) * (1 - item.fade);
+        const shadow = context.createRadialGradient(cx, cy, item.r * 0.75, cx, cy, spread);
+        shadow.addColorStop(0, `rgba(30,41,59,${strength.toFixed(3)})`);
+        shadow.addColorStop(1, "rgba(30,41,59,0)");
+        context.fillStyle = shadow;
+        context.beginPath();
+        context.arc(cx, cy, spread, 0, Math.PI * 2);
+        context.fill();
+        return;
+      }
+
+      // Paper takes a tighter, weaker halo: a wide one is a smudge, not a glow.
+      const spread = item.r * (dark ? (focused ? 3.6 : isStar ? 3.2 : 2.5) : focused ? 2.4 : 2);
+      const strength =
+        (dark ? 0.32 : 0.13) * (focused ? 1.6 : 1) * (isStar ? 1.45 : 1) * (1 - item.fade);
+      const glow = context.createRadialGradient(item.sx, item.sy, item.r * 0.6, item.sx, item.sy, spread);
+      glow.addColorStop(0, withAlpha(item.node.color, strength));
+      glow.addColorStop(1, withAlpha(item.node.color, 0));
+      context.fillStyle = glow;
+      context.beginPath();
+      context.arc(item.sx, item.sy, spread, 0, Math.PI * 2);
+      context.fill();
+    });
+    context.restore();
+
+    // ── Nodes ───────────────────────────────────────────────────────────────
+    // Largest first so small nodes land on top and stay clickable.
+    [...placed]
+      .sort((left, right) => right.r - left.r)
+      .forEach((item) => {
+        const focused = item.id === hovered || item.id === draggedRef.current;
+        drawNode(context, item, { dark, focused, ringMix: theme.ringMix, time });
+      });
+
+    // ── Labels ──────────────────────────────────────────────────────────────
+    // Haloed text, no boxes: boxes turn a graph into a table. Bigger nodes win
+    // the space, and anything that would collide is dropped rather than
+    // overlapped. Hovering promotes a node and its neighbours.
+    const labelSize = clamp(11 * clamp(radiusScale, 0.85, 1.35), 9.5 * viewportScale, 15);
+    context.font = `500 ${labelSize}px ${LABEL_FONT}`;
+    context.textBaseline = "middle";
+    const taken: Box[] = [];
+    // Bodies count as obstacles too: a label crossing a planet is worse than no
+    // label at all, so the text goes to the other side or is dropped.
+    const bodies: Box[] = placed.map((item) => ({
+      x: item.sx - item.r,
+      y: item.sy - item.r,
+      w: item.r * 2,
+      h: item.r * 2,
+    }));
+
+    [...placed]
+      .sort((left, right) => right.r - left.r)
+      .forEach((item) => {
+        if (item.fade > 0.45) return;
+        const neighbourOfHover = hovered ? graph.areNeighbors(hovered, item.id) : false;
+        const promoted = item.id === hovered || neighbourOfHover;
+        if (!promoted && item.r < 6.5) return;
+        if (item.id === hovered) return; // drawn last, as a pill
+
+        const text = truncate(context, item.node.label, 168);
+        const textWidth = context.measureText(text).width;
+        const y = item.sy;
+
+        // Right of the body first, then left; whichever side clears both the
+        // other labels and the other bodies wins.
+        const boxAt = (candidate: number): Box => ({
+          x: candidate,
+          y: y - labelSize / 2 - 2,
+          w: textWidth,
+          h: labelSize + 4,
+        });
+        const x = [item.sx + item.r + 8, item.sx - item.r - 8 - textWidth].find((candidate) => {
+          if (candidate + textWidth < 0 || candidate > width) return false;
+          const box = boxAt(candidate);
+          if (taken.some((other) => overlaps(box, other))) return false;
+          return !bodies.some((body) => overlaps(box, body));
+        });
+        if (x === undefined) return;
+        taken.push(boxAt(x));
+
+        const alpha = (promoted ? 1 : 0.78) * (1 - item.fade);
+        context.save();
+        context.globalAlpha = alpha;
+        context.lineWidth = 3;
+        context.strokeStyle = theme.labelHalo;
+        context.strokeText(text, x, y);
+        context.fillStyle = promoted ? theme.label : theme.labelMuted;
+        context.fillText(text, x, y);
+        context.restore();
+      });
+
+    // Hovered label sits in a pill so it stays readable over its own cluster.
+    const hoveredPlaced = hovered ? placedById.get(hovered) : null;
+    if (hoveredPlaced) {
+      const text = truncate(context, hoveredPlaced.node.label, 240);
+      const width = context.measureText(text).width;
+      const padX = 9;
+      const boxHeight = labelSize + 12;
+      const x = hoveredPlaced.sx + hoveredPlaced.r + 8;
+      const y = hoveredPlaced.sy - boxHeight / 2;
+
+      context.save();
+      context.fillStyle = theme.pillFill;
+      context.strokeStyle = theme.pillStroke;
+      context.lineWidth = 1;
+      context.shadowColor = dark ? "rgba(0,0,0,.5)" : "rgba(15,23,42,.16)";
+      context.shadowBlur = 12;
+      context.shadowOffsetY = 2;
+      context.beginPath();
+      context.roundRect(x, y, width + padX * 2, boxHeight, boxHeight / 2);
+      context.fill();
+      context.shadowBlur = 0;
+      context.shadowOffsetY = 0;
+      context.stroke();
+      // Colour chip ties the pill back to the node it describes.
+      context.fillStyle = hoveredPlaced.node.color;
+      context.beginPath();
+      context.arc(x + padX - 1, y + boxHeight / 2, 3, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = theme.pillText;
+      context.fillText(text, x + padX + 7, y + boxHeight / 2);
+      context.restore();
+    }
+  }, []);
+
+  // ── Animation loop: physics + paint ───────────────────────────────────────
+  // ForceAtlas2 runs on the main thread rather than graphology's web worker:
+  // the worker is built from a blob URL, which this app's CSP (`worker-src
+  // 'self'`) blocks outright. A few iterations per frame is cheap at graph
+  // scale and gives the same settling motion.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+
+    const resize = () => {
+      const rect = container.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      sizeRef.current = { width: rect.width, height: rect.height, dpr };
+      canvas.width = Math.max(1, Math.round(rect.width * dpr));
+      canvas.height = Math.max(1, Math.round(rect.height * dpr));
+      canvas.style.width = `${rect.width}px`;
+      canvas.style.height = `${rect.height}px`;
+    };
+
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(container);
+
+    const tick = (time: number) => {
+      const graph = graphRef.current;
+      if (runningRef.current && graph.order > 0 && graph.size > 0) {
+        const perFrame = graph.order > 300 ? 1 : graph.order > 80 ? 2 : 3;
+        forceAtlas2.assign(graph, {
+          iterations: perFrame,
+          settings: { ...forceAtlas2.inferSettings(graph), ...forcesRef.current },
+        });
+      }
+      if (autoFitRef.current) fitCamera();
+      draw(time);
       frameRef.current = requestAnimationFrame(tick);
     };
 
@@ -387,20 +609,177 @@ export function GraphCanvas({
     return () => {
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
       frameRef.current = null;
+      observer.disconnect();
     };
-  }, [running, forces, nodes.length, edges.length]);
+  }, [draw, fitCamera]);
 
-  const zoom = useCallback((direction: "in" | "out" | "reset") => {
-    const camera = sigmaRef.current?.getCamera();
-    if (!camera) return;
-    if (direction === "in") camera.animatedZoom({ duration: 220 });
-    else if (direction === "out") camera.animatedUnzoom({ duration: 220 });
-    else camera.animatedReset({ duration: 260 });
+  // ── Pointer interaction ───────────────────────────────────────────────────
+  const pick = useCallback((clientX: number, clientY: number) => {
+    const container = containerRef.current;
+    if (!container) return null;
+    const rect = container.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    let best: Placed | null = null;
+    let bestDistance = Infinity;
+    for (const item of placedRef.current) {
+      const distance = Math.hypot(item.sx - x, item.sy - y);
+      if (distance <= item.r + 5 && distance < bestDistance) {
+        best = item;
+        bestDistance = distance;
+      }
+    }
+    return best;
   }, []);
+
+  const screenToWorld = useCallback((clientX: number, clientY: number) => {
+    const container = containerRef.current;
+    const { width, height } = sizeRef.current;
+    const camera = cameraRef.current;
+    if (!container) return { x: 0, y: 0 };
+    const rect = container.getBoundingClientRect();
+    return {
+      x: (clientX - rect.left - width / 2) / camera.zoom + camera.x,
+      y: (clientY - rect.top - height / 2) / camera.zoom + camera.y,
+    };
+  }, []);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    let panFrom: { x: number; y: number; camX: number; camY: number } | null = null;
+    let moved = false;
+
+    const handleDown = (event: PointerEvent) => {
+      if (event.button !== 0) return;
+      const hit = pick(event.clientX, event.clientY);
+      moved = false;
+      container.setPointerCapture(event.pointerId);
+      if (hit) {
+        draggedRef.current = hit.id;
+        autoFitRef.current = false;
+      } else {
+        panFrom = {
+          x: event.clientX,
+          y: event.clientY,
+          camX: cameraRef.current.x,
+          camY: cameraRef.current.y,
+        };
+      }
+    };
+
+    const handleMove = (event: PointerEvent) => {
+      const dragged = draggedRef.current;
+      if (dragged) {
+        moved = true;
+        const world = screenToWorld(event.clientX, event.clientY);
+        const graph = graphRef.current;
+        if (graph.hasNode(dragged)) {
+          graph.mergeNodeAttributes(dragged, { x: world.x, y: world.y, fixed: true });
+          setHasPins(true);
+        }
+        return;
+      }
+
+      if (panFrom) {
+        const camera = cameraRef.current;
+        const dx = (event.clientX - panFrom.x) / camera.zoom;
+        const dy = (event.clientY - panFrom.y) / camera.zoom;
+        if (Math.hypot(event.clientX - panFrom.x, event.clientY - panFrom.y) > 2) {
+          moved = true;
+          autoFitRef.current = false;
+        }
+        camera.x = panFrom.camX - dx;
+        camera.y = panFrom.camY - dy;
+        return;
+      }
+
+      const hit = pick(event.clientX, event.clientY);
+      const id = hit ? hit.id : null;
+      if (id !== hoveredRef.current) {
+        hoveredRef.current = id;
+        callbacksRef.current.onNodeHover?.(id);
+        container.style.cursor = id ? "pointer" : "grab";
+      }
+    };
+
+    const handleUp = (event: PointerEvent) => {
+      if (container.hasPointerCapture(event.pointerId)) {
+        container.releasePointerCapture(event.pointerId);
+      }
+      const dragged = draggedRef.current;
+      // A tap that never moved is a click; a tap that moved repositioned a node.
+      if (dragged && !moved) callbacksRef.current.onNodeClick?.(dragged);
+      draggedRef.current = null;
+      panFrom = null;
+      moved = false;
+    };
+
+    const handleLeave = () => {
+      if (hoveredRef.current !== null) {
+        hoveredRef.current = null;
+        callbacksRef.current.onNodeHover?.(null);
+      }
+    };
+
+    // Zoom anchors on the pointer, so you zoom into what you are looking at.
+    //
+    // Only ⌘/ctrl + wheel zooms — which is exactly what a trackpad pinch sends,
+    // so pinch-to-zoom works. A plain wheel is left to the page: the graph sits
+    // inside a scrollable view, and swallowing the scroll there traps the reader
+    // (it also means a stray wheel during scroll-restoration cannot silently
+    // knock the camera off its automatic framing).
+    const handleWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      const camera = cameraRef.current;
+      const before = screenToWorld(event.clientX, event.clientY);
+      const factor = Math.exp(-event.deltaY * 0.0022);
+      const fit = fitZoomRef.current || 1;
+      camera.zoom = clamp(camera.zoom * factor, fit * MIN_ZOOM_FACTOR, fit * MAX_ZOOM_FACTOR);
+      const after = screenToWorld(event.clientX, event.clientY);
+      camera.x += before.x - after.x;
+      camera.y += before.y - after.y;
+      autoFitRef.current = false;
+    };
+
+    container.style.cursor = "grab";
+    container.addEventListener("pointerdown", handleDown);
+    container.addEventListener("pointermove", handleMove);
+    container.addEventListener("pointerup", handleUp);
+    container.addEventListener("pointercancel", handleUp);
+    container.addEventListener("pointerleave", handleLeave);
+    container.addEventListener("wheel", handleWheel, { passive: false });
+
+    return () => {
+      container.removeEventListener("pointerdown", handleDown);
+      container.removeEventListener("pointermove", handleMove);
+      container.removeEventListener("pointerup", handleUp);
+      container.removeEventListener("pointercancel", handleUp);
+      container.removeEventListener("pointerleave", handleLeave);
+      container.removeEventListener("wheel", handleWheel);
+    };
+  }, [pick, screenToWorld]);
+
+  const zoom = useCallback(
+    (direction: "in" | "out" | "reset") => {
+      if (direction === "reset") {
+        autoFitRef.current = true;
+        fitCamera(true);
+        return;
+      }
+      const camera = cameraRef.current;
+      const fit = fitZoomRef.current || 1;
+      const factor = direction === "in" ? 1.35 : 1 / 1.35;
+      camera.zoom = clamp(camera.zoom * factor, fit * MIN_ZOOM_FACTOR, fit * MAX_ZOOM_FACTOR);
+      autoFitRef.current = false;
+    },
+    [fitCamera],
+  );
 
   const releasePins = useCallback(() => {
     const graph = graphRef.current;
-    if (!graph) return;
     graph.forEachNode((id) => graph.removeNodeAttribute(id, "fixed"));
     setHasPins(false);
     setRunning(true);
@@ -408,9 +787,11 @@ export function GraphCanvas({
 
   return (
     <div className={cn("relative", className)}>
-      <div ref={containerRef} className="h-full w-full" />
+      <div ref={containerRef} className="h-full w-full touch-none">
+        <canvas ref={canvasRef} className="block h-full w-full" />
+      </div>
 
-      <div className="absolute bottom-4 left-4 flex flex-col overflow-hidden rounded-lg border border-border bg-card/90 shadow-sm backdrop-blur">
+      <div className="absolute bottom-4 left-4 flex flex-col overflow-hidden rounded-xl border border-border/70 bg-card/80 shadow-sm backdrop-blur">
         <button
           type="button"
           onClick={() => setRunning((value) => !value)}
@@ -429,7 +810,7 @@ export function GraphCanvas({
           disabled={!hasPins}
           aria-label="Release pinned nodes"
           title={hasPins ? "Release pinned nodes" : "No pinned nodes"}
-          className="border-t border-border p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40 disabled:hover:bg-transparent"
+          className="border-t border-border/70 p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40 disabled:hover:bg-transparent"
         >
           <Pin className="h-4 w-4" />
         </button>
@@ -437,7 +818,7 @@ export function GraphCanvas({
           type="button"
           onClick={() => zoom("in")}
           aria-label="Zoom in"
-          className="border-t border-border p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="border-t border-border/70 p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           <ZoomIn className="h-4 w-4" />
         </button>
@@ -445,7 +826,7 @@ export function GraphCanvas({
           type="button"
           onClick={() => zoom("out")}
           aria-label="Zoom out"
-          className="border-t border-border p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="border-t border-border/70 p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           <ZoomOut className="h-4 w-4" />
         </button>
@@ -453,11 +834,399 @@ export function GraphCanvas({
           type="button"
           onClick={() => zoom("reset")}
           aria-label="Fit graph to view"
-          className="border-t border-border p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="border-t border-border/70 p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           <Maximize2 className="h-4 w-4" />
         </button>
       </div>
     </div>
   );
+}
+
+/**
+ * Deterministic pseudo-random in [0,1) for a star index.
+ *
+ * The starfield must be identical on every frame (and every render) or the sky
+ * boils; a hash of the index gives that for free without storing anything.
+ */
+function starRandom(index: number, salt: number): number {
+  const value = Math.sin(index * 127.1 + salt * 311.7) * 43758.5453;
+  return value - Math.floor(value);
+}
+
+/**
+ * Star count scales with canvas area — a fixed count that looks like a sky on a
+ * wide canvas looks like static on a small one.
+ */
+function starCountFor(width: number, height: number): number {
+  return Math.round(clamp((width * height) / 5600, 45, 150));
+}
+
+/**
+ * Parallax starfield and nebula behind the graph.
+ *
+ * Stars drift with the camera at a fraction of its speed, so panning reads as
+ * moving *through* space rather than sliding a texture, and each twinkles on its
+ * own phase.
+ *
+ * Light mode keeps the metaphor but changes medium: a printed star chart rather
+ * than the night sky. The void becomes a pale cool wash that lifts toward the
+ * middle, the nebulae become watercolour tints, and the stars become ink specks
+ * — bright-on-dark reversed to dark-on-light, since a glowing white star on
+ * paper is invisible and a black one is a fly.
+ */
+function drawStarfield(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  camera: Camera,
+  dark: boolean,
+  time: number,
+) {
+  // Ground: the card behind the canvas is a flat shade either way, so the
+  // backdrop is painted here — a vignetted void in the dark, a cool wash that
+  // opens toward the middle in the light.
+  const ground = context.createRadialGradient(
+    width / 2,
+    height / 2,
+    Math.min(width, height) * 0.12,
+    width / 2,
+    height / 2,
+    Math.max(width, height) * 0.78,
+  );
+  if (dark) {
+    ground.addColorStop(0, "rgba(7,10,20,.35)");
+    ground.addColorStop(1, "rgba(3,5,12,.78)");
+  } else {
+    ground.addColorStop(0, "rgba(255,255,255,.7)");
+    ground.addColorStop(1, "rgba(203,213,228,.38)");
+  }
+  context.fillStyle = ground;
+  context.fillRect(0, 0, width, height);
+
+  // Two nebula clouds, parallaxed slower than the stars, give the backdrop some
+  // depth and pick up the app's teal/violet accents. On paper the same clouds
+  // are weaker still — a tint, not a glow.
+  const cloudAlpha = dark ? 1 : 0.62;
+  const clouds: { hue: string; fx: number; fy: number; scale: number; drift: number }[] = [
+    { hue: "rgba(21,150,136,", fx: 0.28, fy: 0.32, scale: 0.85, drift: 0.06 },
+    { hue: "rgba(138,110,222,", fx: 0.76, fy: 0.7, scale: 1.05, drift: 0.09 },
+  ];
+  clouds.forEach((cloud) => {
+    const cx = width * cloud.fx - camera.x * camera.zoom * cloud.drift;
+    const cy = height * cloud.fy - camera.y * camera.zoom * cloud.drift;
+    const radius = Math.max(width, height) * 0.55 * cloud.scale;
+    const gradient = context.createRadialGradient(cx, cy, 0, cx, cy, radius);
+    gradient.addColorStop(0, `${cloud.hue}${(0.075 * cloudAlpha).toFixed(3)})`);
+    gradient.addColorStop(0.55, `${cloud.hue}${(0.03 * cloudAlpha).toFixed(3)})`);
+    gradient.addColorStop(1, `${cloud.hue}0)`);
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, width, height);
+  });
+
+  const parallaxX = camera.x * camera.zoom * 0.22;
+  const parallaxY = camera.y * camera.zoom * 0.22;
+
+  context.save();
+  const count = starCountFor(width, height);
+  for (let index = 0; index < count; index += 1) {
+    const depth = 0.4 + starRandom(index, 3) * 0.9;
+    const spanX = width + 120;
+    const spanY = height + 120;
+    const x = (((starRandom(index, 1) * spanX - parallaxX * depth) % spanX) + spanX) % spanX - 60;
+    const y = (((starRandom(index, 2) * spanY - parallaxY * depth) % spanY) + spanY) % spanY - 60;
+
+    // Ink on paper does not flicker the way a star does, so the light-mode
+    // twinkle is damped to a slow breath.
+    const swing = dark ? 0.45 : 0.18;
+    const twinkle = 1 - swing + swing * Math.sin(time * 0.0011 * (0.5 + depth) + index);
+    const radius = (0.5 + starRandom(index, 4) * 1.15) * (dark ? 1 : 0.85);
+    const alpha = (dark ? 0.5 : 0.3) * twinkle * (0.45 + depth * 0.5);
+
+    context.fillStyle = dark
+      ? `rgba(226,236,248,${alpha.toFixed(3)})`
+      : `rgba(51,65,88,${alpha.toFixed(3)})`;
+    context.beginPath();
+    context.arc(x, y, radius, 0, Math.PI * 2);
+    context.fill();
+  }
+  context.restore();
+}
+
+/**
+ * Control point for an edge drawn as a gentle arc, plus endpoints trimmed back
+ * to the rim of each body so lines meet the shapes instead of running under
+ * them. Reads as an orbital path rather than a wire.
+ */
+function arcPath(from: Placed, to: Placed) {
+  const dx = to.sx - from.sx;
+  const dy = to.sy - from.sy;
+  const length = Math.hypot(dx, dy) || 1;
+  const ux = dx / length;
+  const uy = dy / length;
+
+  const sx = from.sx + ux * (from.r + 1.5);
+  const sy = from.sy + uy * (from.r + 1.5);
+  const ex = to.sx - ux * (to.r + 1.5);
+  const ey = to.sy - uy * (to.r + 1.5);
+
+  // Curvature is a fixed fraction of the span, and always bows the same way for
+  // a given pair so the arc does not flip as the layout settles.
+  const bow = length * 0.11;
+  const cx = (sx + ex) / 2 + -uy * bow;
+  const cy = (sy + ey) / 2 + ux * bow;
+
+  return { sx, sy, ex, ey, cx, cy };
+}
+
+interface NodeStyle {
+  dark: boolean;
+  focused: boolean;
+  ringMix: number;
+  /** `performance.now()` — drives twinkle and the orbiting focus ring. */
+  time: number;
+}
+
+/**
+ * Paints one node as a celestial body. Kind picks the body; colour still comes
+ * from the caller, so grouping survives the metaphor:
+ *
+ * - `hub` → planet: lit from the upper left, with a terminator shadow opposite.
+ * - `group` → ringed planet, the ring drawn behind and in front of the disc.
+ * - `tag` → star: a four-point sparkle with a bright core.
+ * - `leaf` → moon: a small disc with a crescent bite taken out of it.
+ */
+function drawNode(context: CanvasRenderingContext2D, item: Placed, style: NodeStyle) {
+  const { dark, focused, ringMix, time } = style;
+  const kind = item.node.kind ?? "hub";
+  const radius = item.r * (focused ? 1.16 : 1);
+  const alpha = 1 - item.fade * 0.82;
+
+  context.save();
+  context.globalAlpha = alpha;
+
+  if (kind === "tag") {
+    drawStar(context, item, radius, time, dark);
+  } else if (kind === "leaf") {
+    drawMoon(context, item, radius, dark);
+  } else {
+    if (kind === "group") drawPlanetRing(context, item, radius, "back", ringMix, dark);
+    drawPlanet(context, item, radius, dark);
+    if (kind === "group") drawPlanetRing(context, item, radius, "front", ringMix, dark);
+  }
+
+  // Focus marker: a dashed orbit that slowly rotates, so the hovered body reads
+  // as selected without nudging the layout.
+  if (focused) {
+    context.save();
+    context.translate(item.sx, item.sy);
+    context.rotate((time * 0.00035) % (Math.PI * 2));
+    context.setLineDash([3, 5]);
+    context.lineWidth = 1.1;
+    context.strokeStyle = dark
+      ? withAlpha(lightenColor(item.node.color, 0.65), 0.7)
+      : withAlpha(darkenColor(item.node.color, 0.35), 0.8);
+    context.beginPath();
+    context.arc(0, 0, radius + 7, 0, Math.PI * 2);
+    context.stroke();
+    context.restore();
+  }
+
+  context.restore();
+}
+
+/** Lit sphere: rim light on the sunward side, terminator shadow opposite. */
+function drawPlanet(
+  context: CanvasRenderingContext2D,
+  item: Placed,
+  radius: number,
+  dark: boolean,
+) {
+  // The lit side is pushed less far toward white on a pale ground, where a
+  // near-white highlight would eat the silhouette instead of rounding it.
+  const light = lightenColor(item.node.color, dark ? 0.5 : 0.32);
+
+  const body = context.createRadialGradient(
+    item.sx - radius * 0.4,
+    item.sy - radius * 0.45,
+    radius * 0.08,
+    item.sx,
+    item.sy,
+    radius * 1.12,
+  );
+  body.addColorStop(0, light);
+  body.addColorStop(0.45, item.node.color);
+  body.addColorStop(1, dark ? withAlpha(item.node.color, 0.72) : darkenColor(item.node.color, 0.2));
+
+  context.beginPath();
+  context.arc(item.sx, item.sy, radius, 0, Math.PI * 2);
+  context.fillStyle = body;
+  context.fill();
+
+  // Night side: a shadow anchored to the lower right of the disc. Lighter on
+  // paper, where a heavy terminator reads as a smudge rather than a shadow.
+  const shadow = context.createRadialGradient(
+    item.sx + radius * 0.55,
+    item.sy + radius * 0.6,
+    radius * 0.1,
+    item.sx + radius * 0.15,
+    item.sy + radius * 0.2,
+    radius * 1.35,
+  );
+  shadow.addColorStop(0, `rgba(4,7,14,${dark ? 0.46 : 0.24})`);
+  shadow.addColorStop(1, "rgba(4,7,14,0)");
+  context.beginPath();
+  context.arc(item.sx, item.sy, radius, 0, Math.PI * 2);
+  context.fillStyle = shadow;
+  context.fill();
+
+  if (dark) {
+    // Thin sunward rim keeps the silhouette crisp against the bloom.
+    context.beginPath();
+    context.arc(item.sx, item.sy, radius - 0.4, Math.PI * 0.85, Math.PI * 1.85);
+    context.lineWidth = Math.max(0.9, radius * 0.1);
+    context.strokeStyle = withAlpha(light, 0.85);
+    context.stroke();
+    return;
+  }
+
+  // On paper the body is closed with a full contour in a darker tone of its own
+  // colour — the pale ground gives no edge of its own for the disc to sit on.
+  context.beginPath();
+  context.arc(item.sx, item.sy, radius - 0.3, 0, Math.PI * 2);
+  context.lineWidth = Math.max(0.8, radius * 0.08);
+  context.strokeStyle = withAlpha(darkenColor(item.node.color, 0.42), 0.5);
+  context.stroke();
+}
+
+/** Tilted ring around a planet, split so the disc sits inside it. */
+function drawPlanetRing(
+  context: CanvasRenderingContext2D,
+  item: Placed,
+  radius: number,
+  half: "back" | "front",
+  ringMix: number,
+  dark: boolean,
+) {
+  const tilt = -0.42;
+  const ringRadius = radius * 1.95;
+
+  context.save();
+  context.translate(item.sx, item.sy);
+  context.rotate(tilt);
+  context.lineWidth = Math.max(1, radius * 0.2);
+  // A lightened ring vanishes on a pale ground, so paper gets a darkened one.
+  context.strokeStyle = dark
+    ? withAlpha(lightenColor(item.node.color, 0.6), ringMix + 0.42)
+    : withAlpha(darkenColor(item.node.color, 0.3), 0.85);
+  context.beginPath();
+  // Back half sweeps above the planet, front half below — together they read as
+  // one ring threaded through the disc.
+  context.ellipse(
+    0,
+    0,
+    ringRadius,
+    ringRadius * 0.3,
+    0,
+    half === "back" ? Math.PI : 0,
+    half === "back" ? Math.PI * 2 : Math.PI,
+  );
+  context.stroke();
+  context.restore();
+}
+
+/** Four-point sparkle with a hot core — the brightest thing on the canvas. */
+function drawStar(
+  context: CanvasRenderingContext2D,
+  item: Placed,
+  radius: number,
+  time: number,
+  dark: boolean,
+) {
+  const pulse = 0.88 + 0.12 * Math.sin(time * 0.0016 + item.sx);
+  const reach = radius * 2.1 * pulse;
+  const waist = radius * 0.34;
+  // A star is defined by being brighter than its ground; on paper that inverts,
+  // so the sparkle is drawn in saturated ink with its core deepest.
+  const core = dark ? lightenColor(item.node.color, 0.72) : darkenColor(item.node.color, 0.18);
+
+  context.save();
+  context.translate(item.sx, item.sy);
+
+  const spikes = context.createLinearGradient(-reach, 0, reach, 0);
+  spikes.addColorStop(0, withAlpha(item.node.color, 0));
+  spikes.addColorStop(0.5, core);
+  spikes.addColorStop(1, withAlpha(item.node.color, 0));
+
+  // Two crossed lozenges: horizontal, then the same path rotated 90°.
+  for (let pass = 0; pass < 2; pass += 1) {
+    context.beginPath();
+    context.moveTo(-reach, 0);
+    context.quadraticCurveTo(0, -waist, reach, 0);
+    context.quadraticCurveTo(0, waist, -reach, 0);
+    context.fillStyle = pass === 0 ? spikes : withAlpha(core, dark ? 0.75 : 0.6);
+    context.fill();
+    context.rotate(Math.PI / 2);
+  }
+
+  context.beginPath();
+  context.arc(0, 0, radius * 0.62, 0, Math.PI * 2);
+  context.fillStyle = core;
+  context.fill();
+  context.restore();
+}
+
+/** Small disc with a crescent bite — the many leaf nodes, kept quiet. */
+function drawMoon(
+  context: CanvasRenderingContext2D,
+  item: Placed,
+  radius: number,
+  dark: boolean,
+) {
+  const body = radius * 0.85;
+
+  context.beginPath();
+  context.arc(item.sx, item.sy, body, 0, Math.PI * 2);
+  context.fillStyle = withAlpha(lightenColor(item.node.color, dark ? 0.2 : 0.05), 0.95);
+  context.fill();
+
+  // The bite is drawn as a shadow disc offset up-right, clipped to the body.
+  context.save();
+  context.beginPath();
+  context.arc(item.sx, item.sy, body, 0, Math.PI * 2);
+  context.clip();
+  context.beginPath();
+  context.arc(item.sx + body * 0.62, item.sy - body * 0.5, body * 1.05, 0, Math.PI * 2);
+  context.fillStyle = dark ? "rgba(6,10,20,.62)" : "rgba(15,23,42,.34)";
+  context.fill();
+  context.restore();
+
+  context.beginPath();
+  context.arc(item.sx, item.sy, body, 0, Math.PI * 2);
+  context.lineWidth = Math.max(0.7, radius * 0.12);
+  context.strokeStyle = dark
+    ? withAlpha(lightenColor(item.node.color, 0.5), 0.6)
+    : withAlpha(darkenColor(item.node.color, 0.32), 0.65);
+  context.stroke();
+}
+
+interface Box {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+function overlaps(a: Box, b: Box) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+/** Clips a label to `maxWidth` px, ellipsis included. */
+function truncate(context: CanvasRenderingContext2D, label: string, maxWidth: number) {
+  if (context.measureText(label).width <= maxWidth) return label;
+  let text = label;
+  while (text.length > 1 && context.measureText(`${text}…`).width > maxWidth) {
+    text = text.slice(0, -1);
+  }
+  return `${text}…`;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Coffee, Pause, Play, Square, X } from "lucide-react";
+import { Coffee, Pause, Play, Square, X, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import {
@@ -8,6 +8,7 @@ import {
   getBreakElapsedSec,
   getBreakRemainingSec,
 } from "@/lib/breaks/break-math";
+import { resolvePeriodCopy } from "@/lib/breaks/break-copy";
 import { closeMiniPlayerWindow } from "@/lib/mini-player/window-controller";
 import { useNotificationPreferences } from "@/lib/notifications/use-notification-preferences";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
@@ -79,6 +80,7 @@ export function MiniPlayerSurface({ pipWindow }: MiniPlayerSurfaceProps) {
   const primary = timers.find((timer) => !timer.parentTimerId) ?? timers[0] ?? null;
   const secondaries = primary ? timers.filter((timer) => timer.parentTimerId === primary.id) : [];
   const onBreak = Boolean(activeBreak && !activeBreak.completedAt);
+  const periodCopy = resolvePeriodCopy(onBreak ? activeBreak : null);
 
   /** Announced once via a live region; the ticking clock deliberately is not. */
   function announce(message: string) {
@@ -124,7 +126,7 @@ export function MiniPlayerSurface({ pipWindow }: MiniPlayerSurfaceProps) {
       const result = await stopTimerAndPersist(timerId);
       announce(result.stopped ? "Entry saved." : "Nothing to save.");
     } catch {
-      announce("Couldn’t save — the timer is still running.");
+      announce("Couldn’t save, the timer is still running.");
     } finally {
       setBusy(false);
     }
@@ -139,16 +141,26 @@ export function MiniPlayerSurface({ pipWindow }: MiniPlayerSurfaceProps) {
     const elapsedSec = getBreakElapsedSec(activeBreak, tickNow);
 
     try {
-      await writeBreakEntry(activeBreak, {
+      // Flush whatever is still sitting in the note field, then re-read fresh
+      // state — it may have just been written above, and another tab may have
+      // added its own note since this component last rendered.
+      const trimmed = note.trim();
+      if (trimmed) {
+        appendBreakNote(trimmed, new Date(), timeFormat);
+        setNote("");
+      }
+      const latest = useTimerStore.getState().activeBreak ?? activeBreak;
+
+      await writeBreakEntry(latest, {
         endAtIso: new Date(tickNow).toISOString(),
         elapsedSec,
         outcome: "completed",
       });
 
       finishBreak("completed", { autoResume: prefs.breaks.autoResume });
-      announce("Break ended.");
+      announce(periodCopy.endedToast(0));
     } catch {
-      announce("Couldn’t log the break — it’s still running.");
+      announce(periodCopy.logFailedMessage);
     } finally {
       setBusy(false);
     }
@@ -172,7 +184,7 @@ export function MiniPlayerSurface({ pipWindow }: MiniPlayerSurfaceProps) {
             {/* A paused primary with a parallel task still running is not
                 "Paused" — the app is tracking, just not this row. */}
             {onBreak
-              ? "Timers paused until the break ends"
+              ? periodCopy.statusLine
               : primary
                 ? primary.pausedAt
                   ? secondaries.some((timer) => !timer.pausedAt)
@@ -216,8 +228,12 @@ export function MiniPlayerSurface({ pipWindow }: MiniPlayerSurfaceProps) {
             disabled={busy}
             className={cn(BUTTON_BASE, BUTTON_PRIMARY)}
           >
-            <Coffee className="h-4 w-4" aria-hidden="true" />
-            End break
+            {periodCopy.isQuickAction ? (
+              <Zap className="h-4 w-4" aria-hidden="true" />
+            ) : (
+              <Coffee className="h-4 w-4" aria-hidden="true" />
+            )}
+            {periodCopy.endLabel}
           </button>
         ) : (
           <>
@@ -266,7 +282,7 @@ export function MiniPlayerSurface({ pipWindow }: MiniPlayerSurfaceProps) {
                     label: "Break",
                     plannedDurationSec: prefs.breaks.defaultMinutes * 60,
                   });
-                  announce(started ? "Break started." : "A break is already running.");
+                  announce(started ? resolvePeriodCopy(started).startedToast(started.pausedTimerIds.length) : "A break is already running.");
                 }}
                 className={cn(BUTTON_BASE, BUTTON_QUIET)}
               >

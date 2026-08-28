@@ -221,7 +221,7 @@ export function KnowledgeGraph() {
         <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
           <p className="font-medium text-foreground">No notes yet</p>
           <p className="max-w-sm text-sm text-muted-foreground">
-            Write a note and link others with <code>[[wiki links]]</code> — clusters appear here as
+            Write a note and link others with <code>[[wiki links]]</code>, clusters appear here as
             your ideas connect.
           </p>
         </div>

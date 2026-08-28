@@ -40,7 +40,8 @@ function timerFromRow(raw: Row): Row {
 function breakFromRow(raw: Row): Row {
   const value = nested(raw, BREAK_TABLE);
   return { id: value.id, label: value.label, startedAt: fromCatalystDateTime(value.started_at) ?? "", plannedDurationSec: Number(value.planned_duration_sec ?? 0),
-    pausedTimerIds: parseJson(value.paused_timer_ids, []), notes: value.notes ?? null, revision: Number(value.revision ?? 0), updatedAt: fromCatalystDateTime(value.updated_at) ?? "", deletedAt: value.deleted_at ? fromCatalystDateTime(value.deleted_at) : null };
+    pausedTimerIds: parseJson(value.paused_timer_ids, []), notes: value.notes ?? null, revision: Number(value.revision ?? 0), updatedAt: fromCatalystDateTime(value.updated_at) ?? "", deletedAt: value.deleted_at ? fromCatalystDateTime(value.deleted_at) : null,
+    projectId: value.project_id ?? null, categoryId: value.category_id ?? null, tag: value.tag ?? null, description: value.description ?? null };
 }
 function parseJson(value: unknown, fallback: string[]) { try { return typeof value === "string" ? JSON.parse(value) : fallback; } catch { return fallback; } }
 function fields(table: string, mutation: Mutation, revision: number): Row {
@@ -52,7 +53,8 @@ function fields(table: string, mutation: Mutation, revision: number): Row {
   if (table === TIMER_TABLE) return { ...common, title: mutation.title ?? "", project_id: mutation.projectId ?? null, category_id: mutation.categoryId ?? null,
     tags: JSON.stringify(Array.isArray(mutation.tags) ? mutation.tags : []), notes: mutation.notes ?? null, start_at: toCatalystDateTime(mutation.startAt), elapsed_before_pause_sec: Number(mutation.elapsedBeforePauseSec ?? 0),
     paused_at: mutation.pausedAt === null || mutation.pausedAt === undefined ? null : toCatalystDateTime(mutation.pausedAt), pomodoro_mode: Boolean(mutation.pomodoroMode), parent_timer_id: mutation.parentTimerId ?? null };
-  return { ...common, label: mutation.label ?? "Break", started_at: toCatalystDateTime(mutation.startedAt), planned_duration_sec: Number(mutation.plannedDurationSec ?? 0), paused_timer_ids: JSON.stringify(Array.isArray(mutation.pausedTimerIds) ? mutation.pausedTimerIds : []), notes: mutation.notes ?? null };
+  return { ...common, label: mutation.label ?? "Break", started_at: toCatalystDateTime(mutation.startedAt), planned_duration_sec: Number(mutation.plannedDurationSec ?? 0), paused_timer_ids: JSON.stringify(Array.isArray(mutation.pausedTimerIds) ? mutation.pausedTimerIds : []), notes: mutation.notes ?? null,
+    project_id: mutation.projectId ?? null, category_id: mutation.categoryId ?? null, tag: mutation.tag ?? null, description: mutation.description ?? null };
 }
 async function user(request: Request) {
   try { const app = initCatalyst(request); const value = await app.userManagement().getCurrentUser(); return { app, id: value.user_id }; } catch { return null; }

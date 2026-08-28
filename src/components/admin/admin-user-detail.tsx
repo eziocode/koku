@@ -291,6 +291,11 @@ export function AdminUserDetail({ userId }: { userId: string }) {
     );
   }, [rangeEnd, start]);
 
+  const projectNameById = useMemo(
+    () => new Map((dashboard?.projects ?? []).map((project) => [project.id, project.name])),
+    [dashboard],
+  );
+
   const chartDays = useMemo(() => {
     if (!rangeDashboard) return [];
     return buildSegmentedDays({
@@ -711,15 +716,25 @@ export function AdminUserDetail({ userId }: { userId: string }) {
             hasMore={!!logCursor}
             loadingMore={logLoadingMore}
             onMore={() => void moreTimeLogs()}
-            render={(row) => (
-              <>
-                <p className="font-medium">{String(row.title || "Untitled work")}</p>
-                <p className="text-xs text-muted-foreground">{formatDate(row.startAt, timeFormat)} · {formatDuration(row.durationSec)}</p>
-                {row.notes ? (
-                  <MarkdownText text={String(row.notes)} className="mt-1 text-muted-foreground" />
-                ) : null}
-              </>
-            )}
+            render={(row) => {
+              const tags = Array.isArray(row.tags) ? row.tags.map(String).filter(Boolean) : [];
+              const projectName = row.projectId ? projectNameById.get(String(row.projectId)) : undefined;
+              return (
+                <>
+                  <p className="font-medium">{String(row.title || "Untitled work")}</p>
+                  <p className="text-xs text-muted-foreground">{formatDate(row.startAt, timeFormat)} · {formatDuration(row.durationSec)}</p>
+                  {(projectName || tags.length > 0) && (
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      {projectName ? <Badge variant="outline">{projectName}</Badge> : null}
+                      {tags.map((tag) => <Badge key={tag} variant="secondary">{tag}</Badge>)}
+                    </div>
+                  )}
+                  {row.notes ? (
+                    <MarkdownText text={String(row.notes)} className="mt-1 text-muted-foreground" />
+                  ) : null}
+                </>
+              );
+            }}
           />
           <LazyDetailList
             title="Notes"

@@ -79,7 +79,7 @@ export function DailyGrid({ entries }: DailyGridProps) {
                   <p className="text-sm text-muted-foreground">
                     {formatTime(entry.startAt, timeFormat)}
                     {entry.endAt
-                      ? ` — ${formatTime(entry.endAt, timeFormat)}`
+                      ? ` - ${formatTime(entry.endAt, timeFormat)}`
                       : " • Running"}
                   </p>
                 </div>

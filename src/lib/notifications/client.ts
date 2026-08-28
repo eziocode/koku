@@ -1,4 +1,5 @@
 import { auditLogger } from "@/lib/audit/logger";
+import { recordNotificationHistory } from "@/lib/notifications/log";
 import { postToSw } from "@/lib/notifications/messages";
 import type { BuiltNotification } from "@/lib/notifications/payload";
 import { detectNotificationSupport, getPermissionState } from "@/lib/notifications/permission";
@@ -104,6 +105,7 @@ export async function showKokuNotificationDetailed(
     try {
       await registration.showNotification(built.title, built.options);
       scheduleAutoClose(built, registration);
+      void recordNotificationHistory(built);
       return { shown: true, via: "service-worker" };
     } catch (error) {
       const detail = error instanceof Error ? error.name : "UnknownError";
@@ -126,6 +128,7 @@ export async function showKokuNotificationDetailed(
       reason: "sw-not-ready",
       tag: built.options.tag,
     });
+    void recordNotificationHistory(built);
     return { shown: true, via: "constructor" };
   } catch (error) {
     const detail = error instanceof Error ? error.name : "UnknownError";

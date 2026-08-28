@@ -25,7 +25,7 @@ function deriveQuickNoteTarget(
   activeBreak: ActiveBreak | null,
 ): QuickNoteTarget {
   if (activeBreak && !activeBreak.completedAt) {
-    return { kind: "break", label: activeBreak.label };
+    return { kind: "break", label: activeBreak.label, tag: activeBreak.tag };
   }
 
   const running = timers.filter((timer) => !timer.pausedAt);

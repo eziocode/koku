@@ -6,6 +6,7 @@ import {
   type KokuNotificationData,
   type NotificationActionId,
 } from "@/lib/notifications/messages";
+import { resolvePeriodCopy } from "@/lib/breaks/break-copy";
 import type { NotificationPreferences } from "@/lib/notifications/settings";
 import type { TimeFormat } from "@/lib/settings/schema";
 
@@ -40,7 +41,7 @@ export const NOTIFICATION_BADGE = "/icon-badge.png";
 export type CheckInContext =
   | { kind: "timer-running"; timerId: string; title: string; elapsedSec: number }
   | { kind: "timer-paused"; timerId: string; title: string; elapsedSec: number }
-  | { kind: "break"; breakId: string; label: string; remainingSec: number | null }
+  | { kind: "break"; breakId: string; label: string; tag: string | null; remainingSec: number | null }
   | { kind: "idle"; lastEntryTitle: string | null; idleForSec: number | null };
 
 export interface BuiltNotification {
@@ -122,14 +123,15 @@ export function buildCheckInNotification(
   if (context.kind === "timer-running") {
     timerId = context.timerId;
     title = `Still on “${context.title}”`;
-    body = `${formatElapsed(context.elapsedSec)} tracked — anything worth recording?`;
+    body = `${formatElapsed(context.elapsedSec)} tracked, anything worth recording?`;
   } else if (context.kind === "timer-paused") {
     timerId = context.timerId;
     title = `Paused on “${context.title}”`;
     body = `${formatElapsed(context.elapsedSec)} tracked. Pick it back up, or log what happened?`;
   } else if (context.kind === "break") {
     breakId = context.breakId;
-    title = `On a ${context.label.toLowerCase()}`;
+    const inline = resolvePeriodCopy({ label: context.label, tag: context.tag }).inlineLabel;
+    title = `On a ${inline}`;
     body =
       context.remainingSec === null
         ? "Still on a break. Ready to get back to it?"
@@ -237,7 +239,7 @@ export function buildEndOfDayNotification(
       body:
         actions.length > 0
           ? `Your timer is still running. Auto-stops in ${gracePeriodMinutes} min if you don't answer.`
-          : `Your timer is still running. Auto-stops in ${gracePeriodMinutes} min — click here to keep it running.`,
+          : `Your timer is still running. Auto-stops in ${gracePeriodMinutes} min, click here to keep it running.`,
       tag: NOTIFICATION_TAGS.endOfDay,
       renotify: true,
       requireInteraction: true,

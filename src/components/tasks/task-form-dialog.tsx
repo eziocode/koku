@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
 import {
   Dialog,
@@ -20,11 +21,11 @@ import { TagInput } from "@/components/ui/tag-input";
 import { toast } from "@/components/ui/toast";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
+import { useTagSuggestions } from "@/lib/storage/hooks/use-tag-suggestions";
 import { useTasks } from "@/lib/storage/hooks/use-tasks";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 import type { Task, TaskPriority, TaskStatus } from "@/lib/storage/db";
-
-const NONE = "none";
+import { NONE_VALUE } from "@/lib/ui/list-thresholds";
 
 interface TaskFormDialogProps {
   open: boolean;
@@ -55,16 +56,20 @@ function TaskFormBody({
   const { projects } = useProjects();
   const { categories } = useCategories();
   const { value: timeFormat } = useTypedSetting("timeFormat");
+  const tagSuggestions = useTagSuggestions();
 
   const [title, setTitle] = useState(task?.title ?? "");
   const [notes, setNotes] = useState(task?.notes ?? "");
   const [priority, setPriority] = useState<TaskPriority>(task?.priority ?? "medium");
   const [dueAt, setDueAt] = useState(task?.dueAt ? task.dueAt.slice(0, 16) : "");
   const [startAt, setStartAt] = useState(task?.startAt ? task.startAt.slice(0, 16) : "");
-  const [projectId, setProjectId] = useState(task?.projectId ?? NONE);
-  const [categoryId, setCategoryId] = useState(task?.categoryId ?? NONE);
+  const [projectId, setProjectId] = useState(task?.projectId ?? NONE_VALUE);
+  const [categoryId, setCategoryId] = useState(task?.categoryId ?? NONE_VALUE);
   const [tags, setTags] = useState<string[]>(task?.tags ?? []);
   const [submitting, setSubmitting] = useState(false);
+
+  const projectOptions: ComboboxOption[] = projects.map((p) => ({ value: p.id, label: p.name, color: p.color }));
+  const categoryOptions: ComboboxOption[] = categories.map((c) => ({ value: c.id, label: c.name, color: c.color }));
 
   async function handleSubmit() {
     if (!title.trim()) {
@@ -80,8 +85,8 @@ function TaskFormBody({
         priority,
         dueAt: dueAt ? new Date(dueAt).toISOString() : null,
         startAt: startAt ? new Date(startAt).toISOString() : null,
-        projectId: projectId === NONE ? null : projectId,
-        categoryId: categoryId === NONE ? null : categoryId,
+        projectId: projectId === NONE_VALUE ? null : projectId,
+        categoryId: categoryId === NONE_VALUE ? null : categoryId,
         tags,
       };
 
@@ -105,7 +110,7 @@ function TaskFormBody({
       <DialogHeader>
         <DialogTitle>{task ? "Edit task" : "New task"}</DialogTitle>
         <DialogDescription>
-          Log time against this task from the timer or a manual entry — even across many
+          Log time against this task from the timer or a manual entry, even across many
           separate sessions.
         </DialogDescription>
       </DialogHeader>
@@ -146,30 +151,32 @@ function TaskFormBody({
 
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1.5">
-            <Label>Project</Label>
-            <Select value={projectId} onValueChange={setProjectId}>
-              <SelectTrigger><SelectValue placeholder="No project" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NONE}>No project</SelectItem>
-                {projects.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <Label htmlFor="task-project">Project</Label>
+            <Combobox
+              id="task-project"
+              options={projectOptions}
+              value={projectId}
+              onValueChange={setProjectId}
+              placeholder="No project"
+              noneOption={{ value: NONE_VALUE, label: "No project" }}
+            />
           </div>
           <div className="space-y-1.5">
-            <Label>Category</Label>
-            <Select value={categoryId} onValueChange={setCategoryId}>
-              <SelectTrigger><SelectValue placeholder="No category" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NONE}>No category</SelectItem>
-                {categories.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <Label htmlFor="task-category">Category</Label>
+            <Combobox
+              id="task-category"
+              options={categoryOptions}
+              value={categoryId}
+              onValueChange={setCategoryId}
+              placeholder="No category"
+              noneOption={{ value: NONE_VALUE, label: "No category" }}
+            />
           </div>
         </div>
 
         <div className="space-y-1.5">
           <Label htmlFor="task-tags">Tags</Label>
-          <TagInput id="task-tags" value={tags} onChange={setTags} placeholder="Add tag…" />
+          <TagInput id="task-tags" value={tags} onChange={setTags} suggestions={tagSuggestions} placeholder="Add tag…" />
         </div>
       </div>
 

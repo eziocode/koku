@@ -2,33 +2,31 @@
 
 import { Command } from "cmdk";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { appNavigation } from "@/lib/navigation";
+import { startQuickTimer } from "@/lib/time-tracking/quick-timer";
 import { useNotes } from "@/lib/storage/hooks/use-notes";
 import { useNotificationPreferences } from "@/lib/notifications/use-notification-preferences";
 import { useTimerStore } from "@/lib/stores/timer-store";
 import { toast } from "@/components/ui/toast";
 
-export function CommandPalette() {
+interface CommandPaletteProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+/**
+ * Open state is lifted to `ShortcutsProvider`, which owns the single global
+ * keyboard listener (`⌘K`/`Ctrl+K` included) — see `lib/ui/shortcuts.ts` for
+ * why that shortcut moved out of this component's own `keydown` handler.
+ */
+export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const router = useRouter();
   const { timers, activeBreak, startTimer } = useTimerStore();
   const { prefs } = useNotificationPreferences();
-  const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const { notes, createNote } = useNotes(query);
-
-  useEffect(() => {
-    const down = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setOpen((current) => !current);
-      }
-    };
-
-    window.addEventListener("keydown", down);
-    return () => window.removeEventListener("keydown", down);
-  }, []);
 
   const navigationItems = useMemo(
     () => appNavigation.map((item) => ({ value: item.title, href: item.href })),
@@ -42,49 +40,33 @@ export function CommandPalette() {
       tags: ["quick"],
       content: { type: "doc", content: [{ type: "paragraph" }] },
     });
-    setOpen(false);
+    onOpenChange(false);
     router.push(`/notes?id=${note.id}`);
   }
 
-  function startQuickTimer() {
-    if (timers.length > 0) {
-      setOpen(false);
+  function handleStartQuickTimer() {
+    const result = startQuickTimer({
+      timers,
+      activeBreak,
+      blockNewTimers: prefs.breaks.blockNewTimers,
+      startTimer,
+    });
+
+    if (result.status !== "started") {
+      onOpenChange(false);
       router.push("/log");
-      toast.error("Stop and save active timers before starting another.");
+      toast.error(result.message);
       return;
     }
 
-    if (activeBreak && prefs.breaks.blockNewTimers) {
-      setOpen(false);
-      router.push("/log");
-      toast.error("Finish or cancel your break before starting a timer.");
-      return;
-    }
-
-    const started = startTimer(
-      {
-        title: "Quick focus",
-        startTime: new Date().toISOString(),
-        projectId: null,
-        categoryId: null,
-        pomodoroMode: false,
-      },
-      { allowDuringBreak: !prefs.breaks.blockNewTimers },
-    );
-
-    if (!started) {
-      toast.error("Stop and save active timers before starting another.");
-      return;
-    }
-
-    setOpen(false);
+    onOpenChange(false);
     router.push("/log");
   }
 
   return (
     <Command.Dialog
       open={open}
-      onOpenChange={setOpen}
+      onOpenChange={onOpenChange}
       label="Command Palette"
       className="fixed left-1/2 top-24 z-50 w-[min(720px,calc(100%-2rem))] -translate-x-1/2 overflow-hidden rounded-3xl border border-border bg-card shadow-2xl shadow-black/20"
     >
@@ -101,7 +83,7 @@ export function CommandPalette() {
           </Command.Empty>
 
           <Command.Group heading="Quick actions" className="px-2 py-2 text-xs text-muted-foreground">
-            <Command.Item onSelect={startQuickTimer} className="rounded-2xl px-3 py-2 text-sm aria-selected:bg-muted">
+            <Command.Item onSelect={handleStartQuickTimer} className="rounded-2xl px-3 py-2 text-sm aria-selected:bg-muted">
               Start timer
             </Command.Item>
             <Command.Item onSelect={createQuickNote} className="rounded-2xl px-3 py-2 text-sm aria-selected:bg-muted">
@@ -115,7 +97,7 @@ export function CommandPalette() {
                 key={item.href}
                 value={item.value}
                 onSelect={() => {
-                  setOpen(false);
+                  onOpenChange(false);
                   router.push(item.href);
                 }}
                 className="rounded-2xl px-3 py-2 text-sm aria-selected:bg-muted"
@@ -131,7 +113,7 @@ export function CommandPalette() {
                 key={note.id}
                 value={note.title}
                 onSelect={() => {
-                  setOpen(false);
+                  onOpenChange(false);
                   router.push(`/notes?id=${note.id}`);
                 }}
                 className="rounded-2xl px-3 py-2 text-sm aria-selected:bg-muted"

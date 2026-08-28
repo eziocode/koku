@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable react-hooks/set-state-in-effect */
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
@@ -15,6 +16,8 @@ type LazyScrollListProps<T> = {
   className?: string;
   listClassName?: string;
   moreLabel?: string;
+  /** Escape hatch for callers whose keys don't reflect a real content change; defaults to items' own keys. */
+  resetKey?: string;
 };
 
 /** Incrementally renders large local collections inside a bounded scroll view. */
@@ -27,11 +30,17 @@ export function LazyScrollList<T>({
   className,
   listClassName,
   moreLabel = "Load more",
+  resetKey,
 }: LazyScrollListProps<T>) {
   const [visibleCount, setVisibleCount] = useState(pageSize);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const hasMore = visibleCount < items.length;
   const needsScrollArea = items.length > pageSize;
+  const itemsKey = resetKey ?? items.map((item, index) => getKey(item, index)).join("|");
+
+  useEffect(() => {
+    setVisibleCount(pageSize);
+  }, [itemsKey, pageSize]);
 
   useEffect(() => {
     if (!hasMore || !sentinelRef.current) return;

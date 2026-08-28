@@ -8,13 +8,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Progress } from "@/components/ui/progress";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
 import {
   formatBreakRemaining,
   getBreakElapsedSec,
   getBreakRemainingSec,
 } from "@/lib/breaks/break-math";
+import { resolvePeriodCopy } from "@/lib/breaks/break-copy";
 import { useNotificationPreferences } from "@/lib/notifications/use-notification-preferences";
+import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 import { useTimerStore } from "@/lib/stores/timer-store";
 import { useSecondTick } from "@/lib/stores/use-ticker";
 import { writeBreakEntry } from "@/lib/breaks/finalize-break";
@@ -52,11 +56,7 @@ export function BreakButton() {
     setCustom("");
     setLabel("");
 
-    toast.success(
-      started.pausedTimerIds.length > 0
-        ? `${started.label} started. ${started.pausedTimerIds.length === 1 ? "Your timer is" : "Your timers are"} paused.`
-        : `${started.label} started.`,
-    );
+    toast.success(resolvePeriodCopy(started).startedToast(started.pausedTimerIds.length));
   }
 
   const customMinutes = Number(custom);
@@ -161,8 +161,11 @@ export function BreakCard() {
   const activeBreak = useTimerStore((state) => state.activeBreak);
   const extendBreak = useTimerStore((state) => state.extendBreak);
   const finishBreak = useTimerStore((state) => state.finishBreak);
+  const appendBreakNote = useTimerStore((state) => state.appendBreakNote);
+  const { value: timeFormat } = useTypedSetting("timeFormat");
   const tickNow = useSecondTick();
   const [submitting, setSubmitting] = useState(false);
+  const [noteText, setNoteText] = useState("");
 
   if (!activeBreak) {
     return null;
@@ -171,12 +174,23 @@ export function BreakCard() {
   // Bound to a local so the async handler below keeps the narrowed type and
   // operates on the break as it was when the user clicked.
   const current = activeBreak;
+  const copy = resolvePeriodCopy(current);
   const elapsedSec = getBreakElapsedSec(current, tickNow);
   const remainingSec = getBreakRemainingSec(current, tickNow);
   const openEnded = current.plannedDurationSec <= 0;
   const progress = openEnded
     ? 0
     : Math.min(100, Math.round((elapsedSec / current.plannedDurationSec) * 100));
+  const capturedNotes = current.notes?.split("\n").filter(Boolean) ?? [];
+
+  function submitNote() {
+    const trimmed = noteText.trim();
+    if (!trimmed) {
+      return;
+    }
+    appendBreakNote(trimmed, new Date(), timeFormat);
+    setNoteText("");
+  }
 
   async function end(outcome: "completed" | "cancelled") {
     if (submitting) {
@@ -186,12 +200,23 @@ export function BreakCard() {
     setSubmitting(true);
 
     try {
+      // Flush whatever is still sitting in the textarea, then re-read fresh
+      // state — appendBreakNote above may have just written it, and another
+      // tab (or the mini player) may have added its own note since this
+      // component last rendered. Reading `current.notes` here would drop both.
+      const trimmed = noteText.trim();
+      if (trimmed) {
+        appendBreakNote(trimmed, new Date(), timeFormat);
+        setNoteText("");
+      }
+      const latest = useTimerStore.getState().activeBreak ?? current;
+
       const shouldLog = outcome === "completed" || elapsedSec >= MIN_LOGGABLE_CANCEL_SEC;
 
       // Written before finishing, so a failed write leaves the break intact and
       // retryable rather than losing the record.
       if (shouldLog) {
-        await writeBreakEntry(current, {
+        await writeBreakEntry(latest, {
           endAtIso: new Date(tickNow).toISOString(),
           elapsedSec,
           outcome,
@@ -203,13 +228,9 @@ export function BreakCard() {
         return;
       }
 
-      toast.success(
-        completion.resumedTimerIds.length > 0
-          ? `${current.label} ended. Your timer is running again.`
-          : `${current.label} ended.`,
-      );
+      toast.success(copy.endedToast(completion.resumedTimerIds.length));
     } catch {
-      toast.error("Couldn’t log your break. It’s still running so you can retry.");
+      toast.error(copy.logFailedMessage);
     } finally {
       setSubmitting(false);
     }
@@ -223,14 +244,13 @@ export function BreakCard() {
             <p className="font-medium text-foreground">{current.label}</p>
             <span className="flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground">
               <span className="koku-live-dot" aria-hidden="true" />
-              {current.tag ? "Running" : "On a break"}
+              {copy.statusBadge}
             </span>
           </div>
-          <p className="text-sm text-muted-foreground">
-            {current.tag
-              ? `Timers are paused until ${current.label} ends.`
-              : "Timers are paused until the break ends."}
-          </p>
+          <p className="text-sm text-muted-foreground">{copy.statusLine}</p>
+          {current.description && (
+            <p className="text-sm text-muted-foreground/80">{current.description}</p>
+          )}
         </div>
         <p className="shrink-0 text-2xl font-semibold tabular-nums text-foreground">
           {openEnded ? formatDuration(elapsedSec) : formatBreakRemaining(remainingSec ?? 0)}
@@ -238,7 +258,7 @@ export function BreakCard() {
       </div>
 
       {openEnded ? null : (
-        <Progress value={progress} className="mt-4" aria-label="Break progress" />
+        <Progress value={progress} className="mt-4" aria-label={copy.progressLabel} />
       )}
 
       <div className="mt-4 flex flex-wrap gap-3">
@@ -248,12 +268,46 @@ export function BreakCard() {
           </Button>
         )}
         <Button onClick={() => void end("completed")} disabled={submitting}>
-          End break now
+          {copy.endLabel}
         </Button>
         <Button variant="ghost" className="gap-2" onClick={() => void end("cancelled")} disabled={submitting}>
           <X className="h-4 w-4" aria-hidden="true" />
-          Cancel
+          {copy.cancelLabel}
         </Button>
+      </div>
+
+      <div className="mt-4 space-y-2">
+        <Label htmlFor="break-note" className="text-xs text-muted-foreground">
+          {copy.notePrompt}
+        </Label>
+        <div className="flex gap-2">
+          <Textarea
+            id="break-note"
+            value={noteText}
+            onChange={(event) => setNoteText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                submitNote();
+              }
+            }}
+            placeholder={copy.notePrompt}
+            rows={2}
+            className="flex-1"
+          />
+          <Button type="button" variant="outline" onClick={submitNote} disabled={!noteText.trim()}>
+            Add note
+          </Button>
+        </div>
+        {capturedNotes.length > 0 && (
+          <ScrollArea className="max-h-24 rounded-lg border border-border bg-background/50 p-2">
+            <ul className="space-y-1 text-xs text-muted-foreground">
+              {capturedNotes.map((line, index) => (
+                <li key={index}>{line}</li>
+              ))}
+            </ul>
+          </ScrollArea>
+        )}
       </div>
     </div>
   );

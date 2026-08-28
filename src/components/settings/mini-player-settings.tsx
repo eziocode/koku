@@ -111,7 +111,7 @@ export function MiniPlayerSettings() {
               <p className="text-sm text-muted-foreground">
                 Pops the player out when you leave koku while something is being tracked, and folds
                 it away when you come back. It never opens with nothing running. Chrome only allows
-                this for installed apps — add koku to your dock or taskbar and it works everywhere.
+                this for installed apps. Add koku to your dock or taskbar and it works everywhere.
               </p>
             </div>
             <Switch

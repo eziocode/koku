@@ -200,7 +200,7 @@ export function TagDetailClient({ tag }: TagDetailClientProps) {
                             <p className="truncate font-medium text-foreground">{entry.title}</p>
                             <p className="text-xs text-muted-foreground">
                               {formatTime(entry.startAt, timeFormat)}
-                              {entry.endAt ? ` — ${formatTime(entry.endAt, timeFormat)}` : " • Running"}
+                              {entry.endAt ? ` - ${formatTime(entry.endAt, timeFormat)}` : " • Running"}
                             </p>
                             <div className="flex flex-wrap gap-1">
                               {project && (

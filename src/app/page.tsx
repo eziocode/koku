@@ -82,7 +82,7 @@ export default function Home() {
                 <span className="text-primary">刻</span> Koku makes your workday legible.
               </h1>
               <p className="max-w-2xl text-lg leading-8 text-muted-foreground sm:text-xl">
-                A refined operating system for focused teams and individual makers—track time, connect notes,
+                A refined operating system for focused teams and individual makers: track time, connect notes,
                 surface insights, and narrate progress with AI, all from your own browser storage.
               </p>
             </div>
@@ -154,7 +154,7 @@ export default function Home() {
               Works out of the box in your browser.
             </h2>
             <p className="text-muted-foreground">
-              No sign-up, no database bootstrap, no background services. Add projects, notes, time logs, and AI keys locally — then export or import a full JSON snapshot whenever you need it.
+              No sign-up, no database bootstrap, no background services. Add projects, notes, time logs, and AI keys locally, then export or import a full JSON snapshot whenever you need it.
             </p>
           </div>
           <div className="grid gap-4 sm:grid-cols-3">

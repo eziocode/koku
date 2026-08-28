@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import {
   Dialog,
   DialogContent,
@@ -16,7 +17,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { TagInput } from "@/components/ui/tag-input";
 import { RichTextarea } from "@/components/ui/rich-textarea";
@@ -25,8 +25,11 @@ import { PopOutButton } from "@/components/mini-player/pop-out-button";
 import { BreakButton, BreakCard } from "@/components/time-tracker/break-controls";
 import { QuickActionButtons } from "@/components/time-tracker/quick-action-buttons";
 import { QuickCreateCategoryDialog, QuickCreateProjectDialog, QuickCreateTaskDialog } from "@/components/time-tracker/quick-create-dialog";
+import { TitleSuggestionBar } from "@/components/time-tracker/title-suggestion-bar";
+import { useTitleAutofill } from "@/components/time-tracker/use-title-autofill";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
+import { useTagSuggestions } from "@/lib/storage/hooks/use-tag-suggestions";
 import { useTasks } from "@/lib/storage/hooks/use-tasks";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
@@ -40,6 +43,8 @@ import { useNotificationPreferences } from "@/lib/notifications/use-notification
 import { useSecondTick } from "@/lib/stores/use-ticker";
 import { buildEntryFromTimer } from "@/lib/time-tracking/stop-timer";
 import { formatDuration } from "@/lib/utils";
+import { NONE_VALUE } from "@/lib/ui/list-thresholds";
+import { resolvePeriodCopy } from "@/lib/breaks/break-copy";
 
 /**
  * How many session cards the list shows before it starts scrolling.
@@ -54,11 +59,6 @@ const MAX_VISIBLE_TIMER_CARDS = 4;
 /** Shown when the store refuses a resume because a break is in progress. */
 const BREAK_BLOCKS_RESUME = "Finish or cancel your break to resume tracking.";
 
-interface SelectOption {
-  id: string;
-  name: string;
-}
-
 interface TimerFieldsProps {
   idPrefix: string;
   title: string;
@@ -68,10 +68,10 @@ interface TimerFieldsProps {
   tags: string[];
   notes: string;
   pomodoroMode: boolean;
-  projects: SelectOption[];
-  categories: SelectOption[];
+  projects: ComboboxOption[];
+  categories: ComboboxOption[];
   /** Open (not-done) tasks to log time against. Omit to hide the field entirely. */
-  tasks?: SelectOption[];
+  tasks?: ComboboxOption[];
   tagSuggestions?: string[];
   onTitleChange: (value: string) => void;
   onProjectIdChange: (value: string) => void;
@@ -103,7 +103,7 @@ function TimerFields({
   title,
   projectId,
   categoryId,
-  taskId = "none",
+  taskId = NONE_VALUE,
   tags,
   notes,
   pomodoroMode,
@@ -124,6 +124,17 @@ function TimerFields({
   const [createCategoryOpen, setCreateCategoryOpen] = useState(false);
   const [createTaskOpen, setCreateTaskOpen] = useState(false);
 
+  const titleAutofill = useTitleAutofill({
+    isCreating: true,
+    title,
+    projectId,
+    categoryId,
+    tags,
+    onProjectIdChange,
+    onCategoryIdChange,
+    onTagsChange,
+  });
+
   return (
     <div className="grid gap-4 md:grid-cols-2">
       {/* Title */}
@@ -135,22 +146,36 @@ function TimerFields({
           onChange={(event) => onTitleChange(event.target.value)}
           placeholder="Design sprint planning"
         />
+        {titleAutofill.suggestion && (
+          <TitleSuggestionBar
+            suggestion={titleAutofill.suggestion}
+            projectName={
+              titleAutofill.suggestion.projectId
+                ? projects.find((p) => p.value === titleAutofill.suggestion?.projectId)?.label ?? null
+                : null
+            }
+            categoryName={
+              titleAutofill.suggestion.categoryId
+                ? categories.find((c) => c.value === titleAutofill.suggestion?.categoryId)?.label ?? null
+                : null
+            }
+            onApply={titleAutofill.apply}
+            onDismiss={titleAutofill.dismiss}
+          />
+        )}
       </div>
 
       {/* Project */}
       <div className="space-y-1.5">
-        <Label>Project</Label>
-        <Select value={projectId} onValueChange={onProjectIdChange}>
-          <SelectTrigger>
-            <SelectValue placeholder="Choose project" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="none">No project</SelectItem>
-            {projects.map((project) => (
-              <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <Label htmlFor={`${idPrefix}-project`}>Project</Label>
+        <Combobox
+          id={`${idPrefix}-project`}
+          options={projects}
+          value={projectId}
+          onValueChange={onProjectIdChange}
+          placeholder="Choose project"
+          noneOption={{ value: NONE_VALUE, label: "No project" }}
+        />
         <button
           type="button"
           onClick={() => setCreateProjectOpen(true)}
@@ -162,18 +187,15 @@ function TimerFields({
 
       {/* Category */}
       <div className="space-y-1.5">
-        <Label>Category</Label>
-        <Select value={categoryId} onValueChange={onCategoryIdChange}>
-          <SelectTrigger>
-            <SelectValue placeholder="Choose category" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="none">No category</SelectItem>
-            {categories.map((category) => (
-              <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <Label htmlFor={`${idPrefix}-category`}>Category</Label>
+        <Combobox
+          id={`${idPrefix}-category`}
+          options={categories}
+          value={categoryId}
+          onValueChange={onCategoryIdChange}
+          placeholder="Choose category"
+          noneOption={{ value: NONE_VALUE, label: "No category" }}
+        />
         <button
           type="button"
           onClick={() => setCreateCategoryOpen(true)}
@@ -186,19 +208,17 @@ function TimerFields({
       {/* Task */}
       {tasks && onTaskIdChange ? (
         <div className="space-y-1.5 md:col-span-2">
-          <Label>Log time against a task</Label>
+          <Label htmlFor={`${idPrefix}-task`}>Log time against a task</Label>
           <div className="flex items-center gap-2">
-            <Select value={taskId} onValueChange={onTaskIdChange}>
-              <SelectTrigger>
-                <SelectValue placeholder="No task" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No task</SelectItem>
-                {tasks.map((task) => (
-                  <SelectItem key={task.id} value={task.id}>{task.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Combobox
+              id={`${idPrefix}-task`}
+              options={tasks}
+              value={taskId}
+              onValueChange={onTaskIdChange}
+              placeholder="No task"
+              noneOption={{ value: NONE_VALUE, label: "No task" }}
+              className="flex-1"
+            />
             <button
               type="button"
               onClick={() => setCreateTaskOpen(true)}
@@ -370,13 +390,13 @@ function buildTimerInput(
   pomodoroMode: boolean,
   tags: string[],
   notes: string,
-  taskId: string = "none",
+  taskId: string = NONE_VALUE,
 ): TimerStartInput {
   return {
     title: title.trim(),
-    projectId: projectId === "none" ? null : projectId,
-    categoryId: categoryId === "none" ? null : categoryId,
-    taskId: taskId === "none" ? null : taskId,
+    projectId: projectId === NONE_VALUE ? null : projectId,
+    categoryId: categoryId === NONE_VALUE ? null : categoryId,
+    taskId: taskId === NONE_VALUE ? null : taskId,
     startTime: new Date().toISOString(),
     pomodoroMode,
     tags,
@@ -394,39 +414,35 @@ function resetForm(
   setTaskId?: (value: string) => void,
 ) {
   setTitle("");
-  setProjectId("none");
-  setCategoryId("none");
+  setProjectId(NONE_VALUE);
+  setCategoryId(NONE_VALUE);
   setPomodoroMode(false);
   setTags([]);
   setNotes("");
-  setTaskId?.("none");
+  setTaskId?.(NONE_VALUE);
 }
 
 export function Timer() {
   const { projects } = useProjects();
   const { categories } = useCategories();
   const { pickerTasks } = useTasks();
-  const taskOptions = useMemo(
-    () => pickerTasks.map((task) => ({ id: task.id, name: task.title })),
-    [pickerTasks],
-  );
-  const { createEntry, entries: allEntries } = useTimeEntries();
+  const { createEntry } = useTimeEntries();
   const { value: timeFormat } = useTypedSetting("timeFormat");
   const { timers, activeBreak, startTimer, startSecondaryTimer, pauseTimer, resumeTimer, stopTimer, appendNote } =
     useTimerStore();
   const tickNow = useSecondTick();
   const { prefs } = useNotificationPreferences();
   const [title, setTitle] = useState("");
-  const [projectId, setProjectId] = useState<string>("none");
-  const [categoryId, setCategoryId] = useState<string>("none");
-  const [taskId, setTaskId] = useState<string>("none");
+  const [projectId, setProjectId] = useState<string>(NONE_VALUE);
+  const [categoryId, setCategoryId] = useState<string>(NONE_VALUE);
+  const [taskId, setTaskId] = useState<string>(NONE_VALUE);
   const [tags, setTags] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
   const [pomodoroMode, setPomodoroMode] = useState(false);
   const [secondaryTitle, setSecondaryTitle] = useState("");
-  const [secondaryProjectId, setSecondaryProjectId] = useState<string>("none");
-  const [secondaryCategoryId, setSecondaryCategoryId] = useState<string>("none");
-  const [secondaryTaskId, setSecondaryTaskId] = useState<string>("none");
+  const [secondaryProjectId, setSecondaryProjectId] = useState<string>(NONE_VALUE);
+  const [secondaryCategoryId, setSecondaryCategoryId] = useState<string>(NONE_VALUE);
+  const [secondaryTaskId, setSecondaryTaskId] = useState<string>(NONE_VALUE);
   const [secondaryTags, setSecondaryTags] = useState<string[]>([]);
   const [secondaryNotes, setSecondaryNotes] = useState("");
   const [secondaryPomodoroMode, setSecondaryPomodoroMode] = useState(false);
@@ -436,10 +452,7 @@ export function Timer() {
   const [resumeDialogOpen, setResumeDialogOpen] = useState(false);
   const [resumeSubmitting, setResumeSubmitting] = useState(false);
 
-  const tagSuggestions = useMemo(
-    () => Array.from(new Set(allEntries.flatMap((e) => e.tags))).sort(),
-    [allEntries],
-  );
+  const tagSuggestions = useTagSuggestions();
 
   const projectMap = useMemo(
     () => new Map(projects.map((project) => [project.id, project.name])),
@@ -448,6 +461,22 @@ export function Timer() {
   const categoryMap = useMemo(
     () => new Map(categories.map((category) => [category.id, category.name])),
     [categories],
+  );
+  const projectOptions: ComboboxOption[] = useMemo(
+    () => projects.map((project) => ({ value: project.id, label: project.name, color: project.color })),
+    [projects],
+  );
+  const categoryOptions: ComboboxOption[] = useMemo(
+    () => categories.map((category) => ({ value: category.id, label: category.name, color: category.color })),
+    [categories],
+  );
+  const taskOptions: ComboboxOption[] = useMemo(
+    () =>
+      pickerTasks.map((task) => {
+        const projectName = task.projectId ? projectMap.get(task.projectId) : undefined;
+        return { value: task.id, label: task.title, keywords: projectName ? [projectName] : undefined };
+      }),
+    [pickerTasks, projectMap],
   );
   const primaryTimer = useMemo(
     () => timers.find((timer) => !timer.parentTimerId) ?? null,
@@ -530,7 +559,7 @@ export function Timer() {
   );
   const heroCaption = useMemo(() => {
     if (activeBreak) {
-      return "Tracked so far today — paused while you are on a break";
+      return resolvePeriodCopy(activeBreak).heroCaption;
     }
 
     if (!timers.length) {
@@ -546,7 +575,7 @@ export function Timer() {
 
   const statusLabel = useMemo(() => {
     if (activeBreak) {
-      return timers.length ? `On a break · ${timers.length === 1 ? "timer" : "timers"} paused` : "On a break";
+      return resolvePeriodCopy(activeBreak).timerStatus(timers.length);
     }
 
     if (!timers.length) {
@@ -605,7 +634,7 @@ export function Timer() {
       // The store refuses for one of two reasons, and they need different advice.
       toast.error(
         activeBreak
-          ? "Finish or cancel your break before starting a timer."
+          ? resolvePeriodCopy(activeBreak).blockedTimerMessage
           : "Stop and save all active timers before starting another.",
       );
       return;
@@ -749,8 +778,8 @@ export function Timer() {
               tags={tags}
               notes={notes}
               pomodoroMode={pomodoroMode}
-              projects={projects}
-              categories={categories}
+              projects={projectOptions}
+              categories={categoryOptions}
               tasks={taskOptions}
               tagSuggestions={tagSuggestions}
               onTitleChange={setTitle}
@@ -849,7 +878,7 @@ export function Timer() {
                       {list}
                     </ScrollArea>
                     <p className="text-xs text-muted-foreground">
-                      Showing {MAX_VISIBLE_TIMER_CARDS} of {orderedTimers.length} timers — scroll
+                      Showing {MAX_VISIBLE_TIMER_CARDS} of {orderedTimers.length} timers, scroll
                       for the rest.
                     </p>
                   </div>
@@ -882,8 +911,8 @@ export function Timer() {
             tags={secondaryTags}
             notes={secondaryNotes}
             pomodoroMode={secondaryPomodoroMode}
-            projects={projects}
-            categories={categories}
+            projects={projectOptions}
+            categories={categoryOptions}
             tasks={taskOptions}
             tagSuggestions={tagSuggestions}
             onTitleChange={setSecondaryTitle}

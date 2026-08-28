@@ -4,6 +4,7 @@ import { useEffect } from "react";
 
 import { toast } from "@/components/ui/toast";
 import { getBreakElapsedSec, getBreakEndIso, isBreakComplete } from "@/lib/breaks/break-math";
+import { resolvePeriodCopy } from "@/lib/breaks/break-copy";
 import { showKokuNotification } from "@/lib/notifications/client";
 import { buildBreakCompleteNotification } from "@/lib/notifications/payload";
 import { useLeaderStatus } from "@/lib/notifications/use-leader";
@@ -65,7 +66,7 @@ export function BreakRunner() {
         });
       } catch {
         // Leave the break active so the next tick retries rather than losing it.
-        toast.error("Couldn’t log your break. It’s still running so this can retry.");
+        toast.error(resolvePeriodCopy(activeBreak).logFailedMessage);
         return;
       }
 
@@ -84,11 +85,7 @@ export function BreakRunner() {
         );
       }
 
-      toast.success(
-        completion.resumedTimerIds.length > 0
-          ? `${activeBreak.label} finished. Your timer is running again.`
-          : `${activeBreak.label} finished.`,
-      );
+      toast.success(resolvePeriodCopy(activeBreak).endedToast(completion.resumedTimerIds.length));
     };
 
     void finalise();

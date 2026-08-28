@@ -15,6 +15,7 @@ type LiveTimerRecord = {
 type LiveBreakRecord = {
   id: string; label: string; startedAt: string; plannedDurationSec: number;
   pausedTimerIds: string[]; notes: string | null; revision: number; updatedAt: string; deletedAt: string | null;
+  projectId: string | null; categoryId: string | null; tag: string | null; description: string | null;
 };
 type Tombstone = { id: string; revision: number; deletedAt: string; updatedAt: string };
 type LivePayload = { timers?: LiveTimerRecord[]; breaks?: LiveBreakRecord[] };
@@ -30,7 +31,8 @@ function timerRecord(timer: ActiveTimer, updatedAt = new Date().toISOString()): 
 }
 function breakRecord(value: ActiveBreak, updatedAt = new Date().toISOString()): LiveBreakRecord {
   return { id: value.id, label: value.label, startedAt: value.startedAt, plannedDurationSec: value.plannedDurationSec,
-    pausedTimerIds: value.pausedTimerIds, notes: value.notes ?? null, revision: value.revision ?? 0, updatedAt, deletedAt: null };
+    pausedTimerIds: value.pausedTimerIds, notes: value.notes ?? null, revision: value.revision ?? 0, updatedAt, deletedAt: null,
+    projectId: value.projectId ?? null, categoryId: value.categoryId ?? null, tag: value.tag ?? null, description: value.description ?? null };
 }
 function cloudTimer(value: LiveTimerRecord): ActiveTimer {
   return { id: value.id, title: value.title, projectId: value.projectId, categoryId: value.categoryId, tags: value.tags,
@@ -39,7 +41,8 @@ function cloudTimer(value: LiveTimerRecord): ActiveTimer {
 }
 function cloudBreak(value: LiveBreakRecord): ActiveBreak {
   return { id: value.id, label: value.label, startedAt: value.startedAt, plannedDurationSec: value.plannedDurationSec,
-    pausedTimerIds: value.pausedTimerIds, notes: value.notes, completedAt: null, revision: value.revision, updatedAt: value.updatedAt };
+    pausedTimerIds: value.pausedTimerIds, notes: value.notes, completedAt: null, revision: value.revision, updatedAt: value.updatedAt,
+    projectId: value.projectId, categoryId: value.categoryId, tag: value.tag, description: value.description };
 }
 
 async function queue(id: string, kind: PendingLiveMutation["kind"], record: unknown) {

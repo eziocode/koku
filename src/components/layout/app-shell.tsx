@@ -2,7 +2,7 @@
 
 import { ReactNode, useState } from "react";
 
-import { CommandPalette } from "@/components/layout/command-palette";
+import { ShortcutsProvider } from "@/components/layout/shortcuts-provider";
 import { MiniPlayerProvider } from "@/components/mini-player/mini-player-provider";
 import { NotificationCenter } from "@/components/notifications/notification-center";
 import { WelcomeSetup } from "@/components/onboarding/welcome-setup";
@@ -19,7 +19,7 @@ export function AppShell({ children }: AppShellProps) {
 
   return (
     <div className="flex h-full overflow-hidden bg-background text-foreground">
-      <CommandPalette />
+      <ShortcutsProvider />
       {/* Receives notification actions (quick note / open log) from the service
           worker. Mounted here so it is route-independent, like the palette. */}
       <NotificationCenter />

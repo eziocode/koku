@@ -3,11 +3,14 @@
 import { KeyboardEvent, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
+import { filterByQuery } from "@/lib/search/match";
+import { TAG_MAX_SUGGESTIONS, TAG_SEARCH_THRESHOLD, TAG_VISIBLE_SUGGESTIONS } from "@/lib/ui/list-thresholds";
 
 interface TagInputProps {
   value: string[];
   onChange: (tags: string[]) => void;
   suggestions?: string[];
+  maxSuggestions?: number;
   placeholder?: string;
   className?: string;
   id?: string;
@@ -17,12 +20,21 @@ export function TagInput({
   value,
   onChange,
   suggestions = [],
+  maxSuggestions = TAG_MAX_SUGGESTIONS,
   placeholder = "Add tag…",
   className,
   id,
 }: TagInputProps) {
   const [inputValue, setInputValue] = useState("");
+  const [expanded, setExpanded] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  function handleInputChange(next: string) {
+    setInputValue(next);
+    if (!next) {
+      setExpanded(false);
+    }
+  }
 
   function addTag(raw: string) {
     const tag = raw.trim().toLowerCase();
@@ -30,6 +42,7 @@ export function TagInput({
       onChange([...value, tag]);
     }
     setInputValue("");
+    setExpanded(false);
   }
 
   function removeTag(tag: string) {
@@ -51,7 +64,13 @@ export function TagInput({
     }
   }
 
-  const unusedSuggestions = suggestions.filter((s) => !value.includes(s));
+  const unusedSuggestions = suggestions.filter((s) => !value.includes(s)).slice(0, maxSuggestions);
+  const searchedSuggestions =
+    unusedSuggestions.length > TAG_SEARCH_THRESHOLD && inputValue.trim()
+      ? filterByQuery(unusedSuggestions, inputValue, (tag) => tag)
+      : unusedSuggestions;
+  const visibleSuggestions = searchedSuggestions.slice(0, expanded ? maxSuggestions : TAG_VISIBLE_SUGGESTIONS);
+  const hiddenCount = searchedSuggestions.length - visibleSuggestions.length;
 
   return (
     <div className={cn("space-y-2", className)}>
@@ -83,7 +102,7 @@ export function TagInput({
           ref={inputRef}
           id={id}
           value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
+          onChange={(e) => handleInputChange(e.target.value)}
           onKeyDown={handleKeyDown}
           onBlur={handleBlur}
           placeholder={value.length === 0 ? placeholder : ""}
@@ -92,9 +111,9 @@ export function TagInput({
       </div>
 
       {/* Suggestions */}
-      {unusedSuggestions.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {unusedSuggestions.map((s) => (
+      {searchedSuggestions.length > 0 && (
+        <div className={cn("flex flex-wrap gap-1.5", expanded && "max-h-24 overflow-y-auto")}>
+          {visibleSuggestions.map((s) => (
             <button
               key={s}
               type="button"
@@ -104,6 +123,15 @@ export function TagInput({
               + {s}
             </button>
           ))}
+          {!expanded && hiddenCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setExpanded(true)}
+              className="rounded-full px-2.5 py-0.5 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+            >
+              +{hiddenCount} more
+            </button>
+          )}
         </div>
       )}
     </div>

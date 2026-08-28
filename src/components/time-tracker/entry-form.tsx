@@ -3,19 +3,23 @@
 import { FormEvent, useRef, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TagInput } from "@/components/ui/tag-input";
 import { RichTextarea } from "@/components/ui/rich-textarea";
 import { toast } from "@/components/ui/toast";
 import { QuickCreateCategoryDialog, QuickCreateProjectDialog } from "@/components/time-tracker/quick-create-dialog";
+import { TitleSuggestionBar } from "@/components/time-tracker/title-suggestion-bar";
+import { useTitleAutofill } from "@/components/time-tracker/use-title-autofill";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
+import { useTagSuggestions } from "@/lib/storage/hooks/use-tag-suggestions";
 import { useTasks } from "@/lib/storage/hooks/use-tasks";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
+import { NONE_VALUE } from "@/lib/ui/list-thresholds";
 
 interface EntryFormProps {
   entryId?: string;
@@ -59,7 +63,7 @@ export function EntryForm({
   const { projects } = useProjects();
   const { categories } = useCategories();
   const { pickerTasks } = useTasks();
-  const { createEntry, updateEntry, entries: allEntries } = useTimeEntries();
+  const { createEntry, updateEntry } = useTimeEntries();
   const { value: timeFormat } = useTypedSetting("timeFormat");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [timeError, setTimeError] = useState<string | null>(null);
@@ -73,18 +77,51 @@ export function EntryForm({
     [defaultValues?.startAt],
   );
   const [title, setTitle] = useState(defaultValues?.title || "");
-  const [projectId, setProjectId] = useState(defaultValues?.projectId || "none");
-  const [categoryId, setCategoryId] = useState(defaultValues?.categoryId || "none");
-  const [taskId, setTaskId] = useState(defaultValues?.taskId || "none");
+  const [projectId, setProjectId] = useState(defaultValues?.projectId || NONE_VALUE);
+  const [categoryId, setCategoryId] = useState(defaultValues?.categoryId || NONE_VALUE);
+  const [taskId, setTaskId] = useState(defaultValues?.taskId || NONE_VALUE);
   const [startAt, setStartAt] = useState(toDateTimeLocal(initialStart));
   const [endAt, setEndAt] = useState(toDateTimeLocal(defaultValues?.endAt));
   const [tags, setTags] = useState<string[]>(defaultValues?.tags || []);
   const [notes, setNotes] = useState(defaultValues?.notes || "");
 
-  const tagSuggestions = useMemo(
-    () => Array.from(new Set(allEntries.flatMap((e) => e.tags))).sort(),
-    [allEntries],
+  const tagSuggestions = useTagSuggestions();
+
+  const projectOptions: ComboboxOption[] = useMemo(
+    () => projects.map((project) => ({ value: project.id, label: project.name, color: project.color })),
+    [projects],
   );
+  const categoryOptions: ComboboxOption[] = useMemo(
+    () => categories.map((category) => ({ value: category.id, label: category.name, color: category.color })),
+    [categories],
+  );
+  const projectNameById = useMemo(
+    () => new Map(projects.map((project) => [project.id, project.name])),
+    [projects],
+  );
+  const taskOptions: ComboboxOption[] = useMemo(
+    () =>
+      pickerTasks.map((task) => {
+        const projectName = task.projectId ? projectNameById.get(task.projectId) : undefined;
+        return { value: task.id, label: task.title, keywords: projectName ? [projectName] : undefined };
+      }),
+    [pickerTasks, projectNameById],
+  );
+  const categoryNameById = useMemo(
+    () => new Map(categories.map((category) => [category.id, category.name])),
+    [categories],
+  );
+
+  const titleAutofill = useTitleAutofill({
+    isCreating: !entryId,
+    title,
+    projectId,
+    categoryId,
+    tags,
+    onProjectIdChange: setProjectId,
+    onCategoryIdChange: setCategoryId,
+    onTagsChange: setTags,
+  });
 
   /**
    * Runs on every start/end change (not only after a failed submit) so an
@@ -127,9 +164,9 @@ export function EntryForm({
     try {
       const payload = {
         title,
-        projectId: projectId === "none" ? null : projectId,
-        categoryId: categoryId === "none" ? null : categoryId,
-        taskId: taskId === "none" ? null : taskId,
+        projectId: projectId === NONE_VALUE ? null : projectId,
+        categoryId: categoryId === NONE_VALUE ? null : categoryId,
+        taskId: taskId === NONE_VALUE ? null : taskId,
         startAt: new Date(startAt).toISOString(),
         endAt: endAt ? new Date(endAt).toISOString() : null,
         tags,
@@ -145,6 +182,7 @@ export function EntryForm({
       toast.success("Time entry saved.");
 
       if (isSaveAndNew) {
+        titleAutofill.reset();
         onSuccessNew?.();
       } else {
         onSuccess?.();
@@ -161,19 +199,27 @@ export function EntryForm({
       <div className="space-y-2">
         <Label htmlFor="entry-title">Title</Label>
         <Input id="entry-title" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Design review" required />
+        {titleAutofill.suggestion && (
+          <TitleSuggestionBar
+            suggestion={titleAutofill.suggestion}
+            projectName={titleAutofill.suggestion.projectId ? projectNameById.get(titleAutofill.suggestion.projectId) ?? null : null}
+            categoryName={titleAutofill.suggestion.categoryId ? categoryNameById.get(titleAutofill.suggestion.categoryId) ?? null : null}
+            onApply={titleAutofill.apply}
+            onDismiss={titleAutofill.dismiss}
+          />
+        )}
       </div>
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-1.5">
-          <Label>Project</Label>
-          <Select value={projectId} onValueChange={setProjectId}>
-            <SelectTrigger><SelectValue placeholder="Choose project" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No project</SelectItem>
-              {projects.map((project) => (
-                <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Label htmlFor="entry-project">Project</Label>
+          <Combobox
+            id="entry-project"
+            options={projectOptions}
+            value={projectId}
+            onValueChange={setProjectId}
+            placeholder="Choose project"
+            noneOption={{ value: NONE_VALUE, label: "No project" }}
+          />
           <button
             type="button"
             onClick={() => setCreateProjectOpen(true)}
@@ -183,16 +229,15 @@ export function EntryForm({
           </button>
         </div>
         <div className="space-y-1.5">
-          <Label>Category</Label>
-          <Select value={categoryId} onValueChange={setCategoryId}>
-            <SelectTrigger><SelectValue placeholder="Choose category" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No category</SelectItem>
-              {categories.map((category) => (
-                <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Label htmlFor="entry-category">Category</Label>
+          <Combobox
+            id="entry-category"
+            options={categoryOptions}
+            value={categoryId}
+            onValueChange={setCategoryId}
+            placeholder="Choose category"
+            noneOption={{ value: NONE_VALUE, label: "No category" }}
+          />
           <button
             type="button"
             onClick={() => setCreateCategoryOpen(true)}
@@ -204,16 +249,15 @@ export function EntryForm({
       </div>
       {pickerTasks.length > 0 && (
         <div className="space-y-1.5">
-          <Label>Log time against a task</Label>
-          <Select value={taskId} onValueChange={setTaskId}>
-            <SelectTrigger><SelectValue placeholder="No task" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No task</SelectItem>
-              {pickerTasks.map((task) => (
-                <SelectItem key={task.id} value={task.id}>{task.title}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Label htmlFor="entry-task">Log time against a task</Label>
+          <Combobox
+            id="entry-task"
+            options={taskOptions}
+            value={taskId}
+            onValueChange={setTaskId}
+            placeholder="No task"
+            noneOption={{ value: NONE_VALUE, label: "No task" }}
+          />
         </div>
       )}
       <div className="grid gap-4 md:grid-cols-2">

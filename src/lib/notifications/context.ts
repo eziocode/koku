@@ -22,6 +22,7 @@ export function deriveCheckInContext(
       kind: "break",
       breakId: activeBreak.id,
       label: activeBreak.label,
+      tag: activeBreak.tag ?? null,
       remainingSec: getBreakRemainingSec(activeBreak, now),
     };
   }

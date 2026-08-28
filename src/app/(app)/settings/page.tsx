@@ -10,8 +10,13 @@ const settingsSections = [
   },
   {
     title: "Notifications",
-    description: "Check-in reminders, breaks, and do-not-disturb. Off until you turn them on.",
+    description: "Check-ins, quiet hours & schedule, breaks, and end of day, in four focused sections.",
     href: "/settings/notifications",
+  },
+  {
+    title: "Quick actions",
+    description: "Custom one-click buttons for calls, standups, and anything else you track live.",
+    href: "/settings/quick-actions",
   },
   {
     title: "Mini player",
@@ -37,6 +42,11 @@ const settingsSections = [
     title: "Storage",
     description: "Export, import, and prepare for optional cloud drive sync.",
     href: "/settings/storage",
+  },
+  {
+    title: "Keyboard shortcuts",
+    description: "Jump around and act on timers and breaks without leaving the keyboard.",
+    href: "/settings/shortcuts",
   },
 ];
 

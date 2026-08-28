@@ -68,7 +68,7 @@ export function AppUpdateIndicator() {
           <span className="sr-only">Refresh for latest version</span>
         </Button>
       </TooltipTrigger>
-      <TooltipContent>New version available — refresh</TooltipContent>
+      <TooltipContent>New version available, refresh</TooltipContent>
     </Tooltip>
   );
 }

@@ -25,7 +25,7 @@ export const DASHBOARD_TIPS: DashboardTip[] = [
   {
     id: "parallel-tasks",
     area: "Live timer",
-    text: "Pause every running timer and a “parallel task” panel appears — track a second thread of work without losing the first.",
+    text: "Pause every running timer and a “parallel task” panel appears, track a second thread of work without losing the first.",
     href: "/dashboard",
     actionLabel: "Try it below",
   },
@@ -46,7 +46,7 @@ export const DASHBOARD_TIPS: DashboardTip[] = [
   {
     id: "manual-entry",
     area: "Time log",
-    text: "Forgot to hit start? Add a manual entry for any past time block — pick the day first and the form follows it.",
+    text: "Forgot to hit start? Add a manual entry for any past time block, pick the day first and the form follows it.",
     href: "/log",
     actionLabel: "Open the log",
   },
@@ -67,7 +67,7 @@ export const DASHBOARD_TIPS: DashboardTip[] = [
   {
     id: "notes",
     area: "Notes",
-    text: "Notes is a full rich-text editor — code blocks, images, links — and quick notes land there automatically.",
+    text: "Notes is a full rich-text editor (code blocks, images, links) and quick notes land there automatically.",
     href: "/notes",
     actionLabel: "Open notes",
   },
@@ -88,7 +88,7 @@ export const DASHBOARD_TIPS: DashboardTip[] = [
   {
     id: "ai",
     area: "AI",
-    text: "Bring your own API key and ask questions about your own logged time — nothing leaves without your key.",
+    text: "Bring your own API key and ask questions about your own logged time. Nothing leaves without your key.",
     href: "/ai",
     actionLabel: "Open AI",
   },
@@ -102,14 +102,14 @@ export const DASHBOARD_TIPS: DashboardTip[] = [
   {
     id: "check-ins",
     area: "Notifications",
-    text: "Recurring check-ins nudge you to log what you are doing — with a quick-note button right on the notification.",
+    text: "Recurring check-ins nudge you to log what you are doing, with a quick-note button right on the notification.",
     href: "/settings/notifications",
     actionLabel: "Set up check-ins",
   },
   {
     id: "holidays",
     area: "Notifications",
-    text: "Mark a day as a holiday and every notification for it is skipped — check-ins and the end-of-day wrap-up alike.",
+    text: "Mark a day as a holiday and every notification for it is skipped, check-ins and the end-of-day wrap-up alike.",
     href: "/settings/notifications",
     actionLabel: "Mark a holiday",
   },
@@ -151,14 +151,14 @@ export const DASHBOARD_TIPS: DashboardTip[] = [
   {
     id: "tags",
     area: "Tags",
-    text: "Tags are free-form and suggest themselves from what you have used before — handy for cross-project themes.",
+    text: "Tags are free-form and suggest themselves from what you have used before, handy for cross-project themes.",
     href: "/reports",
     actionLabel: "See tag breakdown",
   },
   {
     id: "week-chart",
     area: "Dashboard",
-    text: "Every block in “This week” is one log — hover it for the detail, click it to open that day.",
+    text: "Every block in “This week” is one log, hover it for the detail, click it to open that day.",
     href: "/dashboard",
     actionLabel: "See this week",
   },

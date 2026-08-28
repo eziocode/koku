@@ -73,7 +73,7 @@ function ComparePanel({ date, label }: ComparePanelProps) {
           </div>
         )}
       />
-      <p className="text-center text-xs text-muted-foreground">Side {label} — {format(parsedDate, "d MMM yyyy")}</p>
+      <p className="text-center text-xs text-muted-foreground">Side {label}: {format(parsedDate, "d MMM yyyy")}</p>
     </div>
   );
 }

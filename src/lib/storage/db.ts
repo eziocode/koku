@@ -87,6 +87,22 @@ export interface AppSetting {
   value: unknown;
 }
 
+/**
+ * A record of one notification actually shown to the user — powers the bell
+ * icon in the topbar. Purely local, like `pendingLiveMutations`: never synced
+ * across devices, since a notification history is device-specific by nature.
+ */
+export interface NotificationLogEntry {
+  id: string;
+  title: string;
+  body: string;
+  tag: string | null;
+  kokuType: string | null;
+  createdAt: string;
+  /** `null` until the user opens the bell popover; see `use-notification-log.ts`. */
+  readAt: string | null;
+}
+
 export interface PendingDelete {
   id: string;
   table: string;
@@ -125,6 +141,7 @@ class KokuDB extends Dexie {
   pendingDeletes!: EntityTable<PendingDelete, "id">;
   pendingUpserts!: EntityTable<PendingUpsert, "id">;
   pendingLiveMutations!: EntityTable<PendingLiveMutation, "id">;
+  notificationLog!: EntityTable<NotificationLogEntry, "id">;
 
   constructor() {
     super("koku-local");
@@ -222,6 +239,26 @@ class KokuDB extends Dexie {
             if (entry.taskId === undefined) entry.taskId = null;
           });
       });
+
+    this.version(7).stores({
+      projects: "id, createdAt",
+      categories: "id, name, createdAt",
+      timeEntries:
+        "id, startAt, projectId, categoryId, createdAt, durationSec, taskId, " +
+        "[projectId+startAt], [categoryId+startAt], [taskId+startAt]",
+      tasks:
+        "id, status, priority, dueAt, projectId, categoryId, sortOrder, updatedAt, createdAt, " +
+        "[status+sortOrder], [status+dueAt], [projectId+status]",
+      notes: "id, slug, updatedAt, createdAt",
+      personalNotes: "id, slug, updatedAt, createdAt",
+      noteLinks: "id, sourceNoteId, targetNoteId",
+      aiKeys: "id, provider, createdAt",
+      settings: "key",
+      pendingDeletes: "id, table, rowId, [table+rowId], createdAt",
+      pendingUpserts: "id, table, rowId, [table+rowId], updatedAt",
+      pendingLiveMutations: "id, kind, updatedAt",
+      notificationLog: "id, createdAt, tag, readAt",
+    });
   }
 }
 

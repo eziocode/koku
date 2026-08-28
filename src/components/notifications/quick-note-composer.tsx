@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
+import { resolvePeriodCopy } from "@/lib/breaks/break-copy";
 import { persistQuickNote, type QuickNoteOrigin } from "@/lib/notes";
 import { QUICK_NOTE_TAG } from "@/lib/notifications/settings";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
@@ -26,7 +27,7 @@ import { formatDuration } from "@/lib/utils";
  */
 export type QuickNoteTarget =
   | { kind: "timer"; timerId: string; title: string; elapsedSec: number }
-  | { kind: "break"; label: string }
+  | { kind: "break"; label: string; tag?: string | null }
   | { kind: "standalone" };
 
 interface QuickNoteComposerProps {
@@ -43,7 +44,7 @@ function toOrigin(target: QuickNoteTarget): QuickNoteOrigin {
   }
 
   if (target.kind === "break") {
-    return { kind: "break", label: target.label, elapsedSec: null };
+    return { kind: "break", label: target.label, elapsedSec: null, tag: target.tag ?? null };
   }
 
   return { kind: "standalone", label: null, elapsedSec: null };
@@ -55,10 +56,10 @@ function describeTarget(target: QuickNoteTarget): string {
   }
 
   if (target.kind === "break") {
-    return `Appends to your ${target.label.toLowerCase()}`;
+    return resolvePeriodCopy({ label: target.label, tag: target.tag ?? null }).quickNoteTarget;
   }
 
-  return "No timer running — saves as a standalone entry at the current time";
+  return "No timer running, saves as a standalone entry at the current time";
 }
 
 /**
@@ -100,7 +101,8 @@ export function QuickNoteComposer({ open, onOpenChange, target, onSaved }: Quick
         toast.success(`Note added to “${target.title}” and your notes.`);
       } else if (target.kind === "break") {
         appendBreakNote(trimmed, new Date(), timeFormat);
-        toast.success("Note added to your break and your notes.");
+        const inline = resolvePeriodCopy({ label: target.label, tag: target.tag ?? null }).inlineLabel;
+        toast.success(`Note added to your ${inline} and your notes.`);
       } else {
         // Nothing is running, so the note becomes a zero-duration entry. Nothing
         // is lost, it lands on /log at the right time, and because

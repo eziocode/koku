@@ -3,9 +3,7 @@
 import { FormEvent, useState } from "react";
 import { Pencil, Trash2 } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +12,7 @@ import { toast } from "@/components/ui/toast";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
 import { getUnusedItemColor } from "@/lib/storage/item-colors";
+import { filterByQuery } from "@/lib/search/match";
 
 interface ProjectRecord {
   id: string;
@@ -140,6 +139,11 @@ export function ProjectManager() {
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<ProjectRecord | null>(null);
   const [editingCategory, setEditingCategory] = useState<CategoryRecord | null>(null);
+  const [projectQuery, setProjectQuery] = useState("");
+  const [categoryQuery, setCategoryQuery] = useState("");
+
+  const filteredProjects = filterByQuery(projects, projectQuery, (project) => project.name);
+  const filteredCategories = filterByQuery(categories, categoryQuery, (category) => category.name);
 
   async function handleDeleteProject(id: string) {
     try {
@@ -190,40 +194,54 @@ export function ProjectManager() {
             </Dialog>
           </div>
 
+          <Input
+            value={projectQuery}
+            onChange={(event) => setProjectQuery(event.target.value)}
+            placeholder="Search projects…"
+            aria-label="Search projects"
+          />
+          {projectQuery.trim() && (
+            <p className="text-xs text-muted-foreground">
+              {filteredProjects.length} of {projects.length}
+            </p>
+          )}
+
           <LazyScrollList
-            items={projects}
+            items={filteredProjects}
             getKey={(project) => project.id}
             pageSize={10}
-            className="h-[40rem]"
-            listClassName="space-y-4"
+            className="h-80"
+            listClassName="space-y-2"
             moreLabel="Load more projects"
-            empty={<p className="text-sm text-muted-foreground">No projects yet.</p>}
+            empty={
+              <p className="text-sm text-muted-foreground">
+                {projectQuery.trim() ? `No projects match "${projectQuery.trim()}".` : "No projects yet."}
+              </p>
+            }
             renderItem={(project) => (
-              <Card>
-                <CardHeader>
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <CardTitle>{project.name}</CardTitle>
-                      <CardDescription>
-                        {project.hourlyRate ? `$${project.hourlyRate.toFixed(2)} / hour` : "No hourly rate set"}
-                      </CardDescription>
-                    </div>
-                    <Badge variant="outline" style={{ borderColor: project.color, color: project.color }}>
-                      {project.color}
-                    </Badge>
+              <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <span
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: project.color }}
+                    aria-hidden="true"
+                  />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{project.name}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {project.hourlyRate ? `$${project.hourlyRate.toFixed(2)} / hour` : "No hourly rate set"}
+                    </p>
                   </div>
-                </CardHeader>
-                <CardContent className="flex gap-2">
-                  <Button variant="outline" onClick={() => { setEditingProject(project); setProjectDialogOpen(true); }}>
-                    <Pencil />
-                    Edit
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  <Button variant="ghost" size="icon" aria-label="Edit project" onClick={() => { setEditingProject(project); setProjectDialogOpen(true); }}>
+                    <Pencil className="h-4 w-4" />
                   </Button>
-                  <Button variant="ghost" onClick={() => handleDeleteProject(project.id)}>
-                    <Trash2 className="text-destructive" />
-                    Delete
+                  <Button variant="ghost" size="icon" aria-label="Delete project" onClick={() => handleDeleteProject(project.id)}>
+                    <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             )}
           />
         </div>
@@ -248,38 +266,49 @@ export function ProjectManager() {
             </Dialog>
           </div>
 
+          <Input
+            value={categoryQuery}
+            onChange={(event) => setCategoryQuery(event.target.value)}
+            placeholder="Search categories…"
+            aria-label="Search categories"
+          />
+          {categoryQuery.trim() && (
+            <p className="text-xs text-muted-foreground">
+              {filteredCategories.length} of {categories.length}
+            </p>
+          )}
+
           <LazyScrollList
-            items={categories}
+            items={filteredCategories}
             getKey={(category) => category.id}
             pageSize={10}
-            className="h-[40rem]"
-            listClassName="space-y-4"
+            className="h-80"
+            listClassName="space-y-2"
             moreLabel="Load more categories"
-            empty={<p className="text-sm text-muted-foreground">No categories yet.</p>}
+            empty={
+              <p className="text-sm text-muted-foreground">
+                {categoryQuery.trim() ? `No categories match "${categoryQuery.trim()}".` : "No categories yet."}
+              </p>
+            }
             renderItem={(category) => (
-              <Card>
-                <CardHeader>
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <CardTitle>{category.name}</CardTitle>
-                      <CardDescription>Reusable across all local time entries.</CardDescription>
-                    </div>
-                    <Badge variant="outline" style={{ borderColor: category.color, color: category.color }}>
-                      {category.color}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="flex gap-2">
-                  <Button variant="outline" onClick={() => { setEditingCategory(category); setCategoryDialogOpen(true); }}>
-                    <Pencil />
-                    Edit
+              <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <span
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: category.color }}
+                    aria-hidden="true"
+                  />
+                  <p className="truncate text-sm font-medium">{category.name}</p>
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  <Button variant="ghost" size="icon" aria-label="Edit category" onClick={() => { setEditingCategory(category); setCategoryDialogOpen(true); }}>
+                    <Pencil className="h-4 w-4" />
                   </Button>
-                  <Button variant="ghost" onClick={() => handleDeleteCategory(category.id)}>
-                    <Trash2 className="text-destructive" />
-                    Delete
+                  <Button variant="ghost" size="icon" aria-label="Delete category" onClick={() => handleDeleteCategory(category.id)}>
+                    <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             )}
           />
         </div>

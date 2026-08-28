@@ -1,5 +1,6 @@
 import { format } from "date-fns";
 
+import { resolvePeriodCopy } from "@/lib/breaks/break-copy";
 import { kokuDb, type Note } from "@/lib/storage/db";
 import type { TimeFormat } from "@/lib/settings/schema";
 import { formatTime } from "@/lib/time-format";
@@ -92,6 +93,8 @@ export interface QuickNoteOrigin {
   label: string | null;
   /** Tracked seconds at the moment the note was written, when known. */
   elapsedSec: number | null;
+  /** Set when `kind: "break"` came from a quick action rather than a plain break. */
+  tag?: string | null;
 }
 
 /** Titles are the only thing the notes list shows, so keep them scannable. */
@@ -127,7 +130,8 @@ export function buildQuickNoteStamp(
   }
 
   if (origin.kind === "break" && origin.label) {
-    return `Logged ${when} · during your ${origin.label.toLowerCase()}`;
+    const inline = resolvePeriodCopy({ label: origin.label, tag: origin.tag ?? null }).inlineLabel;
+    return `Logged ${when} · during your ${inline}`;
   }
 
   return `Logged ${when} · no timer running`;

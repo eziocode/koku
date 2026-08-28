@@ -86,7 +86,7 @@ export function CheckInIntro() {
           </div>
           <DialogTitle>Want koku to check in on you?</DialogTitle>
           <DialogDescription>
-            Every {intervalMinutes} minutes, koku can ask what you&apos;re working on — one quiet
+            Every {intervalMinutes} minutes, koku can ask what you&apos;re working on: one quiet
             nudge, with a note field right in it. Nothing is tracked or sent anywhere; the reminder
             is just a breath, so you notice the time passing.
           </DialogDescription>
@@ -128,7 +128,7 @@ export function CheckInIntro() {
                 }
 
                 await patch({ enabled: true, checkIn: { enabled: true } });
-                toast.success(`Check-ins on — every ${intervalMinutes} minutes.`);
+                toast.success(`Check-ins on, every ${intervalMinutes} minutes.`);
               } finally {
                 setBusy(false);
                 await acknowledge();

@@ -10,7 +10,7 @@ import type { MetadataRoute } from "next";
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "刻 Koku — time & knowledge workspace",
+    name: "刻 Koku - time & knowledge workspace",
     short_name: "Koku",
     description: "Mark the moment. Master your time. A local-first time tracker, notes, and knowledge graph.",
     id: "/dashboard",

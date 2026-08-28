@@ -93,7 +93,7 @@ export function EndOfDaySetup() {
         if (next !== "granted") {
           enabled = false;
           toast.error(
-            "Your browser blocked notifications, so auto-stop is off. Your logoff time is saved — turn auto-stop on from Settings once notifications are allowed.",
+            "Your browser blocked notifications, so auto-stop is off. Your logoff time is saved. Turn auto-stop on from Settings once notifications are allowed.",
           );
         }
       }
@@ -103,7 +103,7 @@ export function EndOfDaySetup() {
       });
 
       if (enabled) {
-        toast.success(`Day ends at ${logoffTime} — timers auto-stop ${graceMinutes} min later.`);
+        toast.success(`Day ends at ${logoffTime}, timers auto-stop ${graceMinutes} min later.`);
       }
     } finally {
       // Recorded last and unconditionally: a failed permission request is still
@@ -154,7 +154,7 @@ export function EndOfDaySetup() {
               </Label>
               <p className="text-sm text-muted-foreground">
                 {canAutoStop
-                  ? `koku asks first — End day, +${EOD_SNOOZE_MINUTES} min, or Skip today — and only stops and saves if there's no answer.`
+                  ? `koku asks first: End day, +${EOD_SNOOZE_MINUTES} min, or Skip today, and only stops and saves if there's no answer.`
                   : unsupportedReason}
               </p>
             </div>
@@ -189,7 +189,7 @@ export function EndOfDaySetup() {
 
         <p className="text-xs text-muted-foreground">
           Changeable any time in Settings → Notifications. Auto-stop only works while koku is open
-          in a tab — it has no server to run this from.
+          in a tab. It has no server to run this from.
         </p>
 
         <DialogFooter>

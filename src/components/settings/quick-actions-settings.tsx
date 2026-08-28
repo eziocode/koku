@@ -17,15 +17,17 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
+import { ToggleRow } from "@/components/settings/toggle-row";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
 import {
+  MAX_QUICK_ACTION_DESCRIPTION,
   MAX_QUICK_ACTIONS,
   QUICK_ACTION_ICONS,
   type QuickActionIcon,
@@ -35,40 +37,6 @@ import { useNotificationPreferences } from "@/lib/notifications/use-notification
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
 import { cn } from "@/lib/utils";
-
-/** Local copy of `notification-settings.tsx`'s row — kept private to that file. */
-function ToggleRow({
-  id,
-  label,
-  description,
-  checked,
-  disabled,
-  onCheckedChange,
-}: {
-  id: string;
-  label: string;
-  description: string;
-  checked: boolean;
-  disabled?: boolean;
-  onCheckedChange: (checked: boolean) => void;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex items-center justify-between gap-4 rounded-2xl border border-border bg-muted/50 p-4",
-        disabled && "opacity-50",
-      )}
-    >
-      <div className="min-w-0">
-        <Label htmlFor={id} className="font-medium">
-          {label}
-        </Label>
-        <p className="text-sm text-muted-foreground">{description}</p>
-      </div>
-      <Switch id={id} checked={checked} disabled={disabled} aria-disabled={disabled} onCheckedChange={onCheckedChange} />
-    </div>
-  );
-}
 
 const ICONS: Record<QuickActionIcon, typeof Phone> = {
   Phone,
@@ -122,7 +90,7 @@ function toDraft(item: QuickActionPreset): DraftState {
   };
 }
 
-export function QuickActionsCard() {
+export function QuickActionsSettings() {
   const { prefs, patch } = useNotificationPreferences();
   const { projects } = useProjects();
   const { categories } = useCategories();
@@ -181,75 +149,91 @@ export function QuickActionsCard() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Quick actions</CardTitle>
-        <CardDescription>
-          One-click buttons next to Break — for calls, standups, anything you want tracked but
-          don’t want to fill in a form for. Each pauses your running timers and, unlike a plain
-          break, logs its own time entry with a default project and category, so it counts as work.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <ToggleRow
-          id="quick-actions-enabled"
-          label="Show quick action buttons"
-          description="Turn off to hide them entirely."
-          checked={prefs.quickActions.enabled}
-          onCheckedChange={(checked) => void patch({ quickActions: { enabled: checked } })}
-        />
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Custom buttons</CardTitle>
+          <CardDescription>
+            One-click buttons for calls, standups, anything you want tracked but don’t want to fill
+            in a form for. Each pauses your running timers and, unlike a plain break, logs its own
+            time entry with a default project and category, so it counts as work.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <ToggleRow
+            id="quick-actions-enabled"
+            label="Show quick action buttons"
+            description="Turn off to hide them entirely."
+            checked={prefs.quickActions.enabled}
+            onCheckedChange={(checked) => void patch({ quickActions: { enabled: checked } })}
+          />
 
-        <div className={cn("space-y-2", !prefs.quickActions.enabled && "opacity-50")}>
-          {items.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No quick actions configured yet.</p>
-          ) : (
-            items.map((item) => {
-              const Icon = ICONS[item.icon] ?? Sparkles;
-              const project = projects.find((p) => p.id === item.projectId);
-              const category = categories.find((c) => c.id === item.categoryId);
-              return (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-3 py-2"
-                >
-                  <div className="flex items-center gap-3">
-                    <Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{item.label}</p>
-                      <p className="text-xs text-muted-foreground">
-                        #{item.tag}
-                        {item.defaultMinutes > 0 ? ` · ${item.defaultMinutes} min` : " · open-ended"}
-                        {project ? ` · ${project.name}` : ""}
-                        {category ? ` · ${category.name}` : ""}
-                      </p>
+          <div className={cn("space-y-2", !prefs.quickActions.enabled && "opacity-50")}>
+            {items.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No quick actions configured yet.</p>
+            ) : (
+              items.map((item) => {
+                const Icon = ICONS[item.icon] ?? Sparkles;
+                const project = projects.find((p) => p.id === item.projectId);
+                const category = categories.find((c) => c.id === item.categoryId);
+                return (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-3 py-2"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{item.label}</p>
+                        <p className="text-xs text-muted-foreground">
+                          #{item.tag}
+                          {item.defaultMinutes > 0 ? ` · ${item.defaultMinutes} min` : " · open-ended"}
+                          {project ? ` · ${project.name}` : ""}
+                          {category ? ` · ${category.name}` : ""}
+                        </p>
+                        {item.description && (
+                          <p className="mt-0.5 truncate text-xs text-muted-foreground/80">{item.description}</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="icon" disabled={!prefs.quickActions.enabled} onClick={() => openEdit(item)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" disabled={!prefs.quickActions.enabled} onClick={() => void remove(item.id)}>
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="icon" disabled={!prefs.quickActions.enabled} onClick={() => openEdit(item)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" disabled={!prefs.quickActions.enabled} onClick={() => void remove(item.id)}>
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </div>
-                </div>
-              );
-            })
-          )}
+                );
+              })
+            )}
 
-          <Button variant="outline" className="gap-2" disabled={!prefs.quickActions.enabled} onClick={openCreate}>
-            <Plus className="h-4 w-4" />
-            Add quick action
-          </Button>
-        </div>
-      </CardContent>
+            <Button variant="outline" className="gap-2" disabled={!prefs.quickActions.enabled} onClick={openCreate}>
+              <Plus className="h-4 w-4" />
+              Add quick action
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Where they appear</CardTitle>
+          <CardDescription>
+            Quick action buttons sit next to Break on the live timer and in the mini player, so
+            they’re one click away wherever you’re tracking time. You can keep up to {MAX_QUICK_ACTIONS}{" "}
+            of them.
+          </CardDescription>
+        </CardHeader>
+      </Card>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{draft.id ? "Edit quick action" : "New quick action"}</DialogTitle>
             <DialogDescription>
-              Project and category are optional — leave them unset to assign later.
+              Project and category are optional, leave them unset to assign later.
             </DialogDescription>
           </DialogHeader>
 
@@ -332,6 +316,21 @@ export function QuickActionsCard() {
                 </Select>
               </div>
             </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="qa-description">Default note</Label>
+              <Textarea
+                id="qa-description"
+                value={draft.description}
+                onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
+                placeholder="What are you doing on this call?"
+                maxLength={MAX_QUICK_ACTION_DESCRIPTION}
+                rows={2}
+              />
+              <p className="text-xs text-muted-foreground">
+                Pre-filled when this button starts. You can add more while it&apos;s running.
+              </p>
+            </div>
           </div>
 
           <DialogFooter>
@@ -340,6 +339,6 @@ export function QuickActionsCard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Card>
+    </div>
   );
 }

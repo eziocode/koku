@@ -225,7 +225,7 @@ export function AdminClient() {
                 className="h-10 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm">
                 <option value="">Select user to make admin</option>
                 {availableAdmins.map((user) => (
-                  <option key={user.id} value={user.id}>{user.email} — {user.displayName}</option>
+                  <option key={user.id} value={user.id}>{user.displayName ? `${user.email} (${user.displayName})` : user.email}</option>
                 ))}
               </select>
               <Button disabled={!newAdminId} onClick={() => requestChangeAdmin("add", newAdminId)}>

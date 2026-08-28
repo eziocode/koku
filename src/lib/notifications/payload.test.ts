@@ -122,13 +122,13 @@ test("the idle nudge mentions the last entry when there is one", () => {
 
 test("a break check-in reports remaining time, or copes without it", () => {
   const timed = buildCheckInNotification(
-    { kind: "break", breakId: "b1", label: "Lunch", remainingSec: 330 },
+    { kind: "break", breakId: "b1", label: "Lunch", tag: null, remainingSec: 330 },
     prefs(),
     chrome,
     NOW,
   );
   const openEnded = buildCheckInNotification(
-    { kind: "break", breakId: "b1", label: "Break", remainingSec: null },
+    { kind: "break", breakId: "b1", label: "Break", tag: null, remainingSec: null },
     prefs(),
     chrome,
     NOW,
@@ -166,7 +166,7 @@ test("the tag is stable across contexts so repeats replace rather than stack", (
   const contexts: CheckInContext[] = [
     running,
     { ...running, kind: "timer-paused" },
-    { kind: "break", breakId: "b1", label: "Break", remainingSec: 60 },
+    { kind: "break", breakId: "b1", label: "Break", tag: null, remainingSec: 60 },
     { kind: "idle", lastEntryTitle: null, idleForSec: null },
   ];
 

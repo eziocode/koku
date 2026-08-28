@@ -549,7 +549,7 @@ export function SegmentedBarChart({
 
       {/* Accessible, screen-reader-only equivalent of the chart data. */}
       <table className="sr-only">
-        <caption>Daily activity — work logs grouped by day.</caption>
+        <caption>Daily activity: work logs grouped by day.</caption>
         <thead>
           <tr>
             <th scope="col">Day</th>
