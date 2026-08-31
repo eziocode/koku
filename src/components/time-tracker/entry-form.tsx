@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useRef, useMemo, useState } from "react";
+import { Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
@@ -10,7 +11,11 @@ import { Label } from "@/components/ui/label";
 import { TagInput } from "@/components/ui/tag-input";
 import { RichTextarea } from "@/components/ui/rich-textarea";
 import { toast } from "@/components/ui/toast";
-import { QuickCreateCategoryDialog, QuickCreateProjectDialog } from "@/components/time-tracker/quick-create-dialog";
+import {
+  QuickCreateCategoryDialog,
+  QuickCreateProjectDialog,
+  QuickCreateTaskDialog,
+} from "@/components/time-tracker/quick-create-dialog";
 import { TitleSuggestionBar } from "@/components/time-tracker/title-suggestion-bar";
 import { useTitleAutofill } from "@/components/time-tracker/use-title-autofill";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
@@ -69,6 +74,7 @@ export function EntryForm({
   const [timeError, setTimeError] = useState<string | null>(null);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [createCategoryOpen, setCreateCategoryOpen] = useState(false);
+  const [createTaskOpen, setCreateTaskOpen] = useState(false);
   // Tracks whether the next submission should stay open for a new entry.
   const saveAndNewRef = useRef(false);
 
@@ -247,9 +253,9 @@ export function EntryForm({
           </button>
         </div>
       </div>
-      {pickerTasks.length > 0 && (
-        <div className="space-y-1.5">
-          <Label htmlFor="entry-task">Log time against a task</Label>
+      <div className="space-y-1.5">
+        <Label htmlFor="entry-task">Log time against a task</Label>
+        <div className="flex items-center gap-2">
           <Combobox
             id="entry-task"
             options={taskOptions}
@@ -257,9 +263,19 @@ export function EntryForm({
             onValueChange={setTaskId}
             placeholder="No task"
             noneOption={{ value: NONE_VALUE, label: "No task" }}
+            className="flex-1"
           />
+          <button
+            type="button"
+            onClick={() => setCreateTaskOpen(true)}
+            aria-label="Create new task"
+            title="Create new task"
+            className="shrink-0 rounded-md border border-border p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
         </div>
-      )}
+      </div>
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="entry-start">Start time</Label>
@@ -340,6 +356,14 @@ export function EntryForm({
         open={createCategoryOpen}
         onOpenChange={setCreateCategoryOpen}
         onCreated={(id) => { setCategoryId(id); setCreateCategoryOpen(false); }}
+      />
+      <QuickCreateTaskDialog
+        open={createTaskOpen}
+        onOpenChange={setCreateTaskOpen}
+        onCreated={(id) => { setTaskId(id); setCreateTaskOpen(false); }}
+        projectId={projectId}
+        categoryId={categoryId}
+        tags={tags}
       />
     </form>
   );

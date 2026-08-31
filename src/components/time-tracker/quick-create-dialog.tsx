@@ -204,9 +204,10 @@ interface QuickCreateTaskDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated: (id: string) => void;
-  /** Pre-fills the new task's project from whatever the timer form already has selected. */
+  /** Pre-fills the new task's project/category/tags from whatever the timer or time-log form already has selected. */
   projectId?: string;
   categoryId?: string;
+  tags?: string[];
 }
 
 export function QuickCreateTaskDialog({
@@ -215,6 +216,7 @@ export function QuickCreateTaskDialog({
   onCreated,
   projectId,
   categoryId,
+  tags,
 }: QuickCreateTaskDialogProps) {
   const { createTask } = useTasks();
   const [title, setTitle] = useState("");
@@ -228,6 +230,7 @@ export function QuickCreateTaskDialog({
         title: title.trim(),
         projectId: projectId && projectId !== "none" ? projectId : null,
         categoryId: categoryId && categoryId !== "none" ? categoryId : null,
+        tags: tags && tags.length ? tags : undefined,
       });
       toast.success("Task created.");
       onCreated(task.id);

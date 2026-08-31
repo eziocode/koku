@@ -19,6 +19,7 @@ import { RichTextarea } from "@/components/ui/rich-textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TagInput } from "@/components/ui/tag-input";
 import { toast } from "@/components/ui/toast";
+import { QuickCreateCategoryDialog, QuickCreateProjectDialog } from "@/components/time-tracker/quick-create-dialog";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
 import { useTagSuggestions } from "@/lib/storage/hooks/use-tag-suggestions";
@@ -67,6 +68,8 @@ function TaskFormBody({
   const [categoryId, setCategoryId] = useState(task?.categoryId ?? NONE_VALUE);
   const [tags, setTags] = useState<string[]>(task?.tags ?? []);
   const [submitting, setSubmitting] = useState(false);
+  const [createProjectOpen, setCreateProjectOpen] = useState(false);
+  const [createCategoryOpen, setCreateCategoryOpen] = useState(false);
 
   const projectOptions: ComboboxOption[] = projects.map((p) => ({ value: p.id, label: p.name, color: p.color }));
   const categoryOptions: ComboboxOption[] = categories.map((c) => ({ value: c.id, label: c.name, color: c.color }));
@@ -160,6 +163,13 @@ function TaskFormBody({
               placeholder="No project"
               noneOption={{ value: NONE_VALUE, label: "No project" }}
             />
+            <button
+              type="button"
+              onClick={() => setCreateProjectOpen(true)}
+              className="text-xs text-primary hover:underline"
+            >
+              + New project
+            </button>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="task-category">Category</Label>
@@ -171,6 +181,13 @@ function TaskFormBody({
               placeholder="No category"
               noneOption={{ value: NONE_VALUE, label: "No category" }}
             />
+            <button
+              type="button"
+              onClick={() => setCreateCategoryOpen(true)}
+              className="text-xs text-primary hover:underline"
+            >
+              + New category
+            </button>
           </div>
         </div>
 
@@ -186,6 +203,17 @@ function TaskFormBody({
           {task ? "Save changes" : "Create task"}
         </Button>
       </DialogFooter>
+
+      <QuickCreateProjectDialog
+        open={createProjectOpen}
+        onOpenChange={setCreateProjectOpen}
+        onCreated={(id) => { setProjectId(id); setCreateProjectOpen(false); }}
+      />
+      <QuickCreateCategoryDialog
+        open={createCategoryOpen}
+        onOpenChange={setCreateCategoryOpen}
+        onCreated={(id) => { setCategoryId(id); setCreateCategoryOpen(false); }}
+      />
     </DialogContent>
   );
 }

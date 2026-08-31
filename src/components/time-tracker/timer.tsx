@@ -293,6 +293,7 @@ function TimerFields({
           onCreated={(id) => { onTaskIdChange(id); setCreateTaskOpen(false); }}
           projectId={projectId}
           categoryId={categoryId}
+          tags={tags}
         />
       ) : null}
     </div>
