@@ -2,6 +2,7 @@
 
 import { kokuDb, type PendingLiveMutation } from "@/lib/storage/db";
 import { getAuthUser } from "@/lib/sync/sync-engine";
+import { isBreakFinished } from "@/lib/stores/finished-breaks";
 import { useTimerStore } from "@/lib/stores/timer-store";
 import type { ActiveBreak, ActiveTimer } from "@/lib/stores/timer-types";
 
@@ -46,6 +47,32 @@ function cloudBreak(value: LiveBreakRecord): ActiveBreak {
     projectId: value.projectId, categoryId: value.categoryId, tag: value.tag, description: value.description };
 }
 
+/**
+ * Writes the server's authoritative revision for one timer or break back onto
+ * the live Zustand state, after a push response confirms it (accepted or
+ * conflicting — either way, it's the server's current truth).
+ *
+ * Without this, `startBreak`/`createTimer` never stamp a revision at all, so
+ * every push after the first for that entity keeps sending `revision: 0`
+ * while the server has long since moved past it — a conflict on every single
+ * edit, not just the first. Guarded by `applyingCloud` so this doesn't loop
+ * back through `startLiveStateSync`'s subscribe and queue a redundant push:
+ * `push` already knows the queued mutation is caught up, via the rebase in
+ * its own caller.
+ */
+function applyRevision(kind: "timer" | "break", id: string, revision: number): void {
+  applyingCloud = true;
+  const state = useTimerStore.getState();
+  if (kind === "timer") {
+    useTimerStore.setState({
+      timers: state.timers.map((timer) => (timer.id === id ? { ...timer, revision } : timer)),
+    });
+  } else if (state.activeBreak?.id === id) {
+    useTimerStore.setState({ activeBreak: { ...state.activeBreak, revision } });
+  }
+  applyingCloud = false;
+}
+
 async function queue(id: string, kind: PendingLiveMutation["kind"], record: unknown) {
   await kokuDb.pendingLiveMutations.put({ id, kind, record, updatedAt: new Date().toISOString() });
 }
@@ -65,6 +92,17 @@ async function queueDiff(previous: { timers: ActiveTimer[]; activeBreak: ActiveB
   }
 }
 
+/**
+ * Matches a pushed mutation to the row the server returned for its id, so the
+ * caller can tell a genuine conflict apart from an ordinary accepted write.
+ * The route always returns a full row for both cases (`apply()` in
+ * `route.ts`), just at different revisions — see the `expectedRevision`
+ * comparison in `push` for how that distinction is drawn.
+ */
+function findReturnedRow(mutations: unknown[], id: string): { revision: number } | undefined {
+  return (mutations as Array<{ id: string; revision: number }>).find((row) => row.id === id);
+}
+
 async function push(mutations: PendingLiveMutation[]) {
   // Skip the request entirely while signed out, same as the rest of sync
   // (see `getAuthUser`'s docstring): without this, every timer/break edit
@@ -80,13 +118,45 @@ async function push(mutations: PendingLiveMutation[]) {
   };
   const response = await fetch("/api/live-sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   if (response.status === 401) return;
-  await response.json();
+  const result = await response.json() as { timers?: unknown[]; breaks?: unknown[] };
   if (!response.ok && response.status !== 409) throw new Error("Live sync failed");
+  const returned = [...(result.timers ?? []), ...(result.breaks ?? [])];
   for (const mutation of mutations) {
     // Another gesture may have replaced this queue item while request was in
     // flight. Keep newer local intent; it still expects same server revision.
     const current = await kokuDb.pendingLiveMutations.get(mutation.id);
-    if (current?.updatedAt === mutation.updatedAt) await kokuDb.pendingLiveMutations.delete(mutation.id);
+    if (current?.updatedAt !== mutation.updatedAt) continue;
+
+    const record = mutation.record as { id: string; revision?: number };
+    const expectedRevision = (record.revision ?? 0) + 1;
+    const row = findReturnedRow(returned, record.id);
+
+    // Stamp the server's authoritative revision back onto the live entity —
+    // whether accepted or conflicting, it's the truth this client's next edit
+    // needs to build on. Not for a tombstone: there's no live entity left to
+    // stamp once a break/timer has been torn down locally.
+    if (row && (mutation.kind === "timer" || mutation.kind === "break")) {
+      applyRevision(mutation.kind, record.id, row.revision);
+    }
+
+    if (!row || row.revision === expectedRevision) {
+      // Either this id wasn't part of the response (nothing to reconcile) or
+      // the server accepted it at the revision we expected — done.
+      await kokuDb.pendingLiveMutations.delete(mutation.id);
+      continue;
+    }
+
+    // Conflict: the server's revision doesn't match what an accepted write
+    // would have produced. Previously this branch deleted the mutation
+    // anyway — discarding local intent (most dangerously a break's own
+    // tombstone) and letting the next pull resurrect the stale cloud state.
+    // Instead, keep it queued but re-based onto the server's current
+    // revision, so the next flush's expected-revision check passes.
+    await kokuDb.pendingLiveMutations.put({
+      ...current,
+      record: { ...record, revision: row.revision },
+      updatedAt: new Date().toISOString(),
+    });
   }
   // Response contains only changed rows, never a full snapshot. Pull before
   // replacing Zustand state so a successful timer write cannot hide siblings.
@@ -110,7 +180,15 @@ export function flushLiveState(): Promise<void> {
 
 function applyCloud(payload: LivePayload) {
   const cloudTimers = (payload.timers ?? []).filter((timer) => !timer.deletedAt).map(cloudTimer);
-  const activeCloudBreak = (payload.breaks ?? []).find((item) => !item.deletedAt);
+  // A break this client already finalised (see `finished-breaks.ts`) must
+  // never come back from a pull, even a live one: the cloud row has no
+  // `completedAt` of its own, so a stale row — one whose delete lagged, e.g.
+  // behind the tombstone-conflict retry in `push` above — reads as an
+  // ordinary still-running break and would otherwise be logged again by
+  // `BreakRunner`.
+  const activeCloudBreak = (payload.breaks ?? []).find(
+    (item) => !item.deletedAt && !isBreakFinished(item.id),
+  );
   applyingCloud = true;
   useTimerStore.getState().replaceLiveStateFromCloud(cloudTimers, activeCloudBreak ? cloudBreak(activeCloudBreak) : null);
   applyingCloud = false;

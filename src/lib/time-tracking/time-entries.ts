@@ -11,6 +11,13 @@ import { syncRow } from "@/lib/sync/sync-engine";
  */
 
 export interface CreateTimeEntryInput {
+  /**
+   * Overrides the generated UUID. Callers that can derive a stable id from
+   * something that only ever happens once — a break's own id, say — pass one
+   * so a retried or double-fired write collapses onto the same row instead of
+   * creating a duplicate. Defaults to a fresh `crypto.randomUUID()`.
+   */
+  id?: string;
   title: string;
   projectId?: string | null;
   categoryId?: string | null;
@@ -94,7 +101,7 @@ export async function ensureBreakAssignments(): Promise<{
 
 export async function createTimeEntry(data: CreateTimeEntryInput): Promise<TimeEntry> {
   const entry: TimeEntry = {
-    id: crypto.randomUUID(),
+    id: data.id ?? crypto.randomUUID(),
     title: data.title,
     projectId: data.projectId ?? null,
     categoryId: data.categoryId ?? null,

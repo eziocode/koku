@@ -102,9 +102,20 @@ export function ScheduleSettings() {
             disabled={off}
             onCheckedChange={(checked) => void patch({ quietHours: { enabled: checked } })}
           />
-          <fieldset
+          <ToggleRow
+            id="quiet-hours-auto"
+            label="Adapt to my activity"
+            description="Recomputed from your last 30 days of logs instead of a fixed time. Needs at least 5 logged days."
+            checked={prefs.quietHours.auto}
             disabled={off || !prefs.quietHours.enabled}
-            className={cn("flex flex-wrap gap-4 border-0 p-0", (off || !prefs.quietHours.enabled) && "opacity-50")}
+            onCheckedChange={(checked) => void patch({ quietHours: { auto: checked } })}
+          />
+          <fieldset
+            disabled={off || !prefs.quietHours.enabled || prefs.quietHours.auto}
+            className={cn(
+              "flex flex-wrap gap-4 border-0 p-0",
+              (off || !prefs.quietHours.enabled || prefs.quietHours.auto) && "opacity-50",
+            )}
           >
             <legend className="sr-only">Quiet hours window</legend>
             <div className="space-y-2">
@@ -139,7 +150,9 @@ export function ScheduleSettings() {
             </div>
           </fieldset>
           <p className="text-xs text-muted-foreground">
-            A window that ends earlier than it starts spans midnight.
+            {prefs.quietHours.auto
+              ? "Adapting automatically — the times above are shown for reference and update on their own."
+              : "A window that ends earlier than it starts spans midnight."}
           </p>
         </CardContent>
       </Card>

@@ -6,6 +6,7 @@ import { format } from "date-fns";
 
 import { kokuDb } from "@/lib/storage/db";
 import { closeKokuNotifications, showKokuNotification } from "@/lib/notifications/client";
+import { deriveQuietHours } from "@/lib/notifications/adaptive-quiet-hours";
 import { deriveCheckInContext } from "@/lib/notifications/context";
 import { resolveDnd } from "@/lib/notifications/dnd";
 import {
@@ -48,6 +49,14 @@ import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
  * it does run, and can never accumulate a backlog to deliver in a burst.
  */
 const CHECK_INTERVAL_MS = 15_000;
+
+/**
+ * How often the leader checks whether adaptive quiet hours are due for a
+ * recompute. Coarser than `CHECK_INTERVAL_MS`: the recompute itself is
+ * guarded to at most once per local day (see `lastAutoRecomputeDayRef`), so
+ * there is nothing to gain from checking every 15 seconds.
+ */
+const AUTO_QUIET_HOURS_CHECK_MS = 60 * 60 * 1000;
 
 async function readLastEntryTitle(): Promise<string | null> {
   try {
@@ -377,6 +386,50 @@ export function NotificationScheduler() {
       writeScheduleState(reanchorSchedule(readScheduleState(), Date.now(), intervalMinutes));
     }
   }, [deliverable, intervalMinutes]);
+
+  // Adaptive quiet hours: recomputed from recent logs at most once per local
+  // day, and only by the leader tab, so multiple open tabs don't race to patch
+  // the same setting. Reads through `prefsRef` for the current window (rather
+  // than a dependency) so toggling other, unrelated preferences doesn't tear
+  // down and restart this interval.
+  const quietHoursAuto = prefs.quietHours.auto;
+  const lastAutoRecomputeDayRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!isLeader || !quietHoursAuto) {
+      lastAutoRecomputeDayRef.current = null;
+      return;
+    }
+
+    let cancelled = false;
+
+    const recompute = async () => {
+      const todayKey = format(new Date(), "yyyy-MM-dd");
+      if (lastAutoRecomputeDayRef.current === todayKey) {
+        return;
+      }
+
+      const entries = await kokuDb.timeEntries.toArray();
+      if (cancelled) {
+        return;
+      }
+
+      lastAutoRecomputeDayRef.current = todayKey;
+      const { startMinute, endMinute } = prefsRef.current.quietHours;
+      const proposal = deriveQuietHours(entries, { startMinute, endMinute });
+      if (proposal) {
+        await patch({ quietHours: proposal });
+      }
+    };
+
+    void recompute();
+    const intervalId = window.setInterval(() => void recompute(), AUTO_QUIET_HOURS_CHECK_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [isLeader, quietHoursAuto, patch]);
 
   // A lapsed timed DND is cleared by the leader so the topbar pill disappears in
   // every tab, rather than each tab merely ignoring it locally.

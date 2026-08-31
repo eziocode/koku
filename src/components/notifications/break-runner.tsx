@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import { toast } from "@/components/ui/toast";
 import { getBreakElapsedSec, getBreakEndIso, isBreakComplete } from "@/lib/breaks/break-math";
@@ -16,14 +16,19 @@ import { writeBreakEntry } from "@/lib/breaks/finalize-break";
 /**
  * Finalises a break when its time is up. Renders nothing.
  *
- * Leader-tab only, so three open tabs do not each write a break entry — belt and
- * braces with `finishBreak`'s own `completedAt` guard.
+ * Leader-tab only, so three open tabs do not each write a break entry. That
+ * alone isn't enough, though: this effect depends on the shared per-second
+ * tick, so while a break sits complete-but-not-yet-finalised it re-runs every
+ * second. `finalisedRef` is the actual guard against a duplicate write — it
+ * remembers which break ids this client has already written (or has a write
+ * in flight for), independent of how many times the effect re-enters.
  *
  * Two ordering rules matter here:
  *
  *  1. The entry is written BEFORE `finishBreak`, mirroring how stopping a timer
  *     saves before it removes. If the Dexie write fails, the break stays active
- *     and can be retried rather than the record vanishing.
+ *     and can be retried rather than the record vanishing — which is also why
+ *     `finalisedRef` is *cleared* on failure, not just checked.
  *
  *  2. The entry ends when the break was *due*, not when koku noticed. A ten
  *     minute break taken before closing the laptop overnight must log ten
@@ -39,15 +44,22 @@ export function BreakRunner() {
   // component inert the rest of the time.
   const hasBreak = Boolean(activeBreak && !activeBreak.completedAt);
   const tickNow = useSecondTick();
+  const isComplete = hasBreak && activeBreak ? isBreakComplete(activeBreak, tickNow) : false;
+
+  // Break ids already written (or being written) by this client. A Set, not a
+  // single id, so it survives across different breaks without ever growing
+  // unbounded in practice — a session logs, at most, a handful of breaks.
+  const finalisedRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    if (!isLeader || !hasBreak || !activeBreak) {
+    if (!isLeader || !isComplete || !activeBreak) {
       return;
     }
 
-    if (!isBreakComplete(activeBreak, tickNow)) {
+    if (finalisedRef.current.has(activeBreak.id)) {
       return;
     }
+    finalisedRef.current.add(activeBreak.id);
 
     let cancelled = false;
 
@@ -65,7 +77,9 @@ export function BreakRunner() {
           outcome: "completed",
         });
       } catch {
-        // Leave the break active so the next tick retries rather than losing it.
+        // Leave the break active so the next tick retries rather than losing
+        // it — and let it retry, by giving back the id we just claimed.
+        finalisedRef.current.delete(activeBreak.id);
         toast.error(resolvePeriodCopy(activeBreak).logFailedMessage);
         return;
       }
@@ -93,7 +107,7 @@ export function BreakRunner() {
     return () => {
       cancelled = true;
     };
-  }, [isLeader, hasBreak, activeBreak, tickNow, finishBreak, prefs.breaks.autoResume, prefs.breaks.notifyOnComplete, prefs.enabled]);
+  }, [isLeader, isComplete, activeBreak, finishBreak, prefs.breaks.autoResume, prefs.breaks.notifyOnComplete, prefs.enabled]);
 
   return null;
 }

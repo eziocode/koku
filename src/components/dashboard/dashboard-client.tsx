@@ -24,6 +24,7 @@ import {
 } from "@/lib/charts/segments";
 import { BREAK_TAG } from "@/lib/notifications/settings";
 import { useNotificationPreferences } from "@/lib/notifications/use-notification-preferences";
+import { deriveFallbackHours } from "@/lib/charts/hour-domain";
 import { getStatusColor } from "@/lib/charts/theme";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
@@ -173,6 +174,13 @@ export function DashboardClient() {
     ],
   );
 
+  // Axis window for a week with no logged segments at all — derived from the
+  // notification settings that come closest to describing a workday.
+  const chartFallbackHours = useMemo(
+    () => deriveFallbackHours(notificationPrefs),
+    [notificationPrefs],
+  );
+
   const totalWeekSeconds = useMemo(
     () => weekDays.reduce((total, day) => total + day.totalSeconds, 0),
     [weekDays],
@@ -299,6 +307,7 @@ export function DashboardClient() {
           <SegmentedBarChart
             days={weekDays}
             onSegmentClick={handleSegmentClick}
+            fallbackHours={chartFallbackHours}
             emptyTitle="No sessions this week"
             emptyDescription="Start a timer or add a manual entry to see your week take shape."
             compact

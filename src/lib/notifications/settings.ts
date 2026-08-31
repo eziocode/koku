@@ -96,6 +96,13 @@ export interface NotificationPreferences {
     /** Minutes from local midnight. May wrap past midnight (start > end). */
     startMinute: number;
     endMinute: number;
+    /**
+     * When true, `startMinute`/`endMinute` are recomputed periodically from
+     * recent logged activity instead of being hand-set. Off by default —
+     * rewriting a time the user typed in Settings without asking would be a
+     * bad surprise, so this is opt-in.
+     */
+    auto: boolean;
   };
   breaks: {
     enabled: boolean;
@@ -153,7 +160,7 @@ export const NOTIFICATION_DEFAULTS: NotificationPreferences = {
     actions: { quickNote: true, openLog: true, dismiss: true },
   },
   dnd: { mode: "off", untilIso: null },
-  quietHours: { enabled: false, startMinute: 22 * 60, endMinute: 8 * 60 },
+  quietHours: { enabled: false, startMinute: 22 * 60, endMinute: 8 * 60, auto: false },
   breaks: {
     enabled: true,
     presetMinutes: [5, 10, 15, 30],
@@ -223,6 +230,7 @@ export const notificationPreferencesSchema = z
         enabled: z.boolean().catch(false),
         startMinute: z.number().int().min(0).max(minutesInDay - 1).catch(NOTIFICATION_DEFAULTS.quietHours.startMinute),
         endMinute: z.number().int().min(0).max(minutesInDay - 1).catch(NOTIFICATION_DEFAULTS.quietHours.endMinute),
+        auto: z.boolean().catch(NOTIFICATION_DEFAULTS.quietHours.auto),
       })
       .catch(NOTIFICATION_DEFAULTS.quietHours),
     breaks: z

@@ -7,35 +7,24 @@ import { ChartEmpty } from "@/components/charts/chart-states";
 import { DayTooltipCard, getTooltipPosition } from "@/components/charts/segment-tooltip";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { NON_WORKING_COLORS } from "@/lib/charts/theme";
+import {
+  computeHourDomain,
+  FULL_DAY_DOMAIN,
+  gridlineHoursFor,
+  hourOfDay,
+  rulerHoursFor,
+  type HourDomain,
+} from "@/lib/charts/hour-domain";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 import { cn } from "@/lib/utils";
 import type { TimeFormat } from "@/lib/settings/schema";
 import type { SegmentedDay, WorkLogSegment } from "@/lib/charts/segments";
 
+export type { HourDomain } from "@/lib/charts/hour-domain";
+export { deriveFallbackHours, FULL_DAY_DOMAIN } from "@/lib/charts/hour-domain";
+
 /** Fraction-of-24h below which two blocks are treated as touching, not gapped. */
 const EPS_HOURS = 0.01;
-
-/** Gridline hours. Always every 3h — thin lines never collide. */
-const GRIDLINE_HOURS = [3, 6, 9, 12, 15, 18, 21];
-
-/**
- * Candidate label spacings, densest first, and the minimum track width each
- * needs. A `12 AM`-style label is ~46px, so a tick every 3h needs ~8×46px of
- * track before the labels start touching; narrower tracks step up to 6h then
- * 12h rather than overprinting.
- */
-const RULER_STEPS = [
-  { step: 3, minWidth: 520 },
-  { step: 6, minWidth: 260 },
-  { step: 12, minWidth: 0 },
-];
-
-function rulerHoursFor(trackWidth: number): number[] {
-  const { step } = RULER_STEPS.find((candidate) => trackWidth >= candidate.minWidth) ?? RULER_STEPS[RULER_STEPS.length - 1];
-  const hours: number[] = [];
-  for (let hour = 0; hour <= 24; hour += step) hours.push(hour);
-  return hours;
-}
 
 /**
  * Row metrics, kept in sync with the row markup below (`py-*` + track height)
@@ -48,11 +37,6 @@ const ROW_GAP = 4;
 
 /** Past this many rows the frame stops growing and the list scrolls. */
 const MAX_VISIBLE_ROWS = 12;
-
-function hourOfDay(iso: string): number {
-  const date = new Date(iso);
-  return date.getHours() + date.getMinutes() / 60 + date.getSeconds() / 3600;
-}
 
 function formatClockHour(hour: number, timeFormat: TimeFormat): string {
   const clamped = Math.max(0, Math.min(24, hour));
@@ -109,19 +93,19 @@ interface GapBlock {
 type TimelineBlock = WorkBlock | GapBlock;
 
 /**
- * Lays each day's segments onto a 0–24h track. Gaps *between* two logged
- * segments become a hoverable "no log found" block; the empty stretch before
- * the first log and after the last log is left bare on purpose — there is
- * nothing to explain about time nobody claimed to be working.
+ * Lays each day's segments onto the chart's hour domain. Gaps *between* two
+ * logged segments become a hoverable "no log found" block; the empty stretch
+ * before the first log and after the last log is left bare on purpose — there
+ * is nothing to explain about time nobody claimed to be working.
  */
-function buildDayBlocks(day: SegmentedDay): TimelineBlock[] {
+function buildDayBlocks(day: SegmentedDay, domain: HourDomain): TimelineBlock[] {
   const sorted = [...day.segments].sort((a, b) => a.startAt.localeCompare(b.startAt));
   const blocks: TimelineBlock[] = [];
-  let cursor = 0;
+  let cursor = domain.start;
 
   sorted.forEach((segment, index) => {
-    const start = Math.max(0, Math.min(24, hourOfDay(segment.startAt)));
-    const end = Math.max(start, Math.min(24, start + segment.hours));
+    const start = Math.max(domain.start, Math.min(domain.end, hourOfDay(segment.startAt)));
+    const end = Math.max(start, Math.min(domain.end, start + segment.hours));
     if (index > 0 && start > cursor + EPS_HOURS) {
       blocks.push({ kind: "gap", from: cursor, to: start });
     }
@@ -270,11 +254,19 @@ interface SegmentedBarChartProps {
    * "This week" card where the full-size track wastes the little width it has.
    */
   compact?: boolean;
+  /**
+   * Axis window used when no day in `days` has a logged segment (e.g. an empty
+   * month with a holiday marker). Defaults to the full day. When `days` does
+   * have logged segments, the axis is always derived from them instead —
+   * see `computeHourDomain`.
+   */
+  fallbackHours?: HourDomain;
 }
 
 /**
- * Attendance-style daily timeline: one row per day, each row a 0–24h track with
- * a coloured bar wherever a work log ran. Hovering a log shows its details;
+ * Attendance-style daily timeline: one row per day, each row a track spanning
+ * only the hours actually logged (padded and floored to the hour) with a
+ * coloured bar wherever a work log ran. Hovering a log shows its details;
  * hovering an interior gap between two logs shows "no log found" for that
  * stretch. Time before the first log and after the last is left unmarked.
  */
@@ -285,6 +277,7 @@ export function SegmentedBarChart({
   emptyTitle,
   emptyDescription,
   compact = false,
+  fallbackHours = FULL_DAY_DOMAIN,
 }: SegmentedBarChartProps) {
   // Estimated frame height, used until the rows have been measured (and as the
   // empty state's footprint). Row metrics mirror the row markup below.
@@ -309,6 +302,12 @@ export function SegmentedBarChart({
   );
   const now = useMemo(() => hourOfDay(new Date().toISOString()), []);
   const todayKey = useMemo(() => localDateKey(new Date()), []);
+
+  // The axis spans only the hours actually logged, so a chart full of 9-to-5
+  // days doesn't waste half its width on the small hours nobody works in.
+  const domain = useMemo(() => computeHourDomain(days, fallbackHours), [days, fallbackHours]);
+  const domainSpan = domain.end - domain.start;
+  const pct = (hour: number) => ((hour - domain.start) / domainSpan) * 100;
 
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
   const todayRowRef = useRef<HTMLDivElement | null>(null);
@@ -341,7 +340,8 @@ export function SegmentedBarChart({
     return () => observer.disconnect();
   }, [hasData]);
 
-  const rulerHours = useMemo(() => rulerHoursFor(trackWidth), [trackWidth]);
+  const rulerHours = useMemo(() => rulerHoursFor(domain, trackWidth), [domain, trackWidth]);
+  const gridlineHours = useMemo(() => gridlineHoursFor(domain), [domain]);
 
   useEffect(() => {
     const rows = rowsRef.current;
@@ -390,11 +390,11 @@ export function SegmentedBarChart({
               key={hour}
               className={cn(
                 "absolute bottom-0 whitespace-nowrap text-[10px] tabular-nums text-muted-foreground",
-                hour === 0 && "translate-x-0",
-                hour === 24 && "-translate-x-full",
-                hour !== 0 && hour !== 24 && "-translate-x-1/2",
+                hour === domain.start && "translate-x-0",
+                hour === domain.end && "-translate-x-full",
+                hour !== domain.start && hour !== domain.end && "-translate-x-1/2",
               )}
-              style={{ left: `${(hour / 24) * 100}%` }}
+              style={{ left: `${pct(hour)}%` }}
             >
               {formatRulerHour(hour, timeFormat)}
             </span>
@@ -406,7 +406,7 @@ export function SegmentedBarChart({
       <ScrollArea ref={scrollAreaRef} style={{ height: frameHeight }}>
         <div ref={rowsRef} className="space-y-1 pr-2">
           {days.map((day) => {
-            const blocks = buildDayBlocks(day);
+            const blocks = buildDayBlocks(day, domain);
             const isToday = day.key === todayKey;
             const marker = day.nonWorking;
             const markerColor = marker ? NON_WORKING_COLORS[marker.kind] : null;
@@ -448,18 +448,18 @@ export function SegmentedBarChart({
                   )}
                 >
                   {/* Hour gridlines, kept at 3h regardless of label density. */}
-                  {markerOnly ? null : GRIDLINE_HOURS.map((hour) => (
+                  {markerOnly ? null : gridlineHours.map((hour) => (
                     <div
                       key={hour}
                       className="pointer-events-none absolute inset-y-0 w-px bg-border/50"
-                      style={{ left: `${(hour / 24) * 100}%` }}
+                      style={{ left: `${pct(hour)}%` }}
                       aria-hidden
                     />
                   ))}
-                  {markerOnly ? null : (
+                  {markerOnly || now < domain.start || now > domain.end ? null : (
                     <div
                       className="pointer-events-none absolute inset-y-0 border-l border-dashed border-primary/50"
-                      style={{ left: `${(now / 24) * 100}%` }}
+                      style={{ left: `${pct(now)}%` }}
                       aria-hidden
                     />
                   )}
@@ -485,8 +485,8 @@ export function SegmentedBarChart({
                           onSegmentClick && "cursor-pointer hover:brightness-110",
                         )}
                         style={{
-                          left: `${(block.from / 24) * 100}%`,
-                          width: `${Math.max(0.6, ((block.to - block.from) / 24) * 100)}%`,
+                          left: `${pct(block.from)}%`,
+                          width: `${Math.max(0.6, pct(block.to) - pct(block.from))}%`,
                           backgroundColor: block.segment.color,
                           opacity: block.segment.status === "running" ? 0.85 : 1,
                         }}
@@ -517,8 +517,8 @@ export function SegmentedBarChart({
                         aria-label={`No log found from ${formatClockHour(block.from, timeFormat)} to ${formatClockHour(block.to, timeFormat)}`}
                         className="absolute inset-y-0 cursor-help rounded-[2px] bg-[repeating-linear-gradient(135deg,color-mix(in_srgb,var(--color-muted-foreground)_35%,transparent)_0,color-mix(in_srgb,var(--color-muted-foreground)_35%,transparent)_2px,transparent_2px,transparent_6px)]"
                         style={{
-                          left: `${(block.from / 24) * 100}%`,
-                          width: `${((block.to - block.from) / 24) * 100}%`,
+                          left: `${pct(block.from)}%`,
+                          width: `${pct(block.to) - pct(block.from)}%`,
                         }}
                       />
                     ),

@@ -13,6 +13,7 @@ import { DEFAULT_FILTERS, LogFilterState, LogFilters } from "@/components/time-t
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { MonthPicker } from "@/components/ui/month-picker";
+import { deriveFallbackHours } from "@/lib/charts/hour-domain";
 import { useNotificationPreferences } from "@/lib/notifications/use-notification-preferences";
 import {
   buildSegmentedDays,
@@ -138,6 +139,13 @@ export function ReportsDashboard() {
       notificationPrefs.holidayDates,
       notificationPrefs.silentDays,
     ],
+  );
+
+  // Axis window for a month with no logged segments at all — derived from the
+  // notification settings that come closest to describing a workday.
+  const chartFallbackHours = useMemo(
+    () => deriveFallbackHours(notificationPrefs),
+    [notificationPrefs],
   );
 
   // Reported separately rather than dropped: hiding break time entirely reads as
@@ -314,6 +322,7 @@ export function ReportsDashboard() {
           days={segmentedDays}
           height={320}
           onSegmentClick={handleSegmentClick}
+          fallbackHours={chartFallbackHours}
           emptyTitle="No activity this month"
           emptyDescription="Adjust filters or log time to populate this view."
         />
