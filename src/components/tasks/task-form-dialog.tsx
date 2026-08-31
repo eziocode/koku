@@ -26,6 +26,7 @@ import { useTagSuggestions } from "@/lib/storage/hooks/use-tag-suggestions";
 import { useTasks } from "@/lib/storage/hooks/use-tasks";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 import type { Task, TaskPriority, TaskStatus } from "@/lib/storage/db";
+import { TASK_STATUS_OPTIONS } from "@/lib/tasks/task-status";
 import { NONE_VALUE } from "@/lib/ui/list-thresholds";
 
 interface TaskFormDialogProps {
@@ -62,6 +63,9 @@ function TaskFormBody({
   const [title, setTitle] = useState(task?.title ?? "");
   const [notes, setNotes] = useState(task?.notes ?? "");
   const [priority, setPriority] = useState<TaskPriority>(task?.priority ?? "medium");
+  // Creating from a column's "Add task" seeds this with that column; the
+  // global "New task" button seeds "open" and the picker is how you change it.
+  const [status, setStatus] = useState<TaskStatus>(task?.status ?? defaultStatus);
   const [dueAt, setDueAt] = useState(task?.dueAt ? task.dueAt.slice(0, 16) : "");
   const [startAt, setStartAt] = useState(task?.startAt ? task.startAt.slice(0, 16) : "");
   const [projectId, setProjectId] = useState(task?.projectId ?? NONE_VALUE);
@@ -91,13 +95,14 @@ function TaskFormBody({
         projectId: projectId === NONE_VALUE ? null : projectId,
         categoryId: categoryId === NONE_VALUE ? null : categoryId,
         tags,
+        status,
       };
 
       if (task) {
         await updateTask(task.id, payload);
         toast.success("Task updated.");
       } else {
-        await createTask({ ...payload, status: defaultStatus });
+        await createTask(payload);
         toast.success("Task created.");
       }
       onOpenChange(false);
@@ -131,6 +136,17 @@ function TaskFormBody({
 
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1.5">
+            <Label>Status</Label>
+            <Select value={status} onValueChange={(v) => setStatus(v as TaskStatus)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {TASK_STATUS_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
             <Label>Priority</Label>
             <Select value={priority} onValueChange={(v) => setPriority(v as TaskPriority)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
@@ -141,15 +157,17 @@ function TaskFormBody({
               </SelectContent>
             </Select>
           </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <Label htmlFor="task-due">Due</Label>
             <DateTimePicker id="task-due" value={dueAt} onChange={setDueAt} timeFormat={timeFormat} placeholder="No due date" className="w-full" />
           </div>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="task-start">Scheduled start</Label>
-          <DateTimePicker id="task-start" value={startAt} onChange={setStartAt} timeFormat={timeFormat} placeholder="Not scheduled" className="w-full" />
+          <div className="space-y-1.5">
+            <Label htmlFor="task-start">Scheduled start</Label>
+            <DateTimePicker id="task-start" value={startAt} onChange={setStartAt} timeFormat={timeFormat} placeholder="Not scheduled" className="w-full" />
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4">

@@ -69,15 +69,31 @@ export async function createTask(data: CreateTaskInput): Promise<Task> {
   return task;
 }
 
+/**
+ * Completion bookkeeping for a status change, shared by `updateTask` and
+ * `moveTask` so a status picked in the form and one picked by dragging a card
+ * leave the row in the same shape.
+ */
+function statusTransition(existing: Task, status: TaskStatus, now: string): Partial<Task> {
+  if (existing.status === status) return {};
+  if (status === "done") return { completedAt: existing.completedAt ?? now };
+  return {
+    completedAt: null,
+    reopenedAt: existing.status === "done" ? now : existing.reopenedAt,
+  };
+}
+
 /** Every mutation bumps `updatedAt` — it's the field incremental sync pulls on. */
 export async function updateTask(id: string, data: UpdateTaskInput): Promise<Task | null> {
   const existing = await kokuDb.tasks.get(id);
   if (!existing) return null;
 
+  const now = new Date().toISOString();
   const updated: Task = {
     ...existing,
     ...data,
-    updatedAt: new Date().toISOString(),
+    ...(data.status ? statusTransition(existing, data.status, now) : {}),
+    updatedAt: now,
   };
 
   await kokuDb.tasks.put(updated);
@@ -124,8 +140,7 @@ export async function moveTask(id: string, status: TaskStatus, sortOrder: number
     ...existing,
     status,
     sortOrder,
-    completedAt: status === "done" ? existing.completedAt ?? now : existing.status === "done" ? null : existing.completedAt,
-    reopenedAt: existing.status === "done" && status !== "done" ? now : existing.reopenedAt,
+    ...statusTransition(existing, status, now),
     updatedAt: now,
   };
   await kokuDb.tasks.put(updated);

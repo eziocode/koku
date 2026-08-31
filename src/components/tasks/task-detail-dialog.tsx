@@ -53,6 +53,13 @@ export function TaskDetailDialog({ task, onOpenChange }: TaskDetailDialogProps) 
   const project = task.projectId ? projects.find((p) => p.id === task.projectId) : null;
   const category = task.categoryId ? categories.find((c) => c.id === task.categoryId) : null;
 
+  /** Done/reopen close the dialog: the card behind it has already moved column. */
+  async function handleStatusAction(action: (id: string) => Promise<unknown>) {
+    if (!task) return;
+    await action(task.id);
+    onOpenChange(false);
+  }
+
   async function handleDelete() {
     if (!task) return;
     if (!window.confirm("Delete this task? Linked time entries stay, just unlinked.")) return;
@@ -142,12 +149,12 @@ export function TaskDetailDialog({ task, onOpenChange }: TaskDetailDialogProps) 
               </Button>
             </div>
             {task.status === "done" ? (
-              <Button className="gap-2" onClick={() => void reopenTask(task.id)}>
+              <Button className="gap-2" onClick={() => void handleStatusAction(reopenTask)}>
                 <RotateCcw className="h-4 w-4" />
                 Reopen task
               </Button>
             ) : (
-              <Button className="gap-2" onClick={() => void completeTask(task.id)}>
+              <Button className="gap-2" onClick={() => void handleStatusAction(completeTask)}>
                 <CheckCircle2 className="h-4 w-4" />
                 Mark done
               </Button>

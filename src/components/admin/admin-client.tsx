@@ -383,6 +383,11 @@ function GroupSection({
   const [open, setOpen] = useState(false);
   const [ids, setIds] = useState(group.userIds);
   useEffect(() => { setIds(group.userIds); }, [group.userIds]);
+  const dirty = ids.length !== group.userIds.length || ids.some((id) => !group.userIds.includes(id));
+  function cancel() {
+    setIds(group.userIds);
+    setOpen(false);
+  }
   async function save() {
     const r = await fetch("/api/admin", {
       method: "POST",
@@ -414,20 +419,25 @@ function GroupSection({
         ) : null}
       </div>
       {open && canManage ? (
-        <div className="mb-3 max-h-56 space-y-2 overflow-auto">
-          {users.map((user) => {
-            const selected = ids.includes(user.id);
-            return (
-              <label key={user.id} className="flex items-start gap-2 text-sm">
-                <input type="checkbox" checked={selected}
-                  onChange={() => setIds(selected ? ids.filter((id) => id !== user.id) : [...ids, user.id])} />
-                <span>{user.displayName || "Unnamed user"}
-                  <span className="block text-xs text-muted-foreground">{user.email}</span>
-                </span>
-              </label>
-            );
-          })}
-          <div className="flex justify-end"><Button size="sm" onClick={() => void save()}>Save</Button></div>
+        <div className="mb-3">
+          <div className="max-h-56 space-y-2 overflow-auto">
+            {users.map((user) => {
+              const selected = ids.includes(user.id);
+              return (
+                <label key={user.id} className="flex items-start gap-2 text-sm">
+                  <input type="checkbox" checked={selected}
+                    onChange={() => setIds(selected ? ids.filter((id) => id !== user.id) : [...ids, user.id])} />
+                  <span>{user.displayName || "Unnamed user"}
+                    <span className="block text-xs text-muted-foreground">{user.email}</span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+          <div className="sticky bottom-0 mt-2 flex justify-end gap-2 border-t bg-background pt-2">
+            <Button size="sm" variant="ghost" onClick={cancel}>Cancel</Button>
+            <Button size="sm" disabled={!dirty} onClick={() => void save()}>Save</Button>
+          </div>
         </div>
       ) : null}
       <LazyUserGrid users={members} onOpen={onOpen} />

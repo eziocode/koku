@@ -12,11 +12,14 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
 import { useTasks } from "@/lib/storage/hooks/use-tasks";
 import { getUnusedItemColor } from "@/lib/storage/item-colors";
+import type { TaskStatus } from "@/lib/storage/db";
+import { TASK_STATUS_OPTIONS } from "@/lib/tasks/task-status";
 
 /* ─── Project ──────────────────────────────────────────────────────────────── */
 
@@ -206,6 +209,8 @@ interface QuickCreateTaskDialogProps {
   onCreated: (id: string) => void;
   /** Pre-fills the new task's project/category/tags from whatever the timer or time-log form already has selected. */
   projectId?: string;
+  /** Column the task lands in; the picker below is how it gets changed. */
+  defaultStatus?: TaskStatus;
   categoryId?: string;
   tags?: string[];
 }
@@ -217,9 +222,11 @@ export function QuickCreateTaskDialog({
   projectId,
   categoryId,
   tags,
+  defaultStatus = "open",
 }: QuickCreateTaskDialogProps) {
   const { createTask } = useTasks();
   const [title, setTitle] = useState("");
+  const [status, setStatus] = useState<TaskStatus>(defaultStatus);
   const [saving, setSaving] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -228,6 +235,7 @@ export function QuickCreateTaskDialog({
     try {
       const task = await createTask({
         title: title.trim(),
+        status,
         projectId: projectId && projectId !== "none" ? projectId : null,
         categoryId: categoryId && categoryId !== "none" ? categoryId : null,
         tags: tags && tags.length ? tags : undefined,
@@ -236,6 +244,7 @@ export function QuickCreateTaskDialog({
       onCreated(task.id);
       onOpenChange(false);
       setTitle("");
+      setStatus(defaultStatus);
     } catch {
       toast.error("Unable to create task.");
     } finally {
@@ -260,6 +269,17 @@ export function QuickCreateTaskDialog({
               placeholder="My task"
               required
             />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="qc-task-status">Status</Label>
+            <Select value={status} onValueChange={(v) => setStatus(v as TaskStatus)}>
+              <SelectTrigger id="qc-task-status"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {TASK_STATUS_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <Button type="submit" disabled={saving} className="w-full">
             Create &amp; select
