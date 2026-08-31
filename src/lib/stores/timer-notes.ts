@@ -43,3 +43,31 @@ export function appendTimestampedNote(
   const base = (existing ?? "").replace(/\s+$/, "");
   return base ? `${base}\n${line}` : line;
 }
+
+/** One line of a timestamped note blob, split back apart for display. */
+export interface NoteLine {
+  stamp: string | null;
+  text: string;
+}
+
+const NOTE_LINE_PATTERN = /^\[([^\]]+)\]\s*(.*)$/;
+
+/**
+ * Splits a note blob written by `appendTimestampedNote` back into its
+ * individual `[HH:mm] text` lines, for surfaces (the timer session card, the
+ * log page, the dashboard) that want to show each capture separately rather
+ * than one run-on block. A line without a recognizable stamp (hand-typed
+ * notes predate this format, or the timer's free-text description field)
+ * still comes back as one entry with `stamp: null`.
+ */
+export function parseNoteLines(notes: string | null | undefined): NoteLine[] {
+  if (!notes) return [];
+  return notes
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const match = NOTE_LINE_PATTERN.exec(line);
+      return match ? { stamp: match[1], text: match[2] } : { stamp: null, text: line };
+    });
+}

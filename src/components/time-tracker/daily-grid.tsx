@@ -5,11 +5,11 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { EntryForm } from "@/components/time-tracker/entry-form";
+import { EntryNotes } from "@/components/time-tracker/entry-notes";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { LazyScrollList } from "@/components/ui/lazy-scroll-list";
-import { MarkdownText } from "@/components/ui/markdown-text";
 import { toast } from "@/components/ui/toast";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
@@ -99,7 +99,7 @@ export function DailyGrid({ entries }: DailyGridProps) {
                   </Link>
                 ))}
               </div>
-              {entry.notes ? <MarkdownText text={entry.notes} className="text-muted-foreground" /> : null}
+              <EntryNotes notes={entry.notes} />
             </div>
             <div className="flex items-center gap-3">
               <div className="min-w-24 text-right text-lg font-semibold text-foreground">

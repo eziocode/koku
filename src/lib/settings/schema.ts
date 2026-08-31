@@ -28,6 +28,8 @@ export const SETTING_SCHEMAS = {
   displayName: z.string().catch(""),
   timeFormat: z.enum(["12h", "24h"]).catch("12h"),
   recentEntriesPageSize: z.union([z.literal(4), z.literal(8), z.literal(12), z.literal(20)]).catch(4),
+  /** Whether entry notes render expanded by default, or collapsed behind a count. */
+  entryNotesDisplay: z.enum(["always", "on-demand"]).catch("always"),
   notifications: notificationPreferencesSchema,
   miniPlayer: miniPlayerPreferencesSchema,
   onboarding: onboardingStateSchema,
@@ -43,6 +45,7 @@ export const SETTING_DEFAULTS: { [K in SettingKey]: SettingValue<K> } = {
   displayName: "",
   timeFormat: "12h",
   recentEntriesPageSize: 4,
+  entryNotesDisplay: "always",
   notifications: NOTIFICATION_DEFAULTS,
   miniPlayer: MINI_PLAYER_DEFAULTS,
   onboarding: ONBOARDING_DEFAULTS,

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { appendTimestampedNote, formatNoteLine } from "./timer-notes";
+import { appendTimestampedNote, formatNoteLine, parseNoteLines } from "./timer-notes";
 
 const at = new Date(2026, 7, 21, 14, 32);
 const later = new Date(2026, 7, 21, 9, 5);
@@ -37,4 +37,28 @@ test("empty or whitespace-only input leaves the note untouched", () => {
 
 test("trims the note text itself", () => {
   assert.equal(appendTimestampedNote(null, "  padded  ", at), "[14:32] padded");
+});
+
+test("parseNoteLines splits a timestamped blob back into stamp/text pairs", () => {
+  const blob = appendTimestampedNote(appendTimestampedNote(null, "First", later), "Second", at)!;
+  assert.deepEqual(parseNoteLines(blob), [
+    { stamp: "09:05", text: "First" },
+    { stamp: "14:32", text: "Second" },
+  ]);
+});
+
+test("parseNoteLines treats an unstamped line as stamp: null", () => {
+  assert.deepEqual(parseNoteLines("Plain description, no stamp"), [
+    { stamp: null, text: "Plain description, no stamp" },
+  ]);
+});
+
+test("parseNoteLines drops blank lines and returns [] for empty input", () => {
+  assert.deepEqual(parseNoteLines("[14:32] First\n\n[09:05] Second"), [
+    { stamp: "14:32", text: "First" },
+    { stamp: "09:05", text: "Second" },
+  ]);
+  assert.deepEqual(parseNoteLines(null), []);
+  assert.deepEqual(parseNoteLines(undefined), []);
+  assert.deepEqual(parseNoteLines(""), []);
 });

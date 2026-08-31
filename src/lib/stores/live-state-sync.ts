@@ -1,6 +1,7 @@
 "use client";
 
 import { kokuDb, type PendingLiveMutation } from "@/lib/storage/db";
+import { getAuthUser } from "@/lib/sync/sync-engine";
 import { useTimerStore } from "@/lib/stores/timer-store";
 import type { ActiveBreak, ActiveTimer } from "@/lib/stores/timer-types";
 
@@ -65,6 +66,12 @@ async function queueDiff(previous: { timers: ActiveTimer[]; activeBreak: ActiveB
 }
 
 async function push(mutations: PendingLiveMutation[]) {
+  // Skip the request entirely while signed out, same as the rest of sync
+  // (see `getAuthUser`'s docstring): without this, every timer/break edit
+  // fires a POST that can only ever 401, spamming devtools and the server's
+  // NO_ACCESS log for a mutation that's already safely queued locally and
+  // will flush the moment a session exists.
+  if (!(await getAuthUser())) return;
   const body = {
     timers: mutations.filter((x) => x.kind === "timer").map((x) => x.record),
     breaks: mutations.filter((x) => x.kind === "break").map((x) => x.record),
@@ -112,6 +119,9 @@ function applyCloud(payload: LivePayload) {
 export async function pullLiveState(options: { skipPendingFlush?: boolean } = {}): Promise<void> {
   try {
     if (!navigator.onLine) return;
+    // Same reasoning as `push`: the 5s poll interval means an unauthenticated
+    // tab would otherwise hit this endpoint, and log a 401 for it, forever.
+    if (!(await getAuthUser())) return;
     // Local mutations must win until server acknowledges them. Otherwise an
     // OAuth restore could pull old cloud state and erase an offline timer.
     if (!options.skipPendingFlush && await kokuDb.pendingLiveMutations.count()) {

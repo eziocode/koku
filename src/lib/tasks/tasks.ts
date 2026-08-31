@@ -60,6 +60,10 @@ export async function createTask(data: CreateTaskInput): Promise<Task> {
     completedAt: null,
     reopenedAt: null,
     sortOrder: data.sortOrder ?? (await nextSortOrder(status)),
+    accumulatedSec: 0,
+    // A task can be created straight into "in_progress" from that column's
+    // "Add task" button, so the stopwatch has to start running immediately.
+    inProgressSince: status === "in_progress" ? now : null,
     createdAt: now,
     updatedAt: now,
   };
@@ -70,15 +74,44 @@ export async function createTask(data: CreateTaskInput): Promise<Task> {
 }
 
 /**
- * Completion bookkeeping for a status change, shared by `updateTask` and
- * `moveTask` so a status picked in the form and one picked by dragging a card
- * leave the row in the same shape.
+ * Completion and accrual bookkeeping for a status change, shared by every
+ * write path (`updateTask`, `moveTask`, `completeTask`, `reopenTask`) so a
+ * status picked in the form, one picked by dragging a card, and the detail
+ * dialog's buttons all leave the row in the same shape.
+ *
+ * The accumulated-time stopwatch only runs while a task is "in_progress":
+ * entering that status starts it (`inProgressSince = now`), leaving it banks
+ * the elapsed stretch into `accumulatedSec` and stops the clock. Completing a
+ * task always records when it actually finished, overwriting `dueAt` with
+ * that moment; reopening clears both `completedAt` and `dueAt` back out so
+ * the user can set a fresh deadline (or leave it blank).
  */
-function statusTransition(existing: Task, status: TaskStatus, now: string): Partial<Task> {
+function accrualTransition(existing: Task, status: TaskStatus, now: string): Partial<Task> {
   if (existing.status === status) return {};
-  if (status === "done") return { completedAt: existing.completedAt ?? now };
+
+  const wasRunning = existing.status === "in_progress" && existing.inProgressSince;
+  const bankedSec = wasRunning
+    ? existing.accumulatedSec + Math.max(0, Math.floor((Date.parse(now) - Date.parse(existing.inProgressSince!)) / 1000))
+    : existing.accumulatedSec;
+
+  if (status === "in_progress") {
+    return { accumulatedSec: bankedSec, inProgressSince: now };
+  }
+
+  if (status === "done") {
+    return {
+      accumulatedSec: bankedSec,
+      inProgressSince: null,
+      completedAt: existing.completedAt ?? now,
+      dueAt: now,
+    };
+  }
+
   return {
+    accumulatedSec: bankedSec,
+    inProgressSince: null,
     completedAt: null,
+    dueAt: existing.status === "done" ? null : existing.dueAt,
     reopenedAt: existing.status === "done" ? now : existing.reopenedAt,
   };
 }
@@ -92,7 +125,7 @@ export async function updateTask(id: string, data: UpdateTaskInput): Promise<Tas
   const updated: Task = {
     ...existing,
     ...data,
-    ...(data.status ? statusTransition(existing, data.status, now) : {}),
+    ...(data.status ? accrualTransition(existing, data.status, now) : {}),
     updatedAt: now,
   };
 
@@ -106,7 +139,12 @@ export async function completeTask(id: string): Promise<Task | null> {
   if (!existing) return null;
 
   const now = new Date().toISOString();
-  const updated: Task = { ...existing, status: "done", completedAt: now, updatedAt: now };
+  const updated: Task = {
+    ...existing,
+    status: "done",
+    ...accrualTransition(existing, "done", now),
+    updatedAt: now,
+  };
   await kokuDb.tasks.put(updated);
   void syncRow("tasks", updated);
   return updated;
@@ -121,8 +159,7 @@ export async function reopenTask(id: string): Promise<Task | null> {
   const updated: Task = {
     ...existing,
     status: "open",
-    completedAt: null,
-    reopenedAt: now,
+    ...accrualTransition(existing, "open", now),
     updatedAt: now,
   };
   await kokuDb.tasks.put(updated);
@@ -140,7 +177,7 @@ export async function moveTask(id: string, status: TaskStatus, sortOrder: number
     ...existing,
     status,
     sortOrder,
-    ...statusTransition(existing, status, now),
+    ...accrualTransition(existing, status, now),
     updatedAt: now,
   };
   await kokuDb.tasks.put(updated);

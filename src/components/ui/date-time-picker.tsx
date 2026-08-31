@@ -30,6 +30,24 @@ interface DateTimePickerProps {
    * the calendar, so an end time can never be dragged behind its start date.
    */
   min?: string;
+  /**
+   * A local "yyyy-MM-ddTHH:mm" offered as a one-click fill when the field is
+   * still empty, e.g. "now" for a start date or "tomorrow EOD" for a due
+   * date. Never written on its own: the panel only commits it when the user
+   * clicks the suggestion.
+   */
+  suggestion?: string;
+}
+
+/** Local datetime string to the same "12 Jun 2026 · 2:30 PM" shape the trigger shows. */
+function formatLocalLabel(datetime: string, timeFormat: TimeFormat) {
+  const day = toLocalDay(datetime);
+  if (!day) return null;
+  const timePart = datetime.slice(11, 16);
+  if (!timePart) return format(day, "d MMM yyyy");
+  const [h, m] = timePart.split(":").map(Number);
+  const timeLabel = formatTime(new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m), timeFormat);
+  return `${format(day, "d MMM yyyy")} · ${timeLabel}`;
 }
 
 /** Splits a 24h "HH:mm" into 12h parts, defaulting to a sane noon-ish start. */
@@ -86,6 +104,7 @@ export function DateTimePicker({
   id,
   timeFormat = "24h",
   min,
+  suggestion,
 }: DateTimePickerProps) {
   const [open, setOpen] = React.useState(false);
   const compact = useCompactViewport();
@@ -155,8 +174,19 @@ export function DateTimePicker({
     region, and the time row plus Done sit in a `shrink-0` footer so they stay
     on screen however little vertical room the panel ends up with.
   */
+  const suggestionLabel = suggestion ? formatLocalLabel(suggestion, timeFormat) : null;
+
   const panel = (
     <>
+      {!value && suggestion && suggestionLabel ? (
+        <button
+          type="button"
+          onClick={() => onChange(suggestion)}
+          className="shrink-0 border-b border-border px-3 py-2 text-left text-xs text-primary hover:bg-accent"
+        >
+          Use suggested: {suggestionLabel}
+        </button>
+      ) : null}
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <Calendar
           mode="single"

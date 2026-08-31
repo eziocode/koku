@@ -25,7 +25,7 @@ let conflictDecisionPending = false;
 const mutationLocks = new Map<string, Promise<void>>();
 let pendingSyncWarningShown = false;
 
-async function getAuthUser(): Promise<{ id: string } | null> {
+export async function getAuthUser(): Promise<{ id: string } | null> {
   const now = Date.now();
   if (authCache && authCache.expiresAt > now) return authCache.user;
   // An auth result must reflect current browser session. In particular, do not

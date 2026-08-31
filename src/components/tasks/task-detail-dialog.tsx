@@ -18,7 +18,7 @@ import { MarkdownText } from "@/components/ui/markdown-text";
 import { TaskFormDialog } from "@/components/tasks/task-form-dialog";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
-import { useTaskEntries, useTaskSeconds } from "@/lib/storage/hooks/use-task-seconds";
+import { useTaskAccruedSec, useTaskEntries, useTaskSeconds } from "@/lib/storage/hooks/use-task-seconds";
 import { useTasks } from "@/lib/storage/hooks/use-tasks";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 import type { Task } from "@/lib/storage/db";
@@ -45,8 +45,14 @@ export function TaskDetailDialog({ task, onOpenChange }: TaskDetailDialogProps) 
   const { value: timeFormat } = useTypedSetting("timeFormat");
   const [editOpen, setEditOpen] = useState(false);
 
-  const totalSec = useTaskSeconds(task?.id ?? "");
+  const loggedSec = useTaskSeconds(task?.id ?? "");
   const entries = useTaskEntries(task?.id ?? "");
+  // Falls back to a static 0 while `task` is null; the real, ticking value
+  // takes over on the next render once a task is set (hooks can't be called
+  // conditionally, so this can't move below the early return).
+  const accruedSec = useTaskAccruedSec(
+    task ?? { accumulatedSec: 0, inProgressSince: null, status: "open" } as Task,
+  );
 
   if (!task) return null;
 
@@ -80,10 +86,14 @@ export function TaskDetailDialog({ task, onOpenChange }: TaskDetailDialogProps) 
             {task.notes ? <MarkdownText text={task.notes} className="text-muted-foreground" /> : null}
           </DialogHeader>
 
-          <div className="grid grid-cols-2 gap-4 rounded-2xl border border-border bg-muted/30 p-4 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-4 rounded-2xl border border-border bg-muted/30 p-4 sm:grid-cols-3 lg:grid-cols-5">
             <div>
               <p className="text-xs text-muted-foreground">Accumulated time</p>
-              <p className="text-lg font-semibold tabular-nums">{formatDuration(totalSec)}</p>
+              <p className="text-lg font-semibold tabular-nums">{formatDuration(accruedSec)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Logged time</p>
+              <p className="text-lg font-semibold tabular-nums">{formatDuration(loggedSec)}</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Sessions</p>
@@ -91,7 +101,9 @@ export function TaskDetailDialog({ task, onOpenChange }: TaskDetailDialogProps) 
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Due</p>
-              <p className="text-lg font-semibold">{task.dueAt ? format(new Date(task.dueAt), "d MMM yyyy") : "—"}</p>
+              <p className="text-lg font-semibold">
+                {task.dueAt ? `${format(new Date(task.dueAt), "d MMM yyyy")} · ${formatTime(task.dueAt, timeFormat)}` : "—"}
+              </p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Scheduled start</p>

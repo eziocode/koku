@@ -9,6 +9,7 @@ import { DashboardTipCard } from "@/components/dashboard/dashboard-tip-card";
 import { QuickCaptureCard } from "@/components/dashboard/quick-capture-card";
 import { ChartLegend } from "@/components/charts/chart-legend";
 import { SegmentedBarChart } from "@/components/charts/segmented-bar-chart";
+import { EntryNotes } from "@/components/time-tracker/entry-notes";
 import { Timer } from "@/components/time-tracker/timer";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -347,12 +348,13 @@ export function DashboardClient() {
             }
             renderItem={(entry) => (
               <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-background/55 p-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
+                <div className="min-w-0 flex-1">
                   <p className="font-medium text-foreground">{entry.title}</p>
                   <p className="text-sm text-muted-foreground">
                     {entry.project?.name || "Unassigned"}
                     {entry.category ? ` • ${entry.category.name}` : ""}
                   </p>
+                  <EntryNotes notes={entry.notes} className="mt-1" />
                 </div>
                 <div className="text-sm font-semibold tabular-nums text-foreground">{formatDuration(entry.durationSec || 0)}</div>
               </div>

@@ -9,8 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { TaskDetailDialog } from "@/components/tasks/task-detail-dialog";
 import { TaskFormDialog } from "@/components/tasks/task-form-dialog";
+import { toast } from "@/components/ui/toast";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
-import { useTaskSeconds } from "@/lib/storage/hooks/use-task-seconds";
+import { useTaskAccruedSec } from "@/lib/storage/hooks/use-task-seconds";
 import { useTasks } from "@/lib/storage/hooks/use-tasks";
 import type { Task, TaskStatus } from "@/lib/storage/db";
 import { TASK_STATUS_OPTIONS } from "@/lib/tasks/task-status";
@@ -47,10 +48,10 @@ function TaskCard({
   onDragStart: () => void;
   onDragEnd: () => void;
   onDragOverCard: () => void;
-  onDropOnCard: () => void;
+  onDropOnCard: (fallbackId: string | null) => void;
 }) {
   const { projects } = useProjects();
-  const seconds = useTaskSeconds(task.id);
+  const seconds = useTaskAccruedSec(task);
   const project = task.projectId ? projects.find((p) => p.id === task.projectId) : null;
   // A drag ends with a click event on the card; without this the card would
   // open its detail dialog every time it is dropped.
@@ -74,15 +75,23 @@ function TaskCard({
           draggedRef.current = false;
         }, 0);
       }}
-      onDragOver={(e) => {
+      onDragEnter={(e) => {
+        if (dragging) return;
         e.preventDefault();
+      }}
+      onDragOver={(e) => {
+        if (dragging) return;
+        e.preventDefault();
+        // Stop the column's own onDragOver from firing right after this one
+        // and overwriting the insert-before indicator it just set.
+        e.stopPropagation();
         e.dataTransfer.dropEffect = "move";
         onDragOverCard();
       }}
       onDrop={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        onDropOnCard();
+        onDropOnCard(e.dataTransfer.getData(DRAG_MIME));
       }}
       onClick={() => {
         if (draggedRef.current) return;
@@ -125,6 +134,8 @@ export function TasksClient() {
   const dragTaskIdRef = useRef<string | null>(null);
   /** Where the dragged card would land: a column, and optionally the card it goes before. */
   const [dropTarget, setDropTarget] = useState<{ status: TaskStatus; beforeId: string | null } | null>(null);
+  /** Column card DOM nodes, keyed by status — for the point-based fallback below. */
+  const columnRefs = useRef<Map<TaskStatus, HTMLDivElement>>(new Map());
 
   const detailTask = detailTaskId ? tasks.find((t) => t.id === detailTaskId) ?? null : null;
 
@@ -162,8 +173,43 @@ export function TasksClient() {
     return (column[index - 1].sortOrder + column[index].sortOrder) / 2;
   }
 
-  async function handleDrop(status: TaskStatus, beforeId: string | null) {
-    const taskId = dragTaskIdRef.current;
+  /**
+   * Column whose card is geometrically closest to a point — 0 if the point is
+   * already inside it, otherwise squared distance to its nearest edge. Used
+   * only as the gutter fallback below: real mouse movement crosses the
+   * `gap-4` gutters between columns (and the vertical gaps when the board is
+   * stacked on narrow screens), which belong to no column or card, so a drop
+   * released there needs a target found by geometry rather than by whichever
+   * element happened to fire the last dragover.
+   */
+  function nearestColumn(x: number, y: number, avoidStatus: TaskStatus | null): TaskStatus | null {
+    let best: TaskStatus | null = null;
+    let bestDistance = Infinity;
+    for (const [status, el] of columnRefs.current) {
+      const rect = el.getBoundingClientRect();
+      const dx = Math.max(rect.left - x, 0, x - rect.right);
+      const dy = Math.max(rect.top - y, 0, y - rect.bottom);
+      const distance = dx * dx + dy * dy;
+      // A dead-center drop in a gutter ties both neighbouring columns at the
+      // same distance. Left as a strict `<`, the tie always resolves to
+      // whichever column iterates first — usually the one the drag started
+      // in — so a drop aimed at the gutter's midpoint would silently "return"
+      // the card to its own column instead of moving it. On a genuine tie,
+      // prefer whichever side isn't where the task already lives.
+      const isTieAwayFromSource = distance === bestDistance && best === avoidStatus && status !== avoidStatus;
+      if (distance < bestDistance || isTieAwayFromSource) {
+        bestDistance = distance;
+        best = status;
+      }
+    }
+    return best;
+  }
+
+  async function handleDrop(status: TaskStatus, beforeId: string | null, fallbackId?: string | null) {
+    // `dragTaskIdRef` can already be cleared by a `dragend` that beat this
+    // `drop` (some Safari/Firefox drop-outside cases); the dataTransfer
+    // payload the card set on dragstart is the fallback source of truth.
+    const taskId = dragTaskIdRef.current ?? fallbackId ?? null;
     resetDrag();
     if (!taskId) return;
 
@@ -172,11 +218,41 @@ export function TasksClient() {
     // Dropped back onto itself changes nothing.
     if (beforeId === taskId) return;
 
-    await moveTask(taskId, status, orderFor(status, taskId, beforeId));
+    try {
+      await moveTask(taskId, status, orderFor(status, taskId, beforeId));
+    } catch {
+      toast.error("Unable to move this task.");
+    }
   }
 
   return (
-    <div className="space-y-8">
+    <div
+      className="space-y-8"
+      onDragOver={(e) => {
+        // A real mouse drag crosses gutters and padding that no column or
+        // card owns. Without accepting the drag here too, a drop that lands
+        // on one of those gaps has no preventDefault'd dragover behind it,
+        // so the browser treats it as rejected and animates the card back to
+        // where it started instead of moving it.
+        if (!dragTaskIdRef.current) return;
+        e.preventDefault();
+      }}
+      onDrop={(e) => {
+        // Only reached when the drop landed outside every column and card —
+        // both stop propagation once they've handled a drop themselves. Route
+        // by geometry rather than the last-hovered `dropTarget`: a drag that
+        // crosses straight from a card into a gutter without ever properly
+        // entering the next column would otherwise fall back to wherever it
+        // started, which is what made a cross-column drop look like it
+        // "snapped back" instead of moving.
+        e.preventDefault();
+        const draggedId = dragTaskIdRef.current ?? e.dataTransfer.getData(DRAG_MIME) ?? null;
+        const sourceStatus = draggedId ? tasks.find((t) => t.id === draggedId)?.status ?? null : null;
+        const status = nearestColumn(e.clientX, e.clientY, sourceStatus);
+        if (!status) return;
+        void handleDrop(status, null, e.dataTransfer.getData(DRAG_MIME));
+      }}
+    >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-3">
           <p className="text-xs uppercase tracking-[0.3em] text-primary">Tasks</p>
@@ -198,27 +274,41 @@ export function TasksClient() {
           return (
             <Card
               key={column.value}
+              ref={(el) => {
+                if (el) columnRefs.current.set(column.value, el);
+                else columnRefs.current.delete(column.value);
+              }}
               className={cn(
                 "flex flex-col gap-3 p-3",
                 isDropColumn && "ring-2 ring-primary/50",
               )}
+              onDragEnter={(e) => {
+                if (!dragTaskIdRef.current) return;
+                e.preventDefault();
+              }}
               onDragOver={(e) => {
                 if (!dragTaskIdRef.current) return;
                 // preventDefault on every dragover is what marks this a drop zone.
                 e.preventDefault();
                 e.dataTransfer.dropEffect = "move";
+                // A card's own onDragOver stops this from firing while hovering
+                // a card, so reaching here means the pointer is over column
+                // chrome (empty space, header, footer) and belongs at the end.
                 setDropTarget((t) =>
                   t?.status === column.value && t.beforeId === null ? t : { status: column.value, beforeId: null },
                 );
               }}
-              onDragLeave={(e) => {
-                // Ignore the leave events fired while crossing child cards.
-                if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
-                setDropTarget((t) => (t?.status === column.value ? null : t));
-              }}
+              // No onDragLeave clearing of `dropTarget`: doing so used to null
+              // it out the instant the pointer crossed into the `gap-4`
+              // gutter between columns, which is exactly where a real mouse
+              // drag often releases. Leaving `dropTarget` as "last column
+              // hovered" until a different column/card claims it (or the
+              // drag ends) is what lets the page-level fallback drop handler
+              // route a gutter-drop correctly instead of silently no-op'ing.
               onDrop={(e) => {
                 e.preventDefault();
-                void handleDrop(column.value, null);
+                e.stopPropagation();
+                void handleDrop(column.value, null, e.dataTransfer.getData(DRAG_MIME));
               }}
             >
               <div className="flex items-center justify-between px-1">
@@ -247,7 +337,7 @@ export function TasksClient() {
                             : { status: column.value, beforeId: task.id },
                         )
                       }
-                      onDropOnCard={() => void handleDrop(column.value, task.id)}
+                      onDropOnCard={(fallbackId) => void handleDrop(column.value, task.id, fallbackId)}
                     />
                   ))
                 )}

@@ -2,7 +2,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Pencil, Shield, Trash2, UserPlus, UserRoundMinus } from "lucide-react";
+import { Check, Pencil, Search, Shield, Trash2, UserPlus, UserRoundMinus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
 import { sortAdminUsersByPresence, type AdminGroup, type AdminUser } from "@/lib/admin-data";
+import { GROUP_MEMBER_SEARCH_THRESHOLD } from "@/lib/ui/list-thresholds";
 
 type ConfirmAction =
   | { type: "removeAdmin"; userId: string; email: string }
@@ -382,24 +383,48 @@ function GroupSection({
 }) {
   const [open, setOpen] = useState(false);
   const [ids, setIds] = useState(group.userIds);
+  const [saving, setSaving] = useState(false);
+  const [memberQuery, setMemberQuery] = useState("");
   useEffect(() => { setIds(group.userIds); }, [group.userIds]);
   const dirty = ids.length !== group.userIds.length || ids.some((id) => !group.userIds.includes(id));
+
   function cancel() {
     setIds(group.userIds);
+    setMemberQuery("");
     setOpen(false);
   }
+
   async function save() {
-    const r = await fetch("/api/admin", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "updateGroup", group: { ...group, userIds: ids } }),
-    });
-    if (!r.ok) { toast.error(await errorMessage(r, "Group update failed.")); return; }
-    setOpen(false);
-    toast.success("Group members saved.");
-    await onChanged();
+    setSaving(true);
+    try {
+      const r = await fetch("/api/admin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "updateGroup", group: { ...group, userIds: ids } }),
+      });
+      if (!r.ok) { toast.error(await errorMessage(r, "Group update failed.")); return; }
+      setMemberQuery("");
+      setOpen(false);
+      toast.success("Group members saved.");
+      await onChanged();
+    } finally {
+      setSaving(false);
+    }
   }
+
   const members = users.filter((user) => ids.includes(user.id));
+  const trimmedQuery = memberQuery.trim().toLowerCase();
+  // Filtering only changes which rows are visible in the checklist below;
+  // `ids` (and therefore `dirty`/`save`) stays keyed off every member, so a
+  // member checked before a search narrows the list is never silently dropped.
+  const visibleUsers = trimmedQuery
+    ? users.filter(
+        (user) =>
+          (user.displayName || "").toLowerCase().includes(trimmedQuery) ||
+          user.email.toLowerCase().includes(trimmedQuery),
+      )
+    : users;
+
   return (
     <section className="rounded-xl border p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -409,34 +434,62 @@ function GroupSection({
         </button>
         {canManage ? (
           <div className="flex gap-1">
-            <Button size="icon" variant="ghost" aria-label={`Edit group ${group.name}`} onClick={() => setOpen(true)}>
-              <Pencil className="h-4 w-4" />
-            </Button>
-            <Button size="icon" variant="ghost" aria-label={`Delete group ${group.name}`} onClick={() => onDelete(group)}>
-              <Trash2 className="h-4 w-4 text-destructive" />
-            </Button>
+            {open ? (
+              <>
+                <Button size="icon" variant="ghost" aria-label="Save group members" disabled={!dirty || saving} onClick={() => void save()}>
+                  <Check className="h-4 w-4" />
+                </Button>
+                <Button size="icon" variant="ghost" aria-label="Cancel editing group" disabled={saving} onClick={cancel}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button size="icon" variant="ghost" aria-label={`Edit group ${group.name}`} onClick={() => setOpen(true)}>
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button size="icon" variant="ghost" aria-label={`Delete group ${group.name}`} onClick={() => onDelete(group)}>
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+              </>
+            )}
           </div>
         ) : null}
       </div>
       {open && canManage ? (
-        <div className="mb-3">
+        <div className="mb-3 space-y-2">
+          {users.length > GROUP_MEMBER_SEARCH_THRESHOLD ? (
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={memberQuery}
+                onChange={(event) => setMemberQuery(event.target.value)}
+                placeholder="Search users by name or email"
+                aria-label="Search group members"
+                className="pl-9"
+              />
+              {trimmedQuery ? (
+                <p className="mt-1 text-xs text-muted-foreground">{visibleUsers.length} of {users.length}</p>
+              ) : null}
+            </div>
+          ) : null}
           <div className="max-h-56 space-y-2 overflow-auto">
-            {users.map((user) => {
-              const selected = ids.includes(user.id);
-              return (
-                <label key={user.id} className="flex items-start gap-2 text-sm">
-                  <input type="checkbox" checked={selected}
-                    onChange={() => setIds(selected ? ids.filter((id) => id !== user.id) : [...ids, user.id])} />
-                  <span>{user.displayName || "Unnamed user"}
-                    <span className="block text-xs text-muted-foreground">{user.email}</span>
-                  </span>
-                </label>
-              );
-            })}
-          </div>
-          <div className="sticky bottom-0 mt-2 flex justify-end gap-2 border-t bg-background pt-2">
-            <Button size="sm" variant="ghost" onClick={cancel}>Cancel</Button>
-            <Button size="sm" disabled={!dirty} onClick={() => void save()}>Save</Button>
+            {visibleUsers.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No users match.</p>
+            ) : (
+              visibleUsers.map((user) => {
+                const selected = ids.includes(user.id);
+                return (
+                  <label key={user.id} className="flex items-start gap-2 text-sm">
+                    <input type="checkbox" checked={selected}
+                      onChange={() => setIds(selected ? ids.filter((id) => id !== user.id) : [...ids, user.id])} />
+                    <span>{user.displayName || "Unnamed user"}
+                      <span className="block text-xs text-muted-foreground">{user.email}</span>
+                    </span>
+                  </label>
+                );
+              })
+            )}
           </div>
         </div>
       ) : null}

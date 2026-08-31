@@ -32,6 +32,12 @@ export const TABLE_CONFIG = {
       completed_at: nullableDateTime(r.completedAt),
       reopened_at: nullableDateTime(r.reopenedAt),
       sort_order: r.sortOrder ?? 0,
+      // Requires the `accumulated_sec` / `in_progress_since` columns on the
+      // remote `tasks_koku` table. Until those exist, an unrecognized-column
+      // push error here means dropping these two keys, not deleting them from
+      // `Task` — the fields still need to persist locally.
+      accumulated_sec: r.accumulatedSec ?? 0,
+      in_progress_since: nullableDateTime(r.inProgressSince),
       created_at: toCatalystDateTime(r.createdAt),
       updated_at: toCatalystDateTime(r.updatedAt),
     }),
@@ -55,6 +61,11 @@ export const TABLE_CONFIG = {
         completedAt: fromCatalystDateTime(d.completed_at),
         reopenedAt: fromCatalystDateTime(d.reopened_at),
         sortOrder: d.sort_order === null || d.sort_order === undefined || d.sort_order === "" ? 0 : Number(d.sort_order),
+        // Same "not on the remote table yet" fallback as `sort_order`: a
+        // pulled row missing these columns lands at 0 / null rather than
+        // NaN / undefined, so a pull never corrupts a task's stopwatch.
+        accumulatedSec: d.accumulated_sec === null || d.accumulated_sec === undefined || d.accumulated_sec === "" ? 0 : Number(d.accumulated_sec),
+        inProgressSince: fromCatalystDateTime(d.in_progress_since),
         createdAt: fromCatalystDateTime(d.created_at) ?? d.created_at,
         updatedAt: fromCatalystDateTime(d.updated_at) ?? d.updated_at,
       };

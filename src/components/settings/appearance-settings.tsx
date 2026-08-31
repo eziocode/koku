@@ -4,6 +4,7 @@ import { Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ToggleRow } from "@/components/settings/toggle-row";
 import { applyAccentToDocument, cacheAccent, isValidAccent } from "@/lib/appearance";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 import { cn } from "@/lib/utils";
@@ -28,6 +29,7 @@ export function AppearanceSettings() {
   const { theme, setTheme } = useTheme();
   const { value: currentAccent, setValue } = useTypedSetting("accent");
   const { value: timeFormat, setValue: setTimeFormat } = useTypedSetting("timeFormat");
+  const { value: entryNotesDisplay, setValue: setEntryNotesDisplay } = useTypedSetting("entryNotesDisplay");
 
   return (
     <div className="space-y-6">
@@ -86,6 +88,22 @@ export function AppearanceSettings() {
               </button>
             ))}
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Entry notes</CardTitle>
+          <CardDescription>Choose how notes on time entries show up on the dashboard and log page.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ToggleRow
+            id="entry-notes-display"
+            label="Show notes by default"
+            description="Off shows a note count you expand on demand, instead of the full text."
+            checked={entryNotesDisplay === "always"}
+            onCheckedChange={(checked) => void setEntryNotesDisplay(checked ? "always" : "on-demand")}
+          />
         </CardContent>
       </Card>
 

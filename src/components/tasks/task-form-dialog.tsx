@@ -26,6 +26,7 @@ import { useTagSuggestions } from "@/lib/storage/hooks/use-tag-suggestions";
 import { useTasks } from "@/lib/storage/hooks/use-tasks";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 import type { Task, TaskPriority, TaskStatus } from "@/lib/storage/db";
+import { nextDayEndOfDayLocal, nowLocalDateTime, toDateTimeLocal } from "@/lib/tasks/task-dates";
 import { TASK_STATUS_OPTIONS } from "@/lib/tasks/task-status";
 import { NONE_VALUE } from "@/lib/ui/list-thresholds";
 
@@ -66,8 +67,13 @@ function TaskFormBody({
   // Creating from a column's "Add task" seeds this with that column; the
   // global "New task" button seeds "open" and the picker is how you change it.
   const [status, setStatus] = useState<TaskStatus>(task?.status ?? defaultStatus);
-  const [dueAt, setDueAt] = useState(task?.dueAt ? task.dueAt.slice(0, 16) : "");
-  const [startAt, setStartAt] = useState(task?.startAt ? task.startAt.slice(0, 16) : "");
+  const [dueAt, setDueAt] = useState(toDateTimeLocal(task?.dueAt));
+  // Creating from the In progress column's "Add task" means work starts now;
+  // every other entry point leaves this blank and only suggests "now" once
+  // the user opens the picker.
+  const [startAt, setStartAt] = useState(
+    task ? toDateTimeLocal(task.startAt) : defaultStatus === "in_progress" ? nowLocalDateTime() : "",
+  );
   const [projectId, setProjectId] = useState(task?.projectId ?? NONE_VALUE);
   const [categoryId, setCategoryId] = useState(task?.categoryId ?? NONE_VALUE);
   const [tags, setTags] = useState<string[]>(task?.tags ?? []);
@@ -162,11 +168,27 @@ function TaskFormBody({
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <Label htmlFor="task-due">Due</Label>
-            <DateTimePicker id="task-due" value={dueAt} onChange={setDueAt} timeFormat={timeFormat} placeholder="No due date" className="w-full" />
+            <DateTimePicker
+              id="task-due"
+              value={dueAt}
+              onChange={setDueAt}
+              timeFormat={timeFormat}
+              placeholder="No due date"
+              className="w-full"
+              suggestion={nextDayEndOfDayLocal()}
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="task-start">Scheduled start</Label>
-            <DateTimePicker id="task-start" value={startAt} onChange={setStartAt} timeFormat={timeFormat} placeholder="Not scheduled" className="w-full" />
+            <DateTimePicker
+              id="task-start"
+              value={startAt}
+              onChange={setStartAt}
+              timeFormat={timeFormat}
+              placeholder="Not scheduled"
+              className="w-full"
+              suggestion={nowLocalDateTime()}
+            />
           </div>
         </div>
 

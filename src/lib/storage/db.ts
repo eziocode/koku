@@ -55,6 +55,10 @@ export interface Task {
   reopenedAt?: string | null;
   /** Kanban ordering within a status column. Never null — see the v6 index note. */
   sortOrder: number;
+  /** Seconds banked from in-progress stretches that have already ended. */
+  accumulatedSec: number;
+  /** ISO stamp of the current in-progress stretch, null while not running. */
+  inProgressSince: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -259,6 +263,40 @@ class KokuDB extends Dexie {
       pendingLiveMutations: "id, kind, updatedAt",
       notificationLog: "id, createdAt, tag, readAt",
     });
+
+    this.version(8)
+      .stores({
+        projects: "id, createdAt",
+        categories: "id, name, createdAt",
+        timeEntries:
+          "id, startAt, projectId, categoryId, createdAt, durationSec, taskId, " +
+          "[projectId+startAt], [categoryId+startAt], [taskId+startAt]",
+        tasks:
+          "id, status, priority, dueAt, projectId, categoryId, sortOrder, updatedAt, createdAt, " +
+          "[status+sortOrder], [status+dueAt], [projectId+status]",
+        notes: "id, slug, updatedAt, createdAt",
+        personalNotes: "id, slug, updatedAt, createdAt",
+        noteLinks: "id, sourceNoteId, targetNoteId",
+        aiKeys: "id, provider, createdAt",
+        settings: "key",
+        pendingDeletes: "id, table, rowId, [table+rowId], createdAt",
+        pendingUpserts: "id, table, rowId, [table+rowId], updatedAt",
+        pendingLiveMutations: "id, kind, updatedAt",
+        notificationLog: "id, createdAt, tag, readAt",
+      })
+      .upgrade(async (tx) => {
+        // Same reasoning as the v6 taskId backfill: every local row needs the
+        // same key set a cloud round-trip would produce, so a pulled task
+        // (which won't carry these fields until the server does) string-matches
+        // instead of surfacing a phantom sync conflict forever.
+        await tx
+          .table("tasks")
+          .toCollection()
+          .modify((task) => {
+            if (task.accumulatedSec === undefined) task.accumulatedSec = 0;
+            if (task.inProgressSince === undefined) task.inProgressSince = null;
+          });
+      });
   }
 }
 

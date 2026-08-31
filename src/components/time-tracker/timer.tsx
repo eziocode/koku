@@ -27,6 +27,7 @@ import { QuickActionButtons } from "@/components/time-tracker/quick-action-butto
 import { QuickCreateCategoryDialog, QuickCreateProjectDialog, QuickCreateTaskDialog } from "@/components/time-tracker/quick-create-dialog";
 import { TitleSuggestionBar } from "@/components/time-tracker/title-suggestion-bar";
 import { useTitleAutofill } from "@/components/time-tracker/use-title-autofill";
+import { parseNoteLines } from "@/lib/stores/timer-notes";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
 import { useTagSuggestions } from "@/lib/storage/hooks/use-tag-suggestions";
@@ -42,7 +43,7 @@ import {
 import { useNotificationPreferences } from "@/lib/notifications/use-notification-preferences";
 import { useSecondTick } from "@/lib/stores/use-ticker";
 import { buildEntryFromTimer } from "@/lib/time-tracking/stop-timer";
-import { formatDuration } from "@/lib/utils";
+import { cn, formatDuration } from "@/lib/utils";
 import { NONE_VALUE } from "@/lib/ui/list-thresholds";
 import { resolvePeriodCopy } from "@/lib/breaks/break-copy";
 
@@ -300,6 +301,42 @@ function TimerFields({
   );
 }
 
+/**
+ * Reveal for notes already appended to a running/paused timer via the
+ * quick-note composer, the mini player, or this card's own "Add note" box.
+ * Those land on `ActiveTimer.notes` but had no surface on the timer page
+ * itself until now — collapsed behind a count so an untouched session card
+ * is unchanged.
+ */
+function TimerNotesReveal({ notes, className }: { notes: string | null | undefined; className?: string }) {
+  const [open, setOpen] = useState(false);
+  const lines = useMemo(() => parseNoteLines(notes), [notes]);
+  if (lines.length === 0) return null;
+
+  return (
+    <div className={cn("space-y-1.5", className)}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+      >
+        {open ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+        {lines.length === 1 ? "1 note" : `${lines.length} notes`}
+      </button>
+      {open ? (
+        <ul className="space-y-1 rounded-lg border border-border bg-background/60 px-3 py-2">
+          {lines.map((line, index) => (
+            <li key={index} className="flex gap-2 text-sm">
+              {line.stamp ? <span className="shrink-0 text-xs text-muted-foreground">[{line.stamp}]</span> : null}
+              <span className="text-foreground">{line.text}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 function TimerSessionCard({
   timer,
   elapsedSec,
@@ -380,6 +417,7 @@ function TimerSessionCard({
           Add note
         </Button>
       </div>
+      <TimerNotesReveal notes={timer.notes} className="mt-2" />
     </div>
   );
 }

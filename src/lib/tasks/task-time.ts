@@ -1,4 +1,4 @@
-import { kokuDb } from "@/lib/storage/db";
+import { kokuDb, type Task } from "@/lib/storage/db";
 import { getDurationSec } from "@/lib/time-tracking/time-entries";
 
 /**
@@ -20,4 +20,15 @@ export async function getTaskSeconds(taskId: string, now: number = Date.now()): 
     // card's total ticks up live along with an active timer linked to it.
     return total + Math.max(0, Math.floor((now - Date.parse(entry.startAt)) / 1000));
   }, 0);
+}
+
+/**
+ * Time a task has accrued while "in_progress": banked stretches plus the
+ * current one still running, or just the bank once it's paused/done. Unlike
+ * `getTaskSeconds` this is a pure function of the row itself, not the linked
+ * entries, so a task with no time entries yet still shows its stopwatch.
+ */
+export function getTaskAccruedSec(task: Task, now: number = Date.now()): number {
+  if (!task.inProgressSince) return task.accumulatedSec;
+  return task.accumulatedSec + Math.max(0, Math.floor((now - Date.parse(task.inProgressSince)) / 1000));
 }

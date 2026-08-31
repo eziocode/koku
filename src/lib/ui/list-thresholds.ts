@@ -13,6 +13,9 @@ export const COMBOBOX_MAX_ROWS_COMPACT = 4;
 
 export const MANAGER_SEARCH_THRESHOLD = 8;
 
+/** Above this many users, a group's member checklist grows a search box. */
+export const GROUP_MEMBER_SEARCH_THRESHOLD = 10;
+
 export const TAG_VISIBLE_SUGGESTIONS = 8;
 export const TAG_SEARCH_THRESHOLD = 12;
 export const TAG_MAX_SUGGESTIONS = 60;

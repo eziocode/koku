@@ -24,6 +24,7 @@ import { useTagSuggestions } from "@/lib/storage/hooks/use-tag-suggestions";
 import { useTasks } from "@/lib/storage/hooks/use-tasks";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
+import { toDateTimeLocal } from "@/lib/tasks/task-dates";
 import { NONE_VALUE } from "@/lib/ui/list-thresholds";
 
 interface EntryFormProps {
@@ -44,17 +45,6 @@ interface EntryFormProps {
     tags?: string[];
     notes?: string | null;
   };
-}
-
-function toDateTimeLocal(value?: string | null) {
-  if (!value) {
-    return "";
-  }
-
-  const date = new Date(value);
-  const offset = date.getTimezoneOffset();
-  const local = new Date(date.getTime() - offset * 60_000);
-  return local.toISOString().slice(0, 16);
 }
 
 export function EntryForm({
