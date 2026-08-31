@@ -326,9 +326,13 @@ function TimerNotesReveal({ notes, className }: { notes: string | null | undefin
       {open ? (
         <ul className="space-y-1 rounded-lg border border-border bg-background/60 px-3 py-2">
           {lines.map((line, index) => (
-            <li key={index} className="flex gap-2 text-sm">
+            <li key={index} className="flex min-w-0 gap-2 text-sm">
               {line.stamp ? <span className="shrink-0 text-xs text-muted-foreground">[{line.stamp}]</span> : null}
-              <span className="text-foreground">{line.text}</span>
+              {/* A pasted URL is one unbreakable word: without `min-w-0` the
+                  flex item refuses to shrink below its content and the text
+                  spills past the bordered box, and without `break-all` the
+                  word has no break opportunity to wrap on. */}
+              <span className="min-w-0 break-all text-foreground">{line.text}</span>
             </li>
           ))}
         </ul>
