@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, Pencil, Trash2 } from "lucide-react";
+import { Pencil, Play, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
@@ -121,7 +121,7 @@ export function DailyGrid({ entries }: DailyGridProps) {
                     <Button
                       variant="ghost"
                       size="icon"
-                      aria-label="Copy to timer"
+                      aria-label="Duplicate and start timer"
                       onClick={() =>
                         cloneToTimer({
                           title: entry.title,
@@ -132,10 +132,10 @@ export function DailyGrid({ entries }: DailyGridProps) {
                         })
                       }
                     >
-                      <Copy />
+                      <Play />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Copy to timer</TooltipContent>
+                  <TooltipContent>Duplicate and start, pausing the current timer</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
               <Dialog open={editingId === entry.id} onOpenChange={(open) => setEditingId(open ? entry.id : null)}>

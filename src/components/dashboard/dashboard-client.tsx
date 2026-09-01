@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { CalendarClock, Copy, ListChecks } from "lucide-react";
+import { CalendarClock, ListChecks, Play } from "lucide-react";
 import { LazyScrollList } from "@/components/ui/lazy-scroll-list";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -381,7 +381,7 @@ export function DashboardClient() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          aria-label="Copy to timer"
+                          aria-label="Duplicate and start timer"
                           onClick={() =>
                             cloneToTimer({
                               title: entry.title,
@@ -392,10 +392,10 @@ export function DashboardClient() {
                             })
                           }
                         >
-                          <Copy />
+                          <Play />
                         </Button>
                       </TooltipTrigger>
-                      <TooltipContent>Copy to timer</TooltipContent>
+                      <TooltipContent>Duplicate and start, pausing the current timer</TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
                 </div>
