@@ -213,6 +213,10 @@ interface QuickCreateTaskDialogProps {
   defaultStatus?: TaskStatus;
   categoryId?: string;
   tags?: string[];
+  /** Set when this dialog is opened from the live timer's inline create flow,
+   *  as opposed to the time-log entry form. Marks the resulting task so its
+   *  linked timer stopping completes it instead of just pausing it. */
+  timerOrigin?: boolean;
 }
 
 export function QuickCreateTaskDialog({
@@ -223,6 +227,7 @@ export function QuickCreateTaskDialog({
   categoryId,
   tags,
   defaultStatus = "open",
+  timerOrigin = false,
 }: QuickCreateTaskDialogProps) {
   const { createTask } = useTasks();
   const [title, setTitle] = useState("");
@@ -239,6 +244,7 @@ export function QuickCreateTaskDialog({
         projectId: projectId && projectId !== "none" ? projectId : null,
         categoryId: categoryId && categoryId !== "none" ? categoryId : null,
         tags: tags && tags.length ? tags : undefined,
+        timerOrigin,
       });
       toast.success("Task created.");
       onCreated(task.id);

@@ -1,10 +1,11 @@
 "use client";
 
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { MarkdownText } from "@/components/ui/markdown-text";
+import { useClampOverflow } from "@/lib/hooks/use-clamp-overflow";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 import { parseNoteLines } from "@/lib/stores/timer-notes";
 import { cn } from "@/lib/utils";
@@ -27,10 +28,21 @@ export function EntryNotes({ notes, className }: { notes: string | null | undefi
   const [showFull, setShowFull] = useState(false);
 
   const lines = useMemo(() => parseNoteLines(notes), [notes]);
+  const { ref: notesRef, overflowing } = useClampOverflow([notes, showFull, display, expanded]);
+
+  // A new note starts clamped again rather than inheriting "expanded" from
+  // whatever the last note on this row happened to be.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resets per-note UI state; see other call sites of this rule for the established pattern.
+    setShowFull(false);
+  }, [notes]);
+
   if (!notes || !notes.trim() || lines.length === 0) return null;
 
   const countLabel = lines.length === 1 ? "1 note" : `${lines.length} notes`;
-  const isLong = notes.length > 180 || notes.includes("\n");
+  // Once expanded, the clamp is removed so nothing overflows anymore -
+  // `showFull` keeps the toggle around so it still offers "Show less".
+  const showToggle = overflowing || showFull;
 
   if (display === "on-demand" && !expanded) {
     return (
@@ -59,9 +71,10 @@ export function EntryNotes({ notes, className }: { notes: string | null | undefi
       ) : null}
       <MarkdownText
         text={notes}
+        containerRef={notesRef}
         className={cn("break-words text-muted-foreground", !showFull && "line-clamp-3")}
       />
-      {isLong ? (
+      {showToggle ? (
         <Button variant="ghost" size="sm" className="h-auto px-0 text-xs" onClick={() => setShowFull((v) => !v)}>
           {showFull ? "Show less" : "Show more"}
         </Button>

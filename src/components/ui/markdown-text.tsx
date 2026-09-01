@@ -68,8 +68,23 @@ function renderBlock(lines: string[]): string {
   return html.join("");
 }
 
-export function MarkdownText({ text, className }: { text: string; className?: string }) {
+export function MarkdownText({
+  text,
+  className,
+  containerRef,
+}: {
+  text: string;
+  className?: string;
+  /** Exposes the rendered container so callers can measure clamp overflow (see `useClampOverflow`). */
+  containerRef?: React.Ref<HTMLDivElement>;
+}) {
   const html = React.useMemo(() => renderBlock(text.split("\n")), [text]);
-  // eslint-disable-next-line react/no-danger -- `html` is built entirely from `escapeHtml`-passed, regex-matched fragments above.
-  return <div className={cn("space-y-1 text-sm [&_p]:leading-relaxed", className)} dangerouslySetInnerHTML={{ __html: html }} />;
+  return (
+    <div
+      ref={containerRef}
+      className={cn("space-y-1 text-sm [&_p]:leading-relaxed", className)}
+      // eslint-disable-next-line react/no-danger -- `html` is built entirely from `escapeHtml`-passed, regex-matched fragments above.
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
 }

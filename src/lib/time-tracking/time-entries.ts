@@ -25,6 +25,7 @@ export interface CreateTimeEntryInput {
   startAt: string;
   endAt?: string | null;
   durationSec?: number | null;
+  segments?: { startAt: string; endAt: string }[] | null;
   tags: string[];
   notes?: string | null;
 }
@@ -109,6 +110,7 @@ export async function createTimeEntry(data: CreateTimeEntryInput): Promise<TimeE
     startAt: data.startAt,
     endAt: data.endAt ?? null,
     durationSec: data.durationSec ?? getDurationSec(data.startAt, data.endAt),
+    segments: data.segments ?? null,
     tags: data.tags,
     notes: data.notes ?? null,
     createdAt: new Date().toISOString(),

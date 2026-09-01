@@ -13,6 +13,7 @@ import {
   resumePausedTimer,
 } from "@/lib/stores/timer-math";
 import { migratePersistedTimerState } from "@/lib/stores/timer-migrations";
+import { onTimerPaused, onTimerResumed, onTimerStarted, onTimerStopped } from "@/lib/tasks/timer-task-sync";
 import type {
   ActiveBreak,
   ActiveTimer,
@@ -111,6 +112,7 @@ export const useTimerStore = create<TimerStore>()(
 
         const timer = createTimer(input);
         set({ timers: [timer] });
+        void onTimerStarted(timer.taskId);
         return timer;
       },
 
@@ -130,13 +132,20 @@ export const useTimerStore = create<TimerStore>()(
 
         const timer = createTimer(input, parentTimerId);
         set((state) => ({ timers: [...state.timers, timer] }));
+        void onTimerStarted(timer.taskId);
         return timer;
       },
 
-      pauseTimer: (id) =>
+      pauseTimer: (id) => {
+        const timer = get().timers.find((item) => item.id === id);
         set((state) => ({
-          timers: state.timers.map((timer) => (timer.id === id ? pauseTimerInPlace(timer) : timer)),
-        })),
+          timers: state.timers.map((item) => (item.id === id ? pauseTimerInPlace(item) : item)),
+        }));
+
+        if (timer) {
+          void onTimerPaused(timer.taskId, get().timers.filter((item) => item.id !== id));
+        }
+      },
 
       resumeTimer: (id) => {
         // The whole point of a break is that work is not being tracked during it.
@@ -146,9 +155,14 @@ export const useTimerStore = create<TimerStore>()(
           return false;
         }
 
+        const timer = get().timers.find((item) => item.id === id);
         set((state) => ({
-          timers: state.timers.map((timer) => (timer.id === id ? resumePausedTimer(timer) : timer)),
+          timers: state.timers.map((item) => (item.id === id ? resumePausedTimer(item) : item)),
         }));
+
+        if (timer) {
+          void onTimerResumed(timer.taskId);
+        }
         return true;
       },
 
@@ -157,6 +171,8 @@ export const useTimerStore = create<TimerStore>()(
         if (!timer) {
           return null;
         }
+
+        void onTimerStopped(timer.taskId, get().timers.filter((item) => item.id !== id));
 
         set((state) => {
           const remaining = state.timers.filter((item) => item.id !== id);
@@ -250,6 +266,13 @@ export const useTimerStore = create<TimerStore>()(
           ),
         });
 
+        for (const pausedId of pausedTimerIds) {
+          const timer = timers.find((item) => item.id === pausedId);
+          if (timer) {
+            void onTimerPaused(timer.taskId, timers.filter((item) => item.id !== pausedId));
+          }
+        }
+
         return activeBreak;
       },
 
@@ -298,6 +321,13 @@ export const useTimerStore = create<TimerStore>()(
             resumedTimerIds.includes(timer.id) ? resumePausedTimer(timer, now) : timer,
           ),
         });
+
+        for (const resumedId of resumedTimerIds) {
+          const timer = timers.find((item) => item.id === resumedId);
+          if (timer) {
+            void onTimerResumed(timer.taskId);
+          }
+        }
 
         return {
           breakRecord: { ...activeBreak, completedAt: endedAt },

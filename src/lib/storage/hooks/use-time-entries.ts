@@ -136,6 +136,8 @@ export function useTimeEntries(filters: TimeEntryFilters = {}) {
               patch.startAt ?? existing.startAt,
               patch.endAt !== undefined ? patch.endAt : existing.endAt,
             ),
+      // A hand-edited range invalidates the recorded work stretches.
+      segments: patch.startAt !== undefined || patch.endAt !== undefined ? null : existing.segments,
     };
 
     await kokuDb.timeEntries.put(next);

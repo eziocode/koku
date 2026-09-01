@@ -1,3 +1,5 @@
+import "fake-indexeddb/auto";
+
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 
@@ -40,6 +42,7 @@ test("cloud replacement keeps a paused timer's frozen elapsed and revision", () 
       originalStartTime: "2026-08-21T09:00:00.000Z",
       elapsedBeforePauseSec: 1_237,
       pausedAt: "2026-08-21T09:20:37.000Z",
+      segments: [],
       pomodoroMode: false,
       parentTimerId: null,
       revision: 7,
@@ -259,6 +262,7 @@ test("break time is excluded from the resumed timer's elapsed", () => {
         originalStartTime: new Date(startedAt).toISOString(),
         elapsedBeforePauseSec: 0,
         pausedAt: null,
+        segments: [],
         pomodoroMode: false,
         parentTimerId: null,
       },

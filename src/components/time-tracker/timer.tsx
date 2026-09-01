@@ -44,7 +44,8 @@ import { useNotificationPreferences } from "@/lib/notifications/use-notification
 import { useSecondTick } from "@/lib/stores/use-ticker";
 import { buildEntryFromTimer } from "@/lib/time-tracking/stop-timer";
 import { cn, formatDuration } from "@/lib/utils";
-import { NONE_VALUE } from "@/lib/ui/list-thresholds";
+import { NONE_VALUE, fromNullableId } from "@/lib/ui/list-thresholds";
+import { useTimerDraftStore } from "@/lib/stores/timer-draft-store";
 import { resolvePeriodCopy } from "@/lib/breaks/break-copy";
 
 /**
@@ -292,6 +293,7 @@ function TimerFields({
           open={createTaskOpen}
           onOpenChange={setCreateTaskOpen}
           onCreated={(id) => { onTaskIdChange(id); setCreateTaskOpen(false); }}
+          timerOrigin
           projectId={projectId}
           categoryId={categoryId}
           tags={tags}
@@ -494,6 +496,39 @@ export function Timer() {
   const [resumePrimaryId, setResumePrimaryId] = useState<string | null>(null);
   const [resumeDialogOpen, setResumeDialogOpen] = useState(false);
   const [resumeSubmitting, setResumeSubmitting] = useState(false);
+  const cardRef = useRef<HTMLDivElement | null>(null);
+
+  const { draft, nonce, consumeDraft, setTimerMounted } = useTimerDraftStore();
+
+  // Marks the timer as available to receive a draft. Callers (clone buttons,
+  // routine suggestions) check this before requesting one, since the log page
+  // swaps this component for a placeholder card on non-today dates.
+  useEffect(() => {
+    setTimerMounted(true);
+    return () => setTimerMounted(false);
+  }, [setTimerMounted]);
+
+  // Applies a requested draft to the primary fields only — notes and
+  // pomodoro mode are left as the user last set them, since a draft never
+  // carries notes. `nonce` (not `draft`) is the effect key so cloning the
+  // same entry twice still re-applies it.
+  useEffect(() => {
+    if (!draft) {
+      return;
+    }
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- applies an externally-requested draft (clone/routine action) to local form state; keyed on `nonce` below.
+    setTitle(draft.title);
+    setProjectId(fromNullableId(draft.projectId));
+    setCategoryId(fromNullableId(draft.categoryId));
+    setTaskId(fromNullableId(draft.taskId));
+    setTags(draft.tags);
+    consumeDraft();
+
+    cardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    document.getElementById("timer-title")?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on `nonce`, not `draft`, so re-cloning the same entry re-applies it.
+  }, [nonce]);
 
   const tagSuggestions = useTagSuggestions();
 
@@ -792,7 +827,7 @@ export function Timer() {
   }
 
   return (
-    <Card>
+    <Card ref={cardRef}>
       <CardHeader>
         <CardTitle>Live timer</CardTitle>
         <CardDescription>{statusLabel}</CardDescription>

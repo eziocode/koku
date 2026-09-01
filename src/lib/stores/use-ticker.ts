@@ -84,3 +84,21 @@ export function resyncTicker() {
 export function useSecondTick(): number {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }
+
+function getMinuteSnapshot() {
+  return Math.floor(now / 60_000);
+}
+
+function getMinuteServerSnapshot() {
+  return 0;
+}
+
+/**
+ * Current minute (epoch ms / 60000), re-rendering the caller only when the
+ * minute changes. Rides the same 1s interval as `useSecondTick` — no separate
+ * timer — so routine re-clustering happens at most once a minute instead of
+ * on every second tick.
+ */
+export function useMinuteTick(): number {
+  return useSyncExternalStore(subscribe, getMinuteSnapshot, getMinuteServerSnapshot);
+}

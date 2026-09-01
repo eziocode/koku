@@ -25,6 +25,9 @@ export type ActiveTimer = {
   originalStartTime: string;
   elapsedBeforePauseSec: number;
   pausedAt?: string | null;
+  /** Closed active stretches so far (real wall-clock start/end pairs), most
+   *  recent last. The current (still-open) stretch is `startTime` onward. */
+  segments: { startAt: string; endAt: string }[];
   pomodoroMode: boolean;
   /** Set on secondary ("pause") timers, pointing at the primary they hang off. */
   parentTimerId?: string | null;

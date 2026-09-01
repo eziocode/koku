@@ -19,6 +19,8 @@ export interface CreateTaskInput {
   categoryId?: string | null;
   tags?: string[];
   sortOrder?: number;
+  /** Set when the task is created from the timer's inline "+ new task" flow. */
+  timerOrigin?: boolean;
 }
 
 export interface UpdateTaskInput {
@@ -64,6 +66,7 @@ export async function createTask(data: CreateTaskInput): Promise<Task> {
     // A task can be created straight into "in_progress" from that column's
     // "Add task" button, so the stopwatch has to start running immediately.
     inProgressSince: status === "in_progress" ? now : null,
+    timerOrigin: data.timerOrigin ?? false,
     createdAt: now,
     updatedAt: now,
   };

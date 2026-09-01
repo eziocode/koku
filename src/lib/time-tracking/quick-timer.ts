@@ -13,35 +13,42 @@ interface QuickTimerDeps {
   startTimer: (input: TimerStartInput, options?: StartTimerOptions) => ActiveTimer | null;
 }
 
+const BLOCKED_RUNNING_MESSAGE = "Stop and save active timers before starting another.";
+
 /**
- * The guarded "start a quick timer" action shared by the command palette and
- * the `t` keyboard shortcut, so the two refusal paths — another timer already
- * running, or an active break with `breaks.blockNewTimers` on — can't drift
- * apart between call sites.
+ * The guarded "start a timer" action shared by the command palette, the `t`
+ * keyboard shortcut, and the Routines card, so the two refusal paths -
+ * another timer already running, or an active break with
+ * `breaks.blockNewTimers` on - can't drift apart between call sites.
  */
-export function startQuickTimer({ timers, activeBreak, blockNewTimers, startTimer }: QuickTimerDeps): QuickTimerResult {
+export function startGuardedTimer(
+  { timers, activeBreak, blockNewTimers, startTimer }: QuickTimerDeps,
+  input: TimerStartInput,
+): QuickTimerResult {
   if (timers.length > 0) {
-    return { status: "blocked-running", message: "Stop and save active timers before starting another." };
+    return { status: "blocked-running", message: BLOCKED_RUNNING_MESSAGE };
   }
 
   if (activeBreak && blockNewTimers) {
     return { status: "blocked-break", message: resolvePeriodCopy(activeBreak).blockedTimerMessage };
   }
 
-  const started = startTimer(
-    {
-      title: "Quick focus",
-      startTime: new Date().toISOString(),
-      projectId: null,
-      categoryId: null,
-      pomodoroMode: false,
-    },
-    { allowDuringBreak: !blockNewTimers },
-  );
+  const started = startTimer(input, { allowDuringBreak: !blockNewTimers });
 
   if (!started) {
-    return { status: "blocked-running", message: "Stop and save active timers before starting another." };
+    return { status: "blocked-running", message: BLOCKED_RUNNING_MESSAGE };
   }
 
   return { status: "started", timer: started };
+}
+
+/** The unconfigured "just start tracking" action used by the command palette and the `t` shortcut. */
+export function startQuickTimer(deps: QuickTimerDeps): QuickTimerResult {
+  return startGuardedTimer(deps, {
+    title: "Quick focus",
+    startTime: new Date().toISOString(),
+    projectId: null,
+    categoryId: null,
+    pomodoroMode: false,
+  });
 }

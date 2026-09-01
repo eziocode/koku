@@ -9,6 +9,7 @@ import { DailyGrid } from "@/components/time-tracker/daily-grid";
 import { EntryForm } from "@/components/time-tracker/entry-form";
 import { LogCompare } from "@/components/time-tracker/log-compare";
 import { DEFAULT_FILTERS, LogFilterState, LogFilters } from "@/components/time-tracker/log-filters";
+import { RoutinesCard } from "@/components/time-tracker/routines-card";
 import { Timer } from "@/components/time-tracker/timer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -239,38 +240,41 @@ export function LogClient() {
                 </CardContent>
               </Card>
             )}
-            <Card>
-              <CardHeader>
-                <CardTitle>Manual entry</CardTitle>
-                <CardDescription>
-                  Add a session after the fact, cleanly and quickly.
-                  {!isSelectedDateToday ? ` New entries will default to ${format(selectedDate, "MMM d, yyyy")}.` : ""}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex flex-wrap gap-3">
-                <Button onClick={() => { setFormKey((k) => k + 1); setNewEntryOpen(true); }}>
-                  New manual entry
-                </Button>
-                {joinedEntries.length > 0 && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" className="gap-2">
-                        <Download className="h-4 w-4" />
-                        Export
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={handleExportCSV}>
-                        Download CSV
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={handleExportXLSX}>
-                        Download XLSX (4 sheets)
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-              </CardContent>
-            </Card>
+            <div className="flex flex-col gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Manual entry</CardTitle>
+                  <CardDescription>
+                    Add a session after the fact, cleanly and quickly.
+                    {!isSelectedDateToday ? ` New entries will default to ${format(selectedDate, "MMM d, yyyy")}.` : ""}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="flex flex-wrap gap-3">
+                  <Button onClick={() => { setFormKey((k) => k + 1); setNewEntryOpen(true); }}>
+                    New manual entry
+                  </Button>
+                  {joinedEntries.length > 0 && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" className="gap-2">
+                          <Download className="h-4 w-4" />
+                          Export
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={handleExportCSV}>
+                          Download CSV
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleExportXLSX}>
+                          Download XLSX (4 sheets)
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </CardContent>
+              </Card>
+              <RoutinesCard />
+            </div>
           </div>
 
           {/* Smart filters */}

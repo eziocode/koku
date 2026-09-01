@@ -14,6 +14,10 @@ import { createTimeEntry, type CreateTimeEntryInput } from "@/lib/time-tracking/
 
 /** Pure: the entry a timer would produce if stopped at `endedAt`. */
 export function buildEntryFromTimer(timer: ActiveTimer, endedAt: string): CreateTimeEntryInput {
+  const segments = timer.pausedAt
+    ? timer.segments
+    : [...timer.segments, { startAt: timer.startTime, endAt: endedAt }];
+
   return {
     title: timer.title,
     projectId: timer.projectId,
@@ -22,6 +26,7 @@ export function buildEntryFromTimer(timer: ActiveTimer, endedAt: string): Create
     startAt: timer.originalStartTime,
     endAt: endedAt,
     durationSec: getActiveTimerElapsedSec(timer, Date.parse(endedAt)),
+    segments: segments.length > 1 ? segments : null,
     tags: timer.pomodoroMode ? Array.from(new Set(["pomodoro", ...timer.tags])) : timer.tags,
     notes: timer.notes || (timer.pomodoroMode ? "Pomodoro focus session" : null),
   };

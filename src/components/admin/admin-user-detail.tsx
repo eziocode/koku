@@ -13,6 +13,7 @@ import { MarkdownText } from "@/components/ui/markdown-text";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "@/components/ui/toast";
+import { useClampOverflow } from "@/lib/hooks/use-clamp-overflow";
 import {
   adminRowsToSegmentEntries,
   formatDate,
@@ -873,7 +874,8 @@ function AdminNoteRow({ row, timeFormat }: { row: AdminRow; timeFormat: TimeForm
     };
   }, [row.content]);
 
-  const isLong = body.length > 180 || body.includes("\n");
+  const { ref: bodyRef, overflowing } = useClampOverflow([body, expanded]);
+  const showToggle = overflowing || expanded;
 
   return (
     <div className="min-w-0 space-y-1.5">
@@ -887,6 +889,7 @@ function AdminNoteRow({ row, timeFormat }: { row: AdminRow; timeFormat: TimeForm
       </div>
       {stamp ? <p className="text-xs italic text-muted-foreground/80">{stamp}</p> : null}
       <p
+        ref={bodyRef}
         className={cn(
           "whitespace-pre-wrap break-words text-sm leading-relaxed text-muted-foreground",
           !expanded && "line-clamp-3",
@@ -894,7 +897,7 @@ function AdminNoteRow({ row, timeFormat }: { row: AdminRow; timeFormat: TimeForm
       >
         {body || "No text"}
       </p>
-      {isLong ? (
+      {showToggle ? (
         <Button
           variant="ghost"
           size="sm"

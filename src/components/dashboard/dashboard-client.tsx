@@ -7,14 +7,17 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChartCard } from "@/components/charts/chart-card";
 import { DashboardTipCard } from "@/components/dashboard/dashboard-tip-card";
 import { QuickCaptureCard } from "@/components/dashboard/quick-capture-card";
+import { RoutinesCard } from "@/components/time-tracker/routines-card";
 import { WorkWindowCard } from "@/components/dashboard/work-window-card";
 import { ChartLegend } from "@/components/charts/chart-legend";
 import { SegmentedBarChart } from "@/components/charts/segmented-bar-chart";
 import { EntryNotes } from "@/components/time-tracker/entry-notes";
 import { Timer } from "@/components/time-tracker/timer";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { CalendarClock, ListChecks } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { CalendarClock, Copy, ListChecks } from "lucide-react";
 import { LazyScrollList } from "@/components/ui/lazy-scroll-list";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -30,6 +33,7 @@ import { getStatusColor } from "@/lib/charts/theme";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
+import { useCloneToTimer } from "@/components/time-tracker/use-clone-to-timer";
 import type { SegmentSourceEntry } from "@/lib/charts/segments";
 import { getActiveTimerElapsedSec, useTimerStore } from "@/lib/stores/timer-store";
 import {
@@ -46,6 +50,7 @@ const WORK_EXCLUDED_TAGS = [BREAK_TAG];
 export function DashboardClient() {
   const router = useRouter();
   const [cloudConnected, setCloudConnected] = useState(false);
+  const cloneToTimer = useCloneToTimer();
 
   useEffect(() => {
     fetch("/api/auth/me", { cache: "no-store" })
@@ -314,6 +319,7 @@ export function DashboardClient() {
             compact
           />
         </ChartCard>
+        <RoutinesCard />
         <QuickCaptureCard />
         <WorkWindowCard />
         </div>
@@ -367,7 +373,32 @@ export function DashboardClient() {
                   </p>
                   <EntryNotes notes={entry.notes} className="mt-1" />
                 </div>
-                <div className="text-sm font-semibold tabular-nums text-foreground">{formatDuration(entry.durationSec || 0)}</div>
+                <div className="flex items-center gap-3">
+                  <div className="text-sm font-semibold tabular-nums text-foreground">{formatDuration(entry.durationSec || 0)}</div>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Copy to timer"
+                          onClick={() =>
+                            cloneToTimer({
+                              title: entry.title,
+                              projectId: entry.projectId ?? null,
+                              categoryId: entry.categoryId ?? null,
+                              taskId: entry.taskId ?? null,
+                              tags: entry.tags,
+                            })
+                          }
+                        >
+                          <Copy />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Copy to timer</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
               </div>
             )}
           />

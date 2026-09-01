@@ -1,6 +1,6 @@
 "use client";
 
-import { Pencil, Trash2 } from "lucide-react";
+import { Copy, Pencil, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
@@ -9,9 +9,11 @@ import { EntryNotes } from "@/components/time-tracker/entry-notes";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { LazyScrollList } from "@/components/ui/lazy-scroll-list";
 import { toast } from "@/components/ui/toast";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
+import { useCloneToTimer } from "@/components/time-tracker/use-clone-to-timer";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 import { formatTime } from "@/lib/time-format";
 import { formatDuration } from "@/lib/utils";
@@ -22,6 +24,7 @@ interface EntryRecord {
   startAt: string;
   endAt: string | null;
   durationSec: number | null;
+  segments?: { startAt: string; endAt: string }[] | null;
   tags: string[];
   notes: string | null;
   taskId?: string | null;
@@ -37,6 +40,7 @@ export function DailyGrid({ entries }: DailyGridProps) {
   const { deleteEntry } = useTimeEntries();
   const { value: timeFormat } = useTypedSetting("timeFormat");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const cloneToTimer = useCloneToTimer();
 
   const editingEntry = useMemo(
     () => entries.find((entry) => entry.id === editingId) || null,
@@ -77,10 +81,16 @@ export function DailyGrid({ entries }: DailyGridProps) {
                 <div>
                   <p className="font-semibold text-foreground">{entry.title}</p>
                   <p className="text-sm text-muted-foreground">
-                    {formatTime(entry.startAt, timeFormat)}
-                    {entry.endAt
-                      ? ` - ${formatTime(entry.endAt, timeFormat)}`
-                      : " • Running"}
+                    {entry.segments && entry.segments.length > 1
+                      ? entry.segments
+                          .map(
+                            (segment) =>
+                              `${formatTime(segment.startAt, timeFormat)} - ${formatTime(segment.endAt, timeFormat)}`,
+                          )
+                          .join(", ")
+                      : `${formatTime(entry.startAt, timeFormat)}${
+                          entry.endAt ? ` - ${formatTime(entry.endAt, timeFormat)}` : " • Running"
+                        }`}
                   </p>
                 </div>
                 {entry.project ? (
@@ -105,6 +115,29 @@ export function DailyGrid({ entries }: DailyGridProps) {
               <div className="min-w-24 text-right text-lg font-semibold text-foreground">
                 {formatDuration(entry.durationSec ?? 0)}
               </div>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Copy to timer"
+                      onClick={() =>
+                        cloneToTimer({
+                          title: entry.title,
+                          projectId: entry.project?.id ?? null,
+                          categoryId: entry.category?.id ?? null,
+                          taskId: entry.taskId ?? null,
+                          tags: entry.tags,
+                        })
+                      }
+                    >
+                      <Copy />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Copy to timer</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
               <Dialog open={editingId === entry.id} onOpenChange={(open) => setEditingId(open ? entry.id : null)}>
                 <DialogTrigger asChild>
                   <Button variant="outline" size="icon" onClick={() => setEditingId(entry.id)}>

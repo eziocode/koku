@@ -41,6 +41,9 @@ function cloudTimer(value: LiveTimerRecord): ActiveTimer {
     // The wire record doesn't carry the pre-pause original separately from the
     // (possibly already-shifted) `startAt` it was serialised from — best effort.
     notes: value.notes, startTime: value.startAt, originalStartTime: value.startAt, elapsedBeforePauseSec: value.elapsedBeforePauseSec, pausedAt: value.pausedAt,
+    // The wire record doesn't carry segments either — a cloud-adopted timer
+    // starts its segment history fresh, same best-effort tradeoff as above.
+    segments: [],
     pomodoroMode: value.pomodoroMode, parentTimerId: value.parentTimerId, revision: value.revision, updatedAt: value.updatedAt };
 }
 function cloudBreak(value: LiveBreakRecord): ActiveBreak {

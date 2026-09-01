@@ -32,12 +32,21 @@ const FUZZY_LENGTH_BAND = 0.4;
 const FUZZY_JACCARD_THRESHOLD = 0.6;
 const FUZZY_LEVENSHTEIN_SIMILARITY_THRESHOLD = 0.82;
 
-function groupToSuggestion(group: TitleGroup): TitleSuggestion {
-  const tags = Array.from(group.tagCounts.entries())
-    .filter(([, count]) => count / group.count >= 0.5)
+/**
+ * Tags that appear on at least half of a group's occurrences, most frequent
+ * first, capped at 5. Shared with `routine-suggestions.ts` so the two features
+ * agree on what counts as "this entry's tags" for a recurring title.
+ */
+export function tagsByMajority(tagCounts: Map<string, number>, total: number): string[] {
+  return Array.from(tagCounts.entries())
+    .filter(([, count]) => count / total >= 0.5)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
     .map(([tag]) => tag);
+}
+
+function groupToSuggestion(group: TitleGroup): TitleSuggestion {
+  const tags = tagsByMajority(group.tagCounts, group.count);
 
   return {
     title: group.mostRecent.title,

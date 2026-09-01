@@ -49,6 +49,7 @@ export function createTimer(input: TimerStartInput, parentTimerId?: string | nul
     originalStartTime: input.startTime,
     elapsedBeforePauseSec: 0,
     pausedAt: null,
+    segments: [],
     parentTimerId: parentTimerId ?? null,
   };
 }
@@ -63,6 +64,7 @@ export function pauseTimerInPlace(timer: ActiveTimer, now = Date.now()): ActiveT
     ...timer,
     elapsedBeforePauseSec: getActiveTimerElapsedSec(timer, now),
     pausedAt: new Date(now).toISOString(),
+    segments: [...timer.segments, { startAt: timer.startTime, endAt: new Date(now).toISOString() }],
   };
 }
 

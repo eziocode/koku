@@ -23,6 +23,17 @@ function asOptionalString(value: unknown) {
   return typeof value === "string" ? value : null;
 }
 
+function asSegments(value: unknown): { startAt: string; endAt: string }[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter(
+    (entry): entry is { startAt: string; endAt: string } =>
+      isRecord(entry) && typeof entry.startAt === "string" && typeof entry.endAt === "string",
+  );
+}
+
 export function normalizeStoredTimer(value: unknown): ActiveTimer | null {
   if (!isRecord(value) || typeof value.title !== "string" || typeof value.startTime !== "string") {
     return null;
@@ -46,6 +57,7 @@ export function normalizeStoredTimer(value: unknown): ActiveTimer | null {
     elapsedBeforePauseSec:
       typeof value.elapsedBeforePauseSec === "number" ? value.elapsedBeforePauseSec : 0,
     pausedAt: asNullableString(value.pausedAt),
+    segments: asSegments(value.segments),
     pomodoroMode: typeof value.pomodoroMode === "boolean" ? value.pomodoroMode : false,
     parentTimerId: asOptionalString(value.parentTimerId),
     revision: typeof value.revision === "number" && Number.isInteger(value.revision) ? value.revision : 0,

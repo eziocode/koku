@@ -25,6 +25,10 @@ export interface TimeEntry {
   startAt: string;
   endAt?: string | null;
   durationSec?: number | null;
+  /** Disjoint active stretches, in order. Present only when the session was
+   *  paused/resumed at least once. Absent/empty means one continuous stretch
+   *  (startAt–endAt). */
+  segments?: { startAt: string; endAt: string }[] | null;
   tags: string[];
   notes?: string | null;
   createdAt: string;
@@ -59,6 +63,10 @@ export interface Task {
   accumulatedSec: number;
   /** ISO stamp of the current in-progress stretch, null while not running. */
   inProgressSince: string | null;
+  /** Set when this task was created via the timer's inline "+ new task"
+   *  dialog, as opposed to picked from an existing list. Drives what happens
+   *  to the task when its linked timer stops — see timer-task-sync.ts. */
+  timerOrigin?: boolean;
   createdAt: string;
   updatedAt: string;
 }

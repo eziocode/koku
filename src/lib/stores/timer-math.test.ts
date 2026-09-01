@@ -23,6 +23,7 @@ function timer(overrides: Partial<ActiveTimer> = {}): ActiveTimer {
     originalStartTime: new Date(START).toISOString(),
     elapsedBeforePauseSec: 0,
     pausedAt: null,
+    segments: [],
     pomodoroMode: false,
     parentTimerId: null,
     ...overrides,
