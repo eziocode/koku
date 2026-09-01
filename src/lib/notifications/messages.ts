@@ -53,7 +53,7 @@ export function isEodActionId(value: unknown): value is EodNotificationActionId 
   return (EOD_NOTIFICATION_ACTION_IDS as readonly string[]).includes(value as string);
 }
 
-export type KokuNotificationKind = "check-in" | "break-complete" | "test" | "end-of-day";
+export type KokuNotificationKind = "check-in" | "break-complete" | "test" | "end-of-day" | "reminder";
 
 export interface KokuNotificationData {
   kokuType: KokuNotificationKind;

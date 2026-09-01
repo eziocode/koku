@@ -134,6 +134,11 @@ export interface NotificationPreferences {
     /** Minutes after the notification fires before timers are stopped automatically. */
     gracePeriodMinutes: number;
   };
+  /** Master mute + volume for reminder sound-fx (see `src/lib/notifications/sound.ts`). */
+  sound: {
+    enabled: boolean;
+    volume: number;
+  };
   /** Days of the week on which all check-in notifications are silenced.
    *  0 = Sunday, 1 = Monday, …, 6 = Saturday. Empty array = no silent days. */
   silentDays: number[];
@@ -177,6 +182,10 @@ export const NOTIFICATION_DEFAULTS: NotificationPreferences = {
     enabled: false,
     logoffTime: "18:00",
     gracePeriodMinutes: 15,
+  },
+  sound: {
+    enabled: true,
+    volume: 0.6,
   },
   silentDays: [],
   holidayDates: [],
@@ -281,6 +290,12 @@ export const notificationPreferencesSchema = z
         gracePeriodMinutes: z.number().int().min(5).max(60).catch(NOTIFICATION_DEFAULTS.endOfDay.gracePeriodMinutes),
       })
       .catch(NOTIFICATION_DEFAULTS.endOfDay),
+    sound: z
+      .object({
+        enabled: z.boolean().catch(NOTIFICATION_DEFAULTS.sound.enabled),
+        volume: z.number().min(0).max(1).catch(NOTIFICATION_DEFAULTS.sound.volume),
+      })
+      .catch(NOTIFICATION_DEFAULTS.sound),
     silentDays: z
       .array(z.number().int().min(0).max(6))
       .catch([]),

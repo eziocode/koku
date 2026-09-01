@@ -9,6 +9,7 @@ import { DailyGrid } from "@/components/time-tracker/daily-grid";
 import { EntryForm } from "@/components/time-tracker/entry-form";
 import { LogCompare } from "@/components/time-tracker/log-compare";
 import { DEFAULT_FILTERS, LogFilterState, LogFilters } from "@/components/time-tracker/log-filters";
+import { MostUsedRoutinesCard } from "@/components/time-tracker/most-used-routines-card";
 import { RoutinesCard } from "@/components/time-tracker/routines-card";
 import { Timer } from "@/components/time-tracker/timer";
 import { Button } from "@/components/ui/button";
@@ -276,6 +277,9 @@ export function LogClient() {
               <RoutinesCard />
             </div>
           </div>
+
+          {/* Most-used routine logs */}
+          <MostUsedRoutinesCard />
 
           {/* Smart filters */}
           <LogFilters filters={filters} onChange={setFilters} />

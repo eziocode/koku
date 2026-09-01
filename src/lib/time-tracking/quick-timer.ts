@@ -13,6 +13,11 @@ interface QuickTimerDeps {
   startTimer: (input: TimerStartInput, options?: StartTimerOptions) => ActiveTimer | null;
 }
 
+interface PausingStartDeps extends QuickTimerDeps {
+  pauseTimer: (id: string) => void;
+  startSecondaryTimer: (parentTimerId: string, input: TimerStartInput) => ActiveTimer | null;
+}
+
 const BLOCKED_RUNNING_MESSAGE = "Stop and save active timers before starting another.";
 
 /**
@@ -34,6 +39,40 @@ export function startGuardedTimer(
   }
 
   const started = startTimer(input, { allowDuringBreak: !blockNewTimers });
+
+  if (!started) {
+    return { status: "blocked-running", message: BLOCKED_RUNNING_MESSAGE };
+  }
+
+  return { status: "started", timer: started };
+}
+
+/**
+ * Same guards as `startGuardedTimer`, but instead of refusing when a timer is
+ * already running, it pauses every running timer and starts the new one as a
+ * secondary timer alongside it — "duplicate this, pause what's running" for
+ * cloned entries and routine quick-starts, which want to switch straight into
+ * the new work rather than block on the old one.
+ */
+export function startTimerPausingRunning(
+  { timers, activeBreak, blockNewTimers, startTimer, pauseTimer, startSecondaryTimer }: PausingStartDeps,
+  input: TimerStartInput,
+): QuickTimerResult {
+  if (timers.length === 0) {
+    return startGuardedTimer({ timers, activeBreak, blockNewTimers, startTimer }, input);
+  }
+
+  if (activeBreak && blockNewTimers) {
+    return { status: "blocked-break", message: resolvePeriodCopy(activeBreak).blockedTimerMessage };
+  }
+
+  for (const timer of timers) {
+    if (!timer.pausedAt) {
+      pauseTimer(timer.id);
+    }
+  }
+
+  const started = startSecondaryTimer(timers[0].id, input);
 
   if (!started) {
     return { status: "blocked-running", message: BLOCKED_RUNNING_MESSAGE };

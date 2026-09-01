@@ -108,6 +108,34 @@ export const TABLE_CONFIG = {
     fromRow: (r: Record<string, unknown>) => { const d = (r.settings_koku ?? r) as Record<string, unknown>; return { key: d.setting_key, value: tryParse(d.setting_value as string, null) }; },
     sinceField: null,
   },
+  reminders: {
+    table: "reminders_koku",
+    toFields: (r: Record<string, unknown>) => ({
+      message: r.message ?? "",
+      trigger_at: toCatalystDateTime(r.triggerAt),
+      // "repeat" is a reserved word in Catalyst Datastore Cloud Scale.
+      repeat_mode: r.repeat ?? "none",
+      active: r.active ?? true,
+      created_at: toCatalystDateTime(r.createdAt),
+      updated_at: toCatalystDateTime(r.updatedAt),
+    }),
+    fromRow: (r: Record<string, unknown>) => {
+      const d = (r.reminders_koku ?? r) as Record<string, unknown>;
+      return {
+        id: d.id,
+        message: d.message,
+        triggerAt: fromCatalystDateTime(d.trigger_at) ?? d.trigger_at,
+        repeat: (d.repeat_mode as string) || "none",
+        // Catalyst can hand back a boolean column as a real boolean or as
+        // the string "true"/"false" depending on the SDK path — normalize
+        // both so a pulled reminder can't get stuck permanently "active".
+        active: d.active === true || d.active === "true",
+        createdAt: fromCatalystDateTime(d.created_at) ?? d.created_at,
+        updatedAt: fromCatalystDateTime(d.updated_at) ?? d.updated_at,
+      };
+    },
+    sinceField: "updated_at",
+  },
 } as const;
 
 export type TableKey = keyof typeof TABLE_CONFIG;
@@ -121,6 +149,7 @@ const REQUIRED_STRING_FIELDS: Record<TableKey, string[]> = {
   personalNotes: ["id", "title", "slug", "createdAt", "updatedAt"],
   noteLinks: ["id", "sourceNoteId", "targetNoteId"],
   settings: ["key"],
+  reminders: ["id", "message", "triggerAt", "createdAt", "updatedAt"],
 };
 
 const DATE_FIELDS: Partial<Record<TableKey, string[]>> = {
@@ -130,6 +159,7 @@ const DATE_FIELDS: Partial<Record<TableKey, string[]>> = {
   categories: ["createdAt"],
   notes: ["createdAt", "updatedAt"],
   personalNotes: ["createdAt", "updatedAt"],
+  reminders: ["triggerAt", "createdAt", "updatedAt"],
 };
 
 const TASK_STATUSES = ["open", "in_progress", "paused", "done"];

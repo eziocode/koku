@@ -158,3 +158,21 @@ export function dueRoutines(
     .sort((a, b) => b.count - a.count || Date.parse(b.lastAt) - Date.parse(a.lastAt))
     .slice(0, limit);
 }
+
+/**
+ * The most-used routines overall, regardless of time of day — unlike
+ * `dueRoutines`, which only surfaces one whose window contains `nowMs`. Same
+ * frequency-first ordering and `runningTitles` exclusion.
+ */
+export function mostUsedRoutines(
+  routines: RoutineSuggestion[],
+  options: { limit?: number; runningTitles?: string[] } = {},
+): RoutineSuggestion[] {
+  const { limit = 5, runningTitles = [] } = options;
+  const runningKeys = new Set(runningTitles.map(normalizeText));
+
+  return routines
+    .filter((routine) => !runningKeys.has(routine.key))
+    .sort((a, b) => b.count - a.count || Date.parse(b.lastAt) - Date.parse(a.lastAt))
+    .slice(0, limit);
+}

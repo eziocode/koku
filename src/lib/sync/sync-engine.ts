@@ -9,7 +9,7 @@ import { toast } from "@/components/ui/toast";
 
 // "tasks" comes before "timeEntries" so a pushed entry's taskId never points
 // at a task the cloud mirror doesn't have yet.
-export const SYNCABLE_TABLES = ["tasks", "timeEntries", "projects", "categories", "notes", "personalNotes", "noteLinks", "settings"] as const;
+export const SYNCABLE_TABLES = ["tasks", "timeEntries", "projects", "categories", "notes", "personalNotes", "noteLinks", "settings", "reminders"] as const;
 export type SyncTable = (typeof SYNCABLE_TABLES)[number];
 
 const LAST_SYNC_KEY = "lastSyncAt";

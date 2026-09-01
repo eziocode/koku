@@ -112,6 +112,25 @@ export interface AiKey {
   createdAt: string;
 }
 
+export type ReminderRepeat = "none" | "daily" | "weekly";
+
+/**
+ * A standalone, user-set alarm — not tied to any timer or task. `triggerAt` is
+ * always the *next* time this should fire; `ReminderScheduler` advances it by
+ * a day/week on each firing instead of leaving it fixed, so a repeating
+ * reminder never needs a separate "last fired" computation to know when it's
+ * next due.
+ */
+export interface Reminder {
+  id: string;
+  message: string;
+  triggerAt: string;
+  repeat: ReminderRepeat;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AppSetting {
   key: string;
   value: unknown;
@@ -172,6 +191,7 @@ class KokuDB extends Dexie {
   pendingUpserts!: EntityTable<PendingUpsert, "id">;
   pendingLiveMutations!: EntityTable<PendingLiveMutation, "id">;
   notificationLog!: EntityTable<NotificationLogEntry, "id">;
+  reminders!: EntityTable<Reminder, "id">;
 
   constructor() {
     super("koku-local");
@@ -357,6 +377,27 @@ class KokuDB extends Dexie {
             if (key.lastVerifiedAt === undefined) key.lastVerifiedAt = null;
           });
       });
+
+    this.version(10).stores({
+      projects: "id, createdAt",
+      categories: "id, name, createdAt",
+      timeEntries:
+        "id, startAt, projectId, categoryId, createdAt, durationSec, taskId, " +
+        "[projectId+startAt], [categoryId+startAt], [taskId+startAt]",
+      tasks:
+        "id, status, priority, dueAt, projectId, categoryId, sortOrder, updatedAt, createdAt, " +
+        "[status+sortOrder], [status+dueAt], [projectId+status]",
+      notes: "id, slug, updatedAt, createdAt",
+      personalNotes: "id, slug, updatedAt, createdAt",
+      noteLinks: "id, sourceNoteId, targetNoteId",
+      aiKeys: "id, provider, createdAt",
+      settings: "key",
+      pendingDeletes: "id, table, rowId, [table+rowId], createdAt",
+      pendingUpserts: "id, table, rowId, [table+rowId], updatedAt",
+      pendingLiveMutations: "id, kind, updatedAt",
+      notificationLog: "id, createdAt, tag, readAt",
+      reminders: "id, triggerAt, active",
+    });
   }
 }
 

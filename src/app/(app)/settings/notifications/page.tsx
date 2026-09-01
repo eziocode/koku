@@ -24,6 +24,11 @@ const notificationSections = [
     description: "Auto-stop running timers at your logoff time.",
     href: "/settings/notifications/end-of-day",
   },
+  {
+    title: "Sound",
+    description: "The chime reminders play when they fire, and its volume.",
+    href: "/settings/notifications/sound",
+  },
 ];
 
 export default function NotificationSettingsPage() {

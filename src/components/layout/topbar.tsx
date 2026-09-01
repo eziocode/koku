@@ -7,6 +7,7 @@ import { useTheme } from "next-themes";
 
 import { DndPill } from "@/components/notifications/dnd-pill";
 import { NotificationBell } from "@/components/notifications/notification-bell";
+import { ReminderBell } from "@/components/reminders/reminder-bell";
 import { AppUpdateIndicator } from "@/components/layout/app-update-indicator";
 import { ManualSync } from "@/components/layout/manual-sync";
 import { Button } from "@/components/ui/button";
@@ -57,6 +58,7 @@ export function Topbar({ onOpenSidebar }: TopbarProps) {
         </span>
       ) : null}
       <ManualSync />
+      <ReminderBell />
       <NotificationBell />
       <TooltipProvider>
         <AppUpdateIndicator />

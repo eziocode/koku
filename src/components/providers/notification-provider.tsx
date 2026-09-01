@@ -4,6 +4,7 @@ import { useEffect, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 
 import { BreakRunner } from "@/components/notifications/break-runner";
+import { ReminderScheduler } from "@/components/reminders/reminder-scheduler";
 import { NotificationScheduler } from "@/components/providers/notification-scheduler";
 import { subscribeTimerStoreToOtherTabs } from "@/lib/stores/timer-sync";
 import { resyncTicker } from "@/lib/stores/use-ticker";
@@ -68,6 +69,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     <>
       {children}
       <NotificationScheduler />
+      <ReminderScheduler />
       <BreakRunner />
       <NotificationPermissionReminder />
     </>

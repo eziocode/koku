@@ -24,6 +24,7 @@ export const NOTIFICATION_TAGS = {
   test: "koku-test",
   endOfDay: "koku-eod",
   endOfDayDone: "koku-eod-done",
+  reminder: "koku-reminder",
 } as const;
 
 export const NOTIFICATION_ICON = "/icon-192.png";
@@ -300,6 +301,37 @@ export function buildEndOfDayDoneNotification(now = Date.now()): BuiltNotificati
       tag: NOTIFICATION_TAGS.endOfDayDone,
       renotify: false,
       requireInteraction: false,
+      icon: NOTIFICATION_ICON,
+      badge: NOTIFICATION_BADGE,
+      data,
+    },
+  };
+}
+
+/**
+ * Tag is per-reminder (not the shared `NOTIFICATION_TAGS.reminder` constant)
+ * so two different reminders firing close together each keep their own tray
+ * entry instead of the second replacing the first.
+ */
+export function buildReminderNotification(
+  id: string,
+  message: string,
+  now = Date.now(),
+): BuiltNotification {
+  const data: KokuNotificationData = {
+    kokuType: "reminder",
+    timerId: null,
+    breakId: null,
+    createdAt: now,
+  };
+
+  return {
+    title: "Reminder",
+    options: {
+      body: message,
+      tag: `${NOTIFICATION_TAGS.reminder}-${id}`,
+      renotify: true,
+      requireInteraction: true,
       icon: NOTIFICATION_ICON,
       badge: NOTIFICATION_BADGE,
       data,
