@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "@/components/ui/toast";
 import { kokuDb, type AiKey, type AppSetting, type Category, type Note, type NoteLink, type Project, type Task, type TimeEntry } from "@/lib/storage/db";
+import { normalizeAiKey } from "@/lib/storage/hooks/use-ai-keys";
 import { syncWithConflictPrompt } from "@/lib/sync/sync-engine";
 
 const isLocalMode = process.env.NEXT_PUBLIC_LOCAL_MODE === "true";
@@ -197,7 +198,9 @@ export function StorageSettingsManager() {
             }))
           : [],
         noteLinks: Array.isArray(sourceData.noteLinks) ? sourceData.noteLinks : [],
-        aiKeys: Array.isArray(sourceData.aiKeys) ? sourceData.aiKeys : [],
+        aiKeys: Array.isArray(sourceData.aiKeys)
+          ? sourceData.aiKeys.map((key: AiKey) => normalizeAiKey(key))
+          : [],
         settings: Array.isArray(sourceData.settings) ? sourceData.settings : [],
       };
 

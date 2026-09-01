@@ -2,6 +2,7 @@
 
 import { ReactNode, useState } from "react";
 
+import { KokuAiLauncher } from "@/components/ai/koku-ai-launcher";
 import { ShortcutsProvider } from "@/components/layout/shortcuts-provider";
 import { MiniPlayerProvider } from "@/components/mini-player/mini-player-provider";
 import { NotificationCenter } from "@/components/notifications/notification-center";
@@ -26,6 +27,10 @@ export function AppShell({ children }: AppShellProps) {
       {/* Portals the floating mini player into its Picture-in-Picture window.
           Mounted here, not in AppProviders, so it never runs on the marketing root. */}
       <MiniPlayerProvider />
+      {/* Floating Koku AI launcher and chat. Only renders once a connection
+          has actually tested green, so an unconfigured/broken setup never
+          puts a chat bubble in front of the user. */}
+      <KokuAiLauncher />
       {/* Mandatory first-run setup. It stays route-aware so settings remain
           usable when the user follows one of its direct setup links. */}
       <WelcomeSetup />

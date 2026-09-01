@@ -10,6 +10,7 @@ import {
   notificationPreferencesSchema,
 } from "@/lib/notifications/settings";
 import { ONBOARDING_DEFAULTS, onboardingStateSchema } from "@/lib/onboarding/settings";
+import { KOKU_AI_SETTINGS_DEFAULTS, kokuAiSettingsSchema } from "@/lib/ai/koku-ai-settings";
 
 /**
  * Typed registry for the Dexie `settings` table.
@@ -33,6 +34,7 @@ export const SETTING_SCHEMAS = {
   notifications: notificationPreferencesSchema,
   miniPlayer: miniPlayerPreferencesSchema,
   onboarding: onboardingStateSchema,
+  kokuAi: kokuAiSettingsSchema,
 } as const;
 
 export type SettingKey = keyof typeof SETTING_SCHEMAS;
@@ -49,6 +51,7 @@ export const SETTING_DEFAULTS: { [K in SettingKey]: SettingValue<K> } = {
   notifications: NOTIFICATION_DEFAULTS,
   miniPlayer: MINI_PLAYER_DEFAULTS,
   onboarding: ONBOARDING_DEFAULTS,
+  kokuAi: KOKU_AI_SETTINGS_DEFAULTS,
 };
 
 /**

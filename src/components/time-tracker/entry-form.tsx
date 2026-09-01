@@ -16,13 +16,16 @@ import {
   QuickCreateProjectDialog,
   QuickCreateTaskDialog,
 } from "@/components/time-tracker/quick-create-dialog";
+import { AiTitleSuggestionBar } from "@/components/time-tracker/ai-title-suggestion-bar";
 import { TitleSuggestionBar } from "@/components/time-tracker/title-suggestion-bar";
+import { useAiTitleSuggestion } from "@/components/time-tracker/use-ai-title-suggestion";
 import { useTitleAutofill } from "@/components/time-tracker/use-title-autofill";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
 import { useTagSuggestions } from "@/lib/storage/hooks/use-tag-suggestions";
 import { useTasks } from "@/lib/storage/hooks/use-tasks";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
+import { ensureCategory, ensureProject } from "@/lib/time-tracking/time-entries";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 import { toDateTimeLocal } from "@/lib/tasks/task-dates";
 import { NONE_VALUE } from "@/lib/ui/list-thresholds";
@@ -119,6 +122,33 @@ export function EntryForm({
     onTagsChange: setTags,
   });
 
+  // Only asked when the statistical matcher above found nothing — a title
+  // never logged before. See use-ai-title-suggestion.ts for why this is
+  // api-key-only and debounced separately from the statistical path.
+  const aiTitleSuggestion = useAiTitleSuggestion({
+    enabled: !entryId && !titleAutofill.suggestion,
+    title,
+    existingProjects: useMemo(() => projects.map((project) => project.name), [projects]),
+    existingCategories: useMemo(() => categories.map((category) => category.name), [categories]),
+  });
+
+  async function applyAiTitleSuggestion() {
+    const suggestion = aiTitleSuggestion.suggestion;
+    if (!suggestion) return;
+
+    if (suggestion.projectName && projectId === NONE_VALUE) {
+      const project = await ensureProject(suggestion.projectName);
+      setProjectId(project.id);
+    }
+    if (suggestion.categoryName && categoryId === NONE_VALUE) {
+      const category = await ensureCategory(suggestion.categoryName);
+      setCategoryId(category.id);
+    }
+    if (suggestion.tags.length) {
+      setTags((current) => Array.from(new Set([...current, ...suggestion.tags])));
+    }
+  }
+
   /**
    * Runs on every start/end change (not only after a failed submit) so an
    * invalid range is flagged the moment it is picked. `Number.isNaN` guards the
@@ -195,7 +225,7 @@ export function EntryForm({
       <div className="space-y-2">
         <Label htmlFor="entry-title">Title</Label>
         <Input id="entry-title" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Design review" required />
-        {titleAutofill.suggestion && (
+        {titleAutofill.suggestion ? (
           <TitleSuggestionBar
             suggestion={titleAutofill.suggestion}
             projectName={titleAutofill.suggestion.projectId ? projectNameById.get(titleAutofill.suggestion.projectId) ?? null : null}
@@ -203,7 +233,13 @@ export function EntryForm({
             onApply={titleAutofill.apply}
             onDismiss={titleAutofill.dismiss}
           />
-        )}
+        ) : aiTitleSuggestion.suggestion ? (
+          <AiTitleSuggestionBar
+            suggestion={aiTitleSuggestion.suggestion}
+            onApply={applyAiTitleSuggestion}
+            onDismiss={aiTitleSuggestion.dismiss}
+          />
+        ) : null}
       </div>
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-1.5">

@@ -19,7 +19,7 @@ export function buildEntryFromTimer(timer: ActiveTimer, endedAt: string): Create
     projectId: timer.projectId,
     categoryId: timer.categoryId,
     taskId: timer.taskId,
-    startAt: timer.startTime,
+    startAt: timer.originalStartTime,
     endAt: endedAt,
     durationSec: getActiveTimerElapsedSec(timer, Date.parse(endedAt)),
     tags: timer.pomodoroMode ? Array.from(new Set(["pomodoro", ...timer.tags])) : timer.tags,

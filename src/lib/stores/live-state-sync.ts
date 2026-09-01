@@ -38,7 +38,9 @@ function breakRecord(value: ActiveBreak, updatedAt = new Date().toISOString()): 
 }
 function cloudTimer(value: LiveTimerRecord): ActiveTimer {
   return { id: value.id, title: value.title, projectId: value.projectId, categoryId: value.categoryId, tags: value.tags,
-    notes: value.notes, startTime: value.startAt, elapsedBeforePauseSec: value.elapsedBeforePauseSec, pausedAt: value.pausedAt,
+    // The wire record doesn't carry the pre-pause original separately from the
+    // (possibly already-shifted) `startAt` it was serialised from — best effort.
+    notes: value.notes, startTime: value.startAt, originalStartTime: value.startAt, elapsedBeforePauseSec: value.elapsedBeforePauseSec, pausedAt: value.pausedAt,
     pomodoroMode: value.pomodoroMode, parentTimerId: value.parentTimerId, revision: value.revision, updatedAt: value.updatedAt };
 }
 function cloudBreak(value: LiveBreakRecord): ActiveBreak {

@@ -46,6 +46,7 @@ export function createTimer(input: TimerStartInput, parentTimerId?: string | nul
     tags: input.tags ?? [],
     notes: input.notes ?? null,
     id: createTimerId(),
+    originalStartTime: input.startTime,
     elapsedBeforePauseSec: 0,
     pausedAt: null,
     parentTimerId: parentTimerId ?? null,

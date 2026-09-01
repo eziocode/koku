@@ -79,10 +79,28 @@ export interface NoteLink {
   targetNoteId: string;
 }
 
+export type AiAuthMode = "api-key" | "cli" | "org-cli";
+export type AiCliTransport = "bridge" | "same-host";
+
+/** Local-CLI connection details. Only meaningful when authMode is "cli" or "org-cli". */
+export interface AiCliConfig {
+  cliId: string;
+  extraArgs: string[];
+  transport: AiCliTransport;
+  bridgeUrl: string;
+  bridgeToken: string;
+}
+
 export interface AiKey {
   id: string;
   provider: string;
+  /** How this connection authenticates. Defaults to "api-key" for pre-v9 rows. */
+  authMode: AiAuthMode;
   apiKey: string;
+  /** Non-null only for "cli" / "org-cli" auth modes. */
+  cli: AiCliConfig | null;
+  /** Set once a connection test succeeds. Gates the floating Koku AI assistant. */
+  lastVerifiedAt: string | null;
   createdAt: string;
 }
 
@@ -295,6 +313,40 @@ class KokuDB extends Dexie {
           .modify((task) => {
             if (task.accumulatedSec === undefined) task.accumulatedSec = 0;
             if (task.inProgressSince === undefined) task.inProgressSince = null;
+          });
+      });
+
+    this.version(9)
+      .stores({
+        projects: "id, createdAt",
+        categories: "id, name, createdAt",
+        timeEntries:
+          "id, startAt, projectId, categoryId, createdAt, durationSec, taskId, " +
+          "[projectId+startAt], [categoryId+startAt], [taskId+startAt]",
+        tasks:
+          "id, status, priority, dueAt, projectId, categoryId, sortOrder, updatedAt, createdAt, " +
+          "[status+sortOrder], [status+dueAt], [projectId+status]",
+        notes: "id, slug, updatedAt, createdAt",
+        personalNotes: "id, slug, updatedAt, createdAt",
+        noteLinks: "id, sourceNoteId, targetNoteId",
+        aiKeys: "id, provider, createdAt",
+        settings: "key",
+        pendingDeletes: "id, table, rowId, [table+rowId], createdAt",
+        pendingUpserts: "id, table, rowId, [table+rowId], updatedAt",
+        pendingLiveMutations: "id, kind, updatedAt",
+        notificationLog: "id, createdAt, tag, readAt",
+      })
+      .upgrade(async (tx) => {
+        // Every pre-v9 key was necessarily an API-key connection (it's the
+        // only mode that existed), and had never been through a typed
+        // connection test, so it starts unverified until re-tested.
+        await tx
+          .table("aiKeys")
+          .toCollection()
+          .modify((key) => {
+            if (key.authMode === undefined) key.authMode = "api-key";
+            if (key.cli === undefined) key.cli = null;
+            if (key.lastVerifiedAt === undefined) key.lastVerifiedAt = null;
           });
       });
   }

@@ -15,8 +15,14 @@ export type ActiveTimer = {
   taskId?: string | null;
   tags: string[];
   notes?: string | null;
-  /** ISO. Shifted forward by the paused delta on resume, so elapsed excludes pauses. */
+  /**
+   * ISO. Shifted forward by the paused delta on resume, so elapsed excludes
+   * pauses. Internal to the elapsed-time math — never use this for display or
+   * for the entry eventually written to storage; use `originalStartTime`.
+   */
   startTime: string;
+  /** ISO. The real clock-in time, set once at creation and never mutated. */
+  originalStartTime: string;
   elapsedBeforePauseSec: number;
   pausedAt?: string | null;
   pomodoroMode: boolean;

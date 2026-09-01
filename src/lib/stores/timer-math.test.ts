@@ -20,6 +20,7 @@ function timer(overrides: Partial<ActiveTimer> = {}): ActiveTimer {
     tags: [],
     notes: null,
     startTime: new Date(START).toISOString(),
+    originalStartTime: new Date(START).toISOString(),
     elapsedBeforePauseSec: 0,
     pausedAt: null,
     pomodoroMode: false,
@@ -83,6 +84,14 @@ test("resume shifts startTime past the pause, so paused time is excluded", () =>
   assert.equal(getActiveTimerElapsedSec(resumed, resumedAt), 120);
   // And it keeps counting from there.
   assert.equal(getActiveTimerElapsedSec(resumed, resumedAt + 60_000), 180);
+});
+
+test("resume shifts startTime but never originalStartTime, so the saved entry keeps the real clock-in", () => {
+  const paused = pauseTimerInPlace(timer(), START + 120_000);
+  const resumed = resumePausedTimer(paused, START + 120_000 + 300_000);
+
+  assert.notEqual(resumed.startTime, resumed.originalStartTime);
+  assert.equal(resumed.originalStartTime, new Date(START).toISOString());
 });
 
 test("resume is correct even when the pause spanned hours of closed tab", () => {

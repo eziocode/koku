@@ -8,6 +8,7 @@ export const AI_PROVIDER_DETAILS = {
     credentialLabel: "OpenAI API key",
     credentialPlaceholder: "sk-...",
     description: "Use an OpenAI platform API key for general chat workflows.",
+    authModes: ["api-key"] as const,
   },
   "openai-codex": {
     label: "OpenAI Codex",
@@ -15,24 +16,28 @@ export const AI_PROVIDER_DETAILS = {
     credentialPlaceholder: "sk-...",
     description:
       "Uses an OpenAI platform API key for Codex-capable coding workflows. For ChatGPT account login, use the local Codex CLI login flow instead of pasting a ChatGPT password or session token.",
+    authModes: ["api-key", "cli", "org-cli"] as const,
   },
   anthropic: {
     label: "Anthropic",
     credentialLabel: "Anthropic API key",
     credentialPlaceholder: "sk-ant-...",
     description: "Use an Anthropic API key for Claude-backed workflows.",
+    authModes: ["api-key", "cli", "org-cli"] as const,
   },
   google: {
     label: "Google Gemini",
     credentialLabel: "Gemini API key",
     credentialPlaceholder: "AIza...",
     description: "Use a Google AI Studio/Gemini API key.",
+    authModes: ["api-key"] as const,
   },
   groq: {
     label: "Groq",
     credentialLabel: "Groq API key",
     credentialPlaceholder: "gsk_...",
     description: "Use a Groq API key through its OpenAI-compatible endpoint.",
+    authModes: ["api-key"] as const,
   },
   "github-copilot": {
     label: "GitHub Models / Copilot",
@@ -40,6 +45,7 @@ export const AI_PROVIDER_DETAILS = {
     credentialPlaceholder: "ghp_...",
     description:
       "Uses GitHub Models' OpenAI-compatible endpoint with a GitHub token that has models:read access.",
+    authModes: ["api-key", "cli", "org-cli"] as const,
   },
 } as const;
 

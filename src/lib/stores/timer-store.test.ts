@@ -37,6 +37,7 @@ test("cloud replacement keeps a paused timer's frozen elapsed and revision", () 
       tags: [],
       notes: null,
       startTime: "2026-08-21T09:00:00.000Z",
+      originalStartTime: "2026-08-21T09:00:00.000Z",
       elapsedBeforePauseSec: 1_237,
       pausedAt: "2026-08-21T09:20:37.000Z",
       pomodoroMode: false,
@@ -106,6 +107,17 @@ test("a second parallel task is refused while the first one is still running", (
 
   useTimerStore.getState().pauseTimer(first.id);
   assert.ok(startParallel(primary.id, "Second interruption"));
+});
+
+test("pausing and resuming a timer never moves its originalStartTime, only startTime", () => {
+  const primary = startWork();
+  assert.ok(primary);
+
+  useTimerStore.getState().pauseTimer(primary.id);
+  useTimerStore.getState().resumeTimer(primary.id);
+
+  const resumed = useTimerStore.getState().timers.find((item) => item.id === primary.id);
+  assert.equal(resumed?.originalStartTime, primary.startTime);
 });
 
 test("stopping the primary promotes a parallel task rather than orphaning it", () => {
@@ -244,6 +256,7 @@ test("break time is excluded from the resumed timer's elapsed", () => {
         tags: [],
         notes: null,
         startTime: new Date(startedAt).toISOString(),
+        originalStartTime: new Date(startedAt).toISOString(),
         elapsedBeforePauseSec: 0,
         pausedAt: null,
         pomodoroMode: false,

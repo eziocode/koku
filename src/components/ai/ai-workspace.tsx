@@ -1,7 +1,7 @@
 "use client";
 
 import { endOfDay, endOfMonth, format, startOfDay, startOfMonth } from "date-fns";
-import { FormEvent, memo, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,8 +11,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
+import { ChatMessageRow } from "@/components/ai/chat-message-row";
+import { cliStatus } from "@/lib/ai/cli/transport";
+import { runAiText } from "@/lib/ai/client/run-ai";
 import { AI_PROVIDER_DETAILS } from "@/lib/ai/providers";
 import { useAiKeys } from "@/lib/storage/hooks/use-ai-keys";
+import type { AiKey } from "@/lib/storage/db";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useNotes } from "@/lib/storage/hooks/use-notes";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
@@ -24,22 +28,6 @@ type ChatMessage = {
   content: string;
 };
 
-/**
- * Memoized so a token arriving for the streaming assistant message doesn't
- * re-render every prior message bubble in the conversation — only the row
- * whose `content` actually changed re-renders.
- */
-const ChatMessageRow = memo(function ChatMessageRow({ role, content }: { role: ChatMessage["role"]; content: string }) {
-  return (
-    <div className="rounded-2xl border border-border bg-card p-4">
-      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{role}</p>
-      <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">
-        {content || (role === "assistant" ? "…" : "")}
-      </p>
-    </div>
-  );
-});
-
 async function getResponseError(response: Response, fallback: string) {
   const data = await response.json().catch(() => null);
   if (data && typeof data === "object" && typeof (data as { error?: unknown }).error === "string") {
@@ -50,11 +38,11 @@ async function getResponseError(response: Response, fallback: string) {
 }
 
 export function AiWorkspace() {
-  const { aiKeys, getApiKeyForProvider } = useAiKeys();
+  const { aiKeys, markVerified } = useAiKeys();
   const { projects } = useProjects();
   const { categories } = useCategories();
   const { notes } = useNotes();
-  const [selectedProvider, setSelectedProvider] = useState("openai");
+  const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
   const [standup, setStandup] = useState("");
   const [monthlyNarrative, setMonthlyNarrative] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -78,13 +66,8 @@ export function AiWorkspace() {
     to: endOfMonth(monthDate).toISOString(),
   });
 
-  const availableProviders = useMemo(
-    () => Array.from(new Set(aiKeys.map((key) => key.provider))),
-    [aiKeys],
-  );
-  const provider = availableProviders.includes(selectedProvider)
-    ? selectedProvider
-    : availableProviders[0] ?? "openai";
+  const connection: AiKey | null =
+    aiKeys.find((key) => key.id === selectedConnectionId) ?? aiKeys[0] ?? null;
   const projectMap = useMemo(
     () => new Map(projects.map((project) => [project.id, project.name])),
     [projects],
@@ -103,102 +86,104 @@ export function AiWorkspace() {
     [notes],
   );
 
-  async function getApiKey() {
-    const apiKey = await getApiKeyForProvider(provider);
-    if (!apiKey) {
-      toast.error("No credential stored for this provider.");
+  function requireConnection(): AiKey | null {
+    if (!connection) {
+      toast.error("No AI connection is configured.");
       return null;
     }
-    return apiKey;
+    return connection;
   }
 
   async function handleTestConnection() {
-    const apiKey = await getApiKey();
-    if (!apiKey) {
+    const active = requireConnection();
+    if (!active) {
       return;
     }
 
     setTestingConnection(true);
 
     try {
-      const response = await fetch("/api/ai/test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, apiKey }),
-      });
+      if (active.authMode === "api-key") {
+        const response = await fetch("/api/ai/test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ provider: active.provider, apiKey: active.apiKey }),
+        });
 
-      if (!response.ok) {
-        toast.error(await getResponseError(response, "Connection test failed."));
+        if (!response.ok) {
+          toast.error(await getResponseError(response, "Connection test failed."));
+          return;
+        }
+      } else if (active.cli) {
+        const status = await cliStatus(active.cli);
+        if (!status.installed) {
+          toast.error("The configured CLI was not found.");
+          return;
+        }
+      } else {
+        toast.error("This connection is missing its CLI configuration.");
         return;
       }
 
+      await markVerified(active.id);
       toast.success("Connection successful.");
-    } catch {
-      toast.error("Unable to reach the connection test endpoint.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to reach the connection test endpoint.");
     } finally {
       setTestingConnection(false);
     }
   }
 
   async function handleStandup() {
-    const apiKey = await getApiKey();
-    if (!apiKey) {
+    const active = requireConnection();
+    if (!active) {
       return;
     }
 
-    const response = await fetch("/api/ai/standup", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        provider,
-        apiKey,
-        entries: todayEntries.map((entry) => ({
-          title: entry.title,
-          projectName: entry.projectId ? projectMap.get(entry.projectId) || "Unassigned" : "Unassigned",
-          durationSec: entry.durationSec || 0,
-        })),
-      }),
-    });
+    try {
+      const entries = todayEntries.map((entry) => ({
+        title: entry.title,
+        projectName: entry.projectId ? projectMap.get(entry.projectId) || "Unassigned" : "Unassigned",
+        durationSec: entry.durationSec || 0,
+      }));
 
-    if (!response.ok) {
-      toast.error(await getResponseError(response, "Unable to generate standup."));
-      return;
+      const text = await runAiText(active, {
+        endpoint: "/api/ai/standup",
+        body: { entries },
+        prompt: `Write a concise daily standup update from these tracked entries: ${JSON.stringify(entries)}`,
+      });
+
+      setStandup(text);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to generate standup.");
     }
-
-    const data = await response.json();
-    setStandup(data.text);
   }
 
   async function handleMonthlyNarrative() {
-    const apiKey = await getApiKey();
-    if (!apiKey) {
+    const active = requireConnection();
+    if (!active) {
       return;
     }
 
-    const response = await fetch("/api/ai/monthly-report", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        provider,
-        apiKey,
-        month,
-        entries: monthlyEntries.map((entry) => ({
-          title: entry.title,
-          projectName: entry.projectId ? projectMap.get(entry.projectId) || "Unassigned" : "Unassigned",
-          categoryName: entry.categoryId ? categoryMap.get(entry.categoryId) || undefined : undefined,
-          durationSec: entry.durationSec || 0,
-          notes: entry.notes || null,
-        })),
-      }),
-    });
+    try {
+      const entries = monthlyEntries.map((entry) => ({
+        title: entry.title,
+        projectName: entry.projectId ? projectMap.get(entry.projectId) || "Unassigned" : "Unassigned",
+        categoryName: entry.categoryId ? categoryMap.get(entry.categoryId) || undefined : undefined,
+        durationSec: entry.durationSec || 0,
+        notes: entry.notes || null,
+      }));
 
-    if (!response.ok) {
-      toast.error(await getResponseError(response, "Unable to generate monthly narrative."));
-      return;
+      const text = await runAiText(active, {
+        endpoint: "/api/ai/monthly-report",
+        body: { month, entries },
+        prompt: `Write a reflective monthly narrative for ${month} from these tracked entries: ${JSON.stringify(entries)}`,
+      });
+
+      setMonthlyNarrative(text);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to generate monthly narrative.");
     }
-
-    const data = await response.json();
-    setMonthlyNarrative(data.text);
   }
 
   async function handleChatSubmit(event: FormEvent<HTMLFormElement>) {
@@ -208,8 +193,8 @@ export function AiWorkspace() {
       return;
     }
 
-    const apiKey = await getApiKey();
-    if (!apiKey) {
+    const active = requireConnection();
+    if (!active) {
       return;
     }
 
@@ -247,13 +232,33 @@ export function AiWorkspace() {
     abortRef.current = controller;
 
     try {
+      if (active.authMode !== "api-key") {
+        // CLI connections have no streaming transport, so run the whole
+        // exchange as one call and land it in a single flush.
+        const text = await runAiText(
+          active,
+          {
+            endpoint: "",
+            body: {},
+            prompt: `${content}\n\nRecent notes for context: ${JSON.stringify(noteContext)}`,
+          },
+          { signal: controller.signal },
+        );
+        setMessages((current) =>
+          current.map((entry) =>
+            entry.id === assistantId ? { ...entry, content: text || "No response text returned." } : entry,
+          ),
+        );
+        return;
+      }
+
       const response = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
         body: JSON.stringify({
-          provider,
-          apiKey,
+          provider: active.provider,
+          apiKey: active.apiKey,
           messages: nextMessages.map((message) => ({
             role: message.role,
             content: message.content,
@@ -343,13 +348,13 @@ export function AiWorkspace() {
     }
   }
 
-  if (!availableProviders.length) {
+  if (!aiKeys.length) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>No AI providers configured</CardTitle>
+          <CardTitle>No AI connections configured</CardTitle>
           <CardDescription>
-            Add a local provider credential in Settings → AI Keys to unlock chat,
+            Add an AI key, local CLI, or org login in Settings → AI Keys to unlock chat,
             standups, and monthly narratives.
           </CardDescription>
         </CardHeader>
@@ -366,14 +371,15 @@ export function AiWorkspace() {
           <TabsTrigger value="monthly">Monthly Report Writer</TabsTrigger>
         </TabsList>
         <div className="flex flex-wrap items-center gap-2">
-          <Select value={provider} onValueChange={setSelectedProvider}>
-            <SelectTrigger className="max-w-[220px]">
-              <SelectValue placeholder="Provider" />
+          <Select value={connection?.id ?? ""} onValueChange={setSelectedConnectionId}>
+            <SelectTrigger className="max-w-[260px]">
+              <SelectValue placeholder="Connection" />
             </SelectTrigger>
             <SelectContent>
-              {availableProviders.map((value) => (
-                <SelectItem key={value} value={value}>
-                  {AI_PROVIDER_DETAILS[value as keyof typeof AI_PROVIDER_DETAILS]?.label ?? value}
+              {aiKeys.map((key) => (
+                <SelectItem key={key.id} value={key.id}>
+                  {AI_PROVIDER_DETAILS[key.provider as keyof typeof AI_PROVIDER_DETAILS]?.label ?? key.provider}
+                  {key.authMode !== "api-key" ? " (CLI)" : ""}
                 </SelectItem>
               ))}
             </SelectContent>

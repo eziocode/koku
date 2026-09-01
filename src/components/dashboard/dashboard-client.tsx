@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChartCard } from "@/components/charts/chart-card";
 import { DashboardTipCard } from "@/components/dashboard/dashboard-tip-card";
 import { QuickCaptureCard } from "@/components/dashboard/quick-capture-card";
+import { WorkWindowCard } from "@/components/dashboard/work-window-card";
 import { ChartLegend } from "@/components/charts/chart-legend";
 import { SegmentedBarChart } from "@/components/charts/segmented-bar-chart";
 import { EntryNotes } from "@/components/time-tracker/entry-notes";
@@ -314,6 +315,7 @@ export function DashboardClient() {
           />
         </ChartCard>
         <QuickCaptureCard />
+        <WorkWindowCard />
         </div>
       </div>
 

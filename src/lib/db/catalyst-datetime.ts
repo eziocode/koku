@@ -7,11 +7,23 @@
  * a DateTime column with `INVALID_INPUT — datetime value expected`, while a
  * real null is accepted on every nullable timestamp column we write.
  */
+const RAW_CATALYST_DATETIME = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
+
+/**
+ * True for Catalyst's raw wire format ("YYYY-MM-DD HH:MM:SS") — a value that
+ * was never passed through `fromCatalystDateTime` before landing in local
+ * storage. Exported so a one-off repair pass can find rows a buggy `fromRow`
+ * saved verbatim, without duplicating the pattern.
+ */
+export function isRawCatalystDateTime(value: unknown): value is string {
+  return typeof value === "string" && RAW_CATALYST_DATETIME.test(value);
+}
+
 export function toCatalystDateTime(value: unknown): string | null {
   if (typeof value !== "string") return null;
 
   // Avoid shifting values already returned by Catalyst through server timezone.
-  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)) {
+  if (isRawCatalystDateTime(value)) {
     return fromCatalystDateTime(value) ? value : null;
   }
 
@@ -23,9 +35,7 @@ export function toCatalystDateTime(value: unknown): string | null {
 /** Convert Catalyst's UTC DateTime representation back to app ISO form. */
 export function fromCatalystDateTime(value: unknown): string | null {
   if (typeof value !== "string") return null;
-  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)
-    ? `${value.replace(" ", "T")}Z`
-    : value;
+  const normalized = isRawCatalystDateTime(value) ? `${value.replace(" ", "T")}Z` : value;
   if (!Number.isFinite(Date.parse(normalized))) return null;
   return new Date(normalized).toISOString();
 }

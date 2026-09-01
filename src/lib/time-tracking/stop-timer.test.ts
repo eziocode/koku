@@ -16,6 +16,7 @@ function timer(overrides: Partial<ActiveTimer> = {}): ActiveTimer {
     tags: ["deep"],
     notes: null,
     startTime: new Date(START).toISOString(),
+    originalStartTime: new Date(START).toISOString(),
     elapsedBeforePauseSec: 0,
     pausedAt: null,
     pomodoroMode: false,

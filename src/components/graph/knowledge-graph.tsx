@@ -15,6 +15,7 @@ import {
 import { GraphForcesPanel } from "@/components/graph/graph-forces-panel";
 import { GRAPH_FRAME_HEIGHT } from "@/components/graph/graph-frame";
 import { GraphLegend } from "@/components/graph/graph-legend";
+import { GraphOrganizePanel } from "@/components/graph/graph-organize-panel";
 import { GraphSideRail } from "@/components/graph/graph-side-rail";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -317,6 +318,7 @@ export function KnowledgeGraph() {
             />
 
             <GraphForcesPanel className="pointer-events-auto" forces={forces} onChange={setForces} />
+            <GraphOrganizePanel notes={notes} />
           </GraphSideRail>
 
           {hovered ? (

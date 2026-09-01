@@ -14,7 +14,7 @@ export const TABLE_CONFIG = {
   timeEntries: {
     table: "time_entries_koku",
     toFields: (r: Record<string, unknown>) => ({ title: r.title ?? "", project_id: r.projectId ?? null, category_id: r.categoryId ?? null, task_id: r.taskId ?? null, start_at: toCatalystDateTime(r.startAt), end_at: r.endAt === null || r.endAt === undefined ? null : toCatalystDateTime(r.endAt), duration_sec: r.durationSec ?? null, tags: JSON.stringify(r.tags ?? []), notes: r.notes ?? null, created_at: toCatalystDateTime(r.createdAt) }),
-    fromRow: (r: Record<string, unknown>) => { const d = (r.time_entries_koku ?? r) as Record<string, unknown>; return { id: d.id, title: d.title, projectId: d.project_id || null, categoryId: d.category_id || null, taskId: d.task_id || null, startAt: d.start_at || null, endAt: d.end_at || null, durationSec: d.duration_sec === null || d.duration_sec === undefined || d.duration_sec === "" ? null : Number(d.duration_sec), tags: tryParse(d.tags as string, []), notes: d.notes || null, createdAt: d.created_at }; },
+    fromRow: (r: Record<string, unknown>) => { const d = (r.time_entries_koku ?? r) as Record<string, unknown>; return { id: d.id, title: d.title, projectId: d.project_id || null, categoryId: d.category_id || null, taskId: d.task_id || null, startAt: fromCatalystDateTime(d.start_at) ?? d.start_at, endAt: fromCatalystDateTime(d.end_at), durationSec: d.duration_sec === null || d.duration_sec === undefined || d.duration_sec === "" ? null : Number(d.duration_sec), tags: tryParse(d.tags as string, []), notes: d.notes || null, createdAt: fromCatalystDateTime(d.created_at) ?? d.created_at }; },
     sinceField: "created_at",
   },
   tasks: {

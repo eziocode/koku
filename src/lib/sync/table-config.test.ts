@@ -139,6 +139,43 @@ describe("Catalyst field transforms", () => {
     assert.equal(fields.created_at, null);
   });
 
+  it("round-trips a time entry's timestamps through push and pull unchanged", () => {
+    // Regression: `fromRow` used to pass Catalyst's space-separated
+    // "YYYY-MM-DD HH:MM:SS" straight through as `startAt`/`endAt`. That string
+    // has no timezone marker, so `new Date(...)` on it downstream parses as
+    // local time instead of UTC — silently shifting every synced entry's
+    // displayed start/end by the viewer's UTC offset.
+    const pushed = TABLE_CONFIG.timeEntries.toFields({
+      id: "entry-1",
+      title: "Work",
+      projectId: null,
+      categoryId: null,
+      startAt: "2026-09-01T03:30:00.000Z",
+      endAt: "2026-09-01T13:30:00.000Z",
+      durationSec: 36_000,
+      tags: [],
+      notes: null,
+      createdAt: "2026-09-01T03:30:00.000Z",
+    });
+
+    const pulled = TABLE_CONFIG.timeEntries.fromRow({
+      id: "entry-1",
+      title: "Work",
+      project_id: null,
+      category_id: null,
+      start_at: pushed.start_at,
+      end_at: pushed.end_at,
+      duration_sec: 36_000,
+      tags: "[]",
+      notes: null,
+      created_at: pushed.created_at,
+    });
+
+    assert.equal(pulled.startAt, "2026-09-01T03:30:00.000Z");
+    assert.equal(pulled.endAt, "2026-09-01T13:30:00.000Z");
+    assert.equal(pulled.createdAt, "2026-09-01T03:30:00.000Z");
+  });
+
   it("rejects invalid datetimes before sending rows to Catalyst", () => {
     assert.deepEqual(
       validateSyncRow("notes", {
