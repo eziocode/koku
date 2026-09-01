@@ -1,21 +1,16 @@
 "use client";
 
-import { Copy, Play } from "lucide-react";
+import { Play } from "lucide-react";
 import { useMemo } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { toast } from "@/components/ui/toast";
 import { useCloneToTimer } from "@/components/time-tracker/use-clone-to-timer";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
 import { useMostUsedRoutines } from "@/lib/storage/hooks/use-routine-suggestions";
-import { useNotificationPreferences } from "@/lib/notifications/use-notification-preferences";
-import { resolvePeriodCopy } from "@/lib/breaks/break-copy";
-import { startTimerPausingRunning } from "@/lib/time-tracking/quick-timer";
 import { useTimerStore, type ActiveTimer } from "@/lib/stores/timer-store";
-import type { RoutineSuggestion } from "@/lib/time-tracking/routine-suggestions";
 
 /**
  * Your most-repeated work, ranked by how often you've logged it — unlike
@@ -24,8 +19,7 @@ import type { RoutineSuggestion } from "@/lib/time-tracking/routine-suggestions"
  * whole point of this list is switching straight into the duplicate.
  */
 export function MostUsedRoutinesCard() {
-  const { timers, activeBreak, startTimer, startSecondaryTimer, pauseTimer } = useTimerStore();
-  const { prefs } = useNotificationPreferences();
+  const { timers } = useTimerStore();
   const { projects } = useProjects();
   const { categories } = useCategories();
   const cloneToTimer = useCloneToTimer();
@@ -38,39 +32,6 @@ export function MostUsedRoutinesCard() {
 
   if (routines.length === 0) {
     return null;
-  }
-
-  function handleStart(routine: RoutineSuggestion) {
-    const result = startTimerPausingRunning(
-      {
-        timers,
-        activeBreak,
-        blockNewTimers: prefs.breaks.blockNewTimers,
-        startTimer,
-        startSecondaryTimer,
-        pauseTimer,
-      },
-      {
-        title: routine.title,
-        startTime: new Date().toISOString(),
-        projectId: routine.projectId,
-        categoryId: routine.categoryId,
-        taskId: routine.taskId,
-        tags: routine.tags,
-        pomodoroMode: false,
-      },
-    );
-
-    if (result.status === "blocked-break") {
-      toast.error(activeBreak ? resolvePeriodCopy(activeBreak).blockedTimerMessage : result.message);
-      return;
-    }
-    if (result.status === "blocked-running") {
-      toast.error(result.message);
-      return;
-    }
-
-    toast.success(timers.length > 0 ? "Started, previous timer paused." : "Timer started.");
   }
 
   return (
@@ -103,10 +64,8 @@ export function MostUsedRoutinesCard() {
               </div>
               <div className="flex items-center gap-2">
                 <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Fill timer only"
-                  title="Fill timer only"
+                  size="sm"
+                  className="gap-1.5"
                   onClick={() =>
                     cloneToTimer({
                       title: routine.title,
@@ -117,9 +76,6 @@ export function MostUsedRoutinesCard() {
                     })
                   }
                 >
-                  <Copy />
-                </Button>
-                <Button size="sm" className="gap-1.5" onClick={() => handleStart(routine)}>
                   <Play className="h-3.5 w-3.5" />
                   Start
                 </Button>

@@ -274,12 +274,10 @@ export function LogClient() {
                   )}
                 </CardContent>
               </Card>
+              <MostUsedRoutinesCard />
               <RoutinesCard />
             </div>
           </div>
-
-          {/* Most-used routine logs */}
-          <MostUsedRoutinesCard />
 
           {/* Smart filters */}
           <LogFilters filters={filters} onChange={setFilters} />
