@@ -311,108 +311,114 @@ export function DashboardClient() {
         <DashboardTipCard />
       </div>
 
+      {/* Main column plus sidebar, not two peer columns: the sidebar stack grows
+          every time a card is added to it, and a short left column used to leave
+          a hole between the timer and the entries below. Keeping the page's tall
+          card in the main column means any leftover height lands at the bottom of
+          the shorter column instead of as a gap in the middle of the page. */}
       <div className="grid items-start gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-        <Timer />
-        <div className="flex flex-col gap-6">
-        <ChartCard
-          title="This week"
-          description="Each block is a work log, hover for details, click to open that day."
-          footer={legendItems.length ? <ChartLegend items={legendItems} /> : undefined}
-        >
-          <SegmentedBarChart
-            days={weekDays}
-            onSegmentClick={handleSegmentClick}
-            fallbackHours={chartFallbackHours}
-            emptyTitle="No sessions this week"
-            emptyDescription="Start a timer or add a manual entry to see your week take shape."
-            compact
-          />
-        </ChartCard>
-        <RoutinesCard />
-        <QuickCaptureCard />
-        <WorkWindowCard />
+        <div className="flex min-w-0 flex-col gap-6">
+          <Timer />
+          <Card className="minimal-panel">
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <CardTitle>Recent time entries</CardTitle>
+                <CardDescription>
+                  The last 7 days, newest first. Older work lives on the time log.
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-2 sm:pt-1">
+                <span className="text-xs text-muted-foreground">Show</span>
+                <Select
+                  value={String(recentEntriesPageSize)}
+                  onValueChange={(value) => void setRecentEntriesPageSize(Number(value) as typeof recentEntriesPageSize)}
+                >
+                  <SelectTrigger className="h-9 w-[8.5rem]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[4, 8, 12, 20].map((count) => (
+                      <SelectItem key={count} value={String(count)}>{count} at a time</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <LazyScrollList
+                key={recentEntriesPageSize}
+                items={recentEntries}
+                getKey={(entry) => entry.id}
+                pageSize={recentEntriesPageSize}
+                className="h-[28rem]"
+                moreLabel="Load more entries"
+                empty={
+                  <p className="text-sm text-muted-foreground">
+                    Nothing logged in the last 7 days.
+                  </p>
+                }
+                renderItem={(entry) => (
+                  <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-background/55 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-foreground">{entry.title}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {entry.project?.name || "Unassigned"}
+                        {entry.category ? ` • ${entry.category.name}` : ""}
+                      </p>
+                      <EntryNotes notes={entry.notes} className="mt-1" />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-sm font-semibold tabular-nums text-foreground">{formatDuration(entry.durationSec || 0)}</div>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label="Duplicate and start timer"
+                              onClick={() =>
+                                cloneToTimer({
+                                  title: entry.title,
+                                  projectId: entry.projectId ?? null,
+                                  categoryId: entry.categoryId ?? null,
+                                  taskId: entry.taskId ?? null,
+                                  tags: entry.tags,
+                                })
+                              }
+                            >
+                              <Play />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Duplicate and start, pausing the current timer</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                  </div>
+                )}
+              />
+            </CardContent>
+          </Card>
+        </div>
+        <div className="flex min-w-0 flex-col gap-6">
+          <ChartCard
+            title="This week"
+            description="Each block is a work log, hover for details, click to open that day."
+            footer={legendItems.length ? <ChartLegend items={legendItems} /> : undefined}
+          >
+            <SegmentedBarChart
+              days={weekDays}
+              onSegmentClick={handleSegmentClick}
+              fallbackHours={chartFallbackHours}
+              emptyTitle="No sessions this week"
+              emptyDescription="Start a timer or add a manual entry to see your week take shape."
+              compact
+            />
+          </ChartCard>
+          <RoutinesCard />
+          <QuickCaptureCard />
+          <WorkWindowCard />
         </div>
       </div>
-
-      <Card className="minimal-panel">
-        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <CardTitle>Recent time entries</CardTitle>
-            <CardDescription>
-              The last 7 days, newest first. Older work lives on the time log.
-            </CardDescription>
-          </div>
-          <div className="flex items-center gap-2 sm:pt-1">
-            <span className="text-xs text-muted-foreground">Show</span>
-            <Select
-              value={String(recentEntriesPageSize)}
-              onValueChange={(value) => void setRecentEntriesPageSize(Number(value) as typeof recentEntriesPageSize)}
-            >
-              <SelectTrigger className="h-9 w-[8.5rem]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {[4, 8, 12, 20].map((count) => (
-                  <SelectItem key={count} value={String(count)}>{count} at a time</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <LazyScrollList
-            key={recentEntriesPageSize}
-            items={recentEntries}
-            getKey={(entry) => entry.id}
-            pageSize={recentEntriesPageSize}
-            className="h-[28rem]"
-            moreLabel="Load more entries"
-            empty={
-              <p className="text-sm text-muted-foreground">
-                Nothing logged in the last 7 days.
-              </p>
-            }
-            renderItem={(entry) => (
-              <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-background/55 p-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium text-foreground">{entry.title}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {entry.project?.name || "Unassigned"}
-                    {entry.category ? ` • ${entry.category.name}` : ""}
-                  </p>
-                  <EntryNotes notes={entry.notes} className="mt-1" />
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="text-sm font-semibold tabular-nums text-foreground">{formatDuration(entry.durationSec || 0)}</div>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label="Duplicate and start timer"
-                          onClick={() =>
-                            cloneToTimer({
-                              title: entry.title,
-                              projectId: entry.projectId ?? null,
-                              categoryId: entry.categoryId ?? null,
-                              taskId: entry.taskId ?? null,
-                              tags: entry.tags,
-                            })
-                          }
-                        >
-                          <Play />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Duplicate and start, pausing the current timer</TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
-              </div>
-            )}
-          />
-        </CardContent>
-      </Card>
     </div>
   );
 }
