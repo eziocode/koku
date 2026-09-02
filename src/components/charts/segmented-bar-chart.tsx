@@ -7,6 +7,7 @@ import { ChartEmpty } from "@/components/charts/chart-states";
 import { DayTooltipCard, getTooltipPosition } from "@/components/charts/segment-tooltip";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { NON_WORKING_COLORS } from "@/lib/charts/theme";
+import { buildDayBlocks } from "@/lib/charts/day-blocks";
 import {
   computeHourDomain,
   FULL_DAY_DOMAIN,
@@ -22,9 +23,6 @@ import type { SegmentedDay, WorkLogSegment } from "@/lib/charts/segments";
 
 export type { HourDomain } from "@/lib/charts/hour-domain";
 export { deriveFallbackHours, FULL_DAY_DOMAIN } from "@/lib/charts/hour-domain";
-
-/** Fraction-of-24h below which two blocks are treated as touching, not gapped. */
-const EPS_HOURS = 0.01;
 
 /**
  * Row metrics, kept in sync with the row markup below (`py-*` + track height)
@@ -77,43 +75,6 @@ function hoursMinutesLabel(seconds: number): string {
 /** Local-timezone `yyyy-MM-dd`, matching `SegmentedDay.key`'s date-fns format. */
 function localDateKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-}
-
-interface WorkBlock {
-  kind: "work";
-  from: number;
-  to: number;
-  segment: WorkLogSegment;
-}
-interface GapBlock {
-  kind: "gap";
-  from: number;
-  to: number;
-}
-type TimelineBlock = WorkBlock | GapBlock;
-
-/**
- * Lays each day's segments onto the chart's hour domain. Gaps *between* two
- * logged segments become a hoverable "no log found" block; the empty stretch
- * before the first log and after the last log is left bare on purpose — there
- * is nothing to explain about time nobody claimed to be working.
- */
-function buildDayBlocks(day: SegmentedDay, domain: HourDomain): TimelineBlock[] {
-  const sorted = [...day.segments].sort((a, b) => a.startAt.localeCompare(b.startAt));
-  const blocks: TimelineBlock[] = [];
-  let cursor = domain.start;
-
-  sorted.forEach((segment, index) => {
-    const start = Math.max(domain.start, Math.min(domain.end, hourOfDay(segment.startAt)));
-    const end = Math.max(start, Math.min(domain.end, start + segment.hours));
-    if (index > 0 && start > cursor + EPS_HOURS) {
-      blocks.push({ kind: "gap", from: cursor, to: start });
-    }
-    blocks.push({ kind: "work", from: start, to: end, segment });
-    cursor = Math.max(cursor, end);
-  });
-
-  return blocks;
 }
 
 /**
@@ -406,7 +367,10 @@ export function SegmentedBarChart({
       <ScrollArea ref={scrollAreaRef} style={{ height: frameHeight }}>
         <div ref={rowsRef} className="space-y-1 pr-2">
           {days.map((day) => {
-            const blocks = buildDayBlocks(day, domain);
+            const { blocks, lanes } = buildDayBlocks(day, domain);
+            // Lane geometry, in percentages of the track height: one lane fills
+            // it, two share it, and a 1px hairline keeps stacked lanes apart.
+            const laneHeight = 100 / lanes;
             const isToday = day.key === todayKey;
             const marker = day.nonWorking;
             const markerColor = marker ? NON_WORKING_COLORS[marker.kind] : null;
@@ -474,20 +438,24 @@ export function SegmentedBarChart({
                   {blocks.map((block) =>
                     block.kind === "work" ? (
                       <button
-                        key={block.segment.id}
+                        key={`${block.segment.id}#${block.runIndex}`}
                         type="button"
                         className={cn(
                           // Rectangular candle, not a pill: a rounded cap on a
                           // short block reads as a blob and hides where the log
                           // actually starts and ends on the hour axis.
-                          "absolute inset-y-0 rounded-[2px] transition-[filter]",
+                          "absolute rounded-[2px] transition-[filter]",
                           block.segment.status === "running" && "animate-pulse",
                           onSegmentClick && "cursor-pointer hover:brightness-110",
                         )}
                         style={{
                           left: `${pct(block.from)}%`,
                           width: `${Math.max(0.6, pct(block.to) - pct(block.from))}%`,
+                          top: `${block.lane * laneHeight}%`,
+                          height: `${laneHeight}%`,
+                          paddingBottom: lanes > 1 ? 1 : 0,
                           backgroundColor: block.segment.color,
+                          backgroundClip: "content-box",
                           opacity: block.segment.status === "running" ? 0.85 : 1,
                         }}
                         onMouseEnter={(event) =>
@@ -510,7 +478,7 @@ export function SegmentedBarChart({
                       />
                     ) : (
                       <div
-                        key={`${day.key}-gap-${block.from}`}
+                        key={`${day.key}-gap-${block.from}-${block.to}`}
                         tabIndex={0}
                         role="note"
                         title={`No log found · ${formatClockHour(block.from, timeFormat)} – ${formatClockHour(block.to, timeFormat)}`}

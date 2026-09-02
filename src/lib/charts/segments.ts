@@ -27,6 +27,20 @@ export type WorkLogStatus = "completed" | "running" | "paused" | "pending" | "fa
 /** Whether a work log is tied to a project. */
 export type AssignmentState = "assigned" | "unassigned";
 
+/**
+ * One uninterrupted stretch of work inside a log.
+ *
+ * A log that was paused and resumed is not one continuous block on the clock:
+ * it is the runs between its pauses, and the gaps belong to whatever else was
+ * happening (typically the parallel task that was started while it was paused).
+ * `endAt` is `null` only for the still-open run of a live timer.
+ */
+export interface SegmentRun {
+  startAt: string;
+  endAt: string | null;
+  durationSec: number;
+}
+
 /** A single work-log segment within a stacked day column. */
 export interface WorkLogSegment {
   /** Unique within the chart. Suffixed with the day for entries split at midnight. */
@@ -52,6 +66,13 @@ export interface WorkLogSegment {
   continuedFromPreviousDay: boolean;
   /** The entry runs past the end of this day. */
   continuesNextDay: boolean;
+  /**
+   * The worked stretches of this segment, clipped to its day. `buildSegmentedDays`
+   * always fills it — a log that was never paused gets one run covering the whole
+   * segment. Optional only for hand-built days (the deprecated `DailyBarChart`
+   * shim), which consumers fall back to `startAt`/`durationSec` for.
+   */
+  runs?: SegmentRun[];
 }
 
 /**
@@ -104,6 +125,12 @@ export interface SegmentSourceEntry {
   tags: string[];
   /** Explicit status override. When omitted, status is derived from the entry. */
   status?: WorkLogStatus;
+  /**
+   * Recorded pause-separated work runs, as written by `buildEntryFromTimer`.
+   * When absent, the entry is treated as one continuous run. A `null` `endAt`
+   * marks the open run of a live timer.
+   */
+  segments?: Array<{ startAt: string; endAt?: string | null }> | null;
 }
 
 export interface ProjectLookup {
@@ -169,6 +196,65 @@ export function deriveStatus(entry: SegmentSourceEntry): WorkLogStatus {
   return (entry.durationSec ?? 0) > 0 ? "completed" : "pending";
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function parseMs(value?: string | null): number | null {
+  if (!value) return null;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/**
+ * The worked runs of an entry, clipped to the local day a slice belongs to.
+ *
+ * Clipping is to the *day*, not to the slice's own start/end: a slice's end is
+ * derived from the entry's recorded duration, which for a paused-and-resumed
+ * log falls short of where its later runs actually sit on the clock. Clipping to
+ * the slice would drop exactly the runs this exists to draw.
+ *
+ * Falls back to a single run covering the slice when the entry recorded none —
+ * every entry written before pause runs were stored, and every manual entry.
+ */
+function buildRuns(entry: SegmentSourceEntry, slice: EntryDaySlice): SegmentRun[] {
+  const fallback: SegmentRun[] = [
+    { startAt: slice.startAt, endAt: slice.endAt, durationSec: slice.durationSec },
+  ];
+
+  const recorded = entry.segments ?? [];
+  if (recorded.length === 0) {
+    return fallback;
+  }
+
+  const dayStartMs = slice.dayStart.getTime();
+  const dayEndMs = dayStartMs + DAY_MS;
+  const runs: SegmentRun[] = [];
+
+  for (const run of recorded) {
+    const startMs = parseMs(run.startAt);
+    if (startMs === null) {
+      continue;
+    }
+    const rawEndMs = parseMs(run.endAt);
+    const openEnded = rawEndMs === null;
+    const endMs = rawEndMs ?? dayEndMs;
+    if (endMs <= dayStartMs || startMs >= dayEndMs) {
+      continue;
+    }
+
+    const clippedStart = Math.max(startMs, dayStartMs);
+    const clippedEnd = Math.min(endMs, dayEndMs);
+    runs.push({
+      startAt: new Date(clippedStart).toISOString(),
+      // An open run stays open only while it is still inside this day; once it
+      // has crossed midnight, this day's share of it really did end at midnight.
+      endAt: openEnded && clippedEnd >= dayEndMs ? null : new Date(clippedEnd).toISOString(),
+      durationSec: Math.max(0, Math.round((clippedEnd - clippedStart) / 1000)),
+    });
+  }
+
+  return runs.length > 0 ? runs.sort((a, b) => a.startAt.localeCompare(b.startAt)) : fallback;
+}
+
 function toSegment(
   entry: SegmentSourceEntry,
   projectMap: ProjectLookup,
@@ -213,6 +299,7 @@ function toSegment(
     isPartial,
     continuedFromPreviousDay: !slice.isFirst,
     continuesNextDay: !slice.isLast,
+    runs: buildRuns(entry, slice),
   };
 }
 

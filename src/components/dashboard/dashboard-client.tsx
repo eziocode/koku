@@ -107,11 +107,20 @@ export function DashboardClient() {
         notes: timer.notes ?? null,
         projectId: timer.projectId ?? null,
         categoryId: timer.categoryId ?? null,
-        startAt: timer.startTime,
+        // The original start, not the resume-shifted `startTime`: the shifted one
+        // makes a timer that was paused for an hour claim it started an hour late.
+        // Where it actually ran is carried by the runs below.
+        startAt: timer.originalStartTime,
         endAt: null,
         durationSec: getActiveTimerElapsedSec(timer),
         tags: timer.tags,
         status: timer.pausedAt ? ("paused" as const) : ("running" as const),
+        // Runs already closed by a pause, plus the open one when it is running,
+        // so a live timer is drawn where it ran rather than as one solid bar
+        // over the stretch a parallel task owns.
+        segments: timer.pausedAt
+          ? timer.segments
+          : [...timer.segments, { startAt: timer.startTime, endAt: null }],
       })),
     [timers],
   );

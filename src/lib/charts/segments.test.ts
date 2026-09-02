@@ -494,3 +494,67 @@ test("work logged on a holiday still counts — the day is only labelled", () =>
   assert.equal(days[0].totalSeconds, 2 * 3600);
   assert.equal(days[0].segments.length, 1);
 });
+
+test("a paused-and-resumed log carries its worked runs, not one solid block", () => {
+  const days = buildSegmentedDays({
+    entries: [
+      entry({
+        id: "a",
+        startAt: "2024-06-03T09:00:00.000Z",
+        endAt: "2024-06-03T12:00:00.000Z",
+        durationSec: 7200,
+        segments: [
+          { startAt: "2024-06-03T09:00:00.000Z", endAt: "2024-06-03T10:00:00.000Z" },
+          { startAt: "2024-06-03T11:00:00.000Z", endAt: "2024-06-03T12:00:00.000Z" },
+        ],
+      }),
+    ],
+    projectMap,
+  });
+
+  const runs = days[0].segments[0].runs ?? [];
+  assert.equal(runs.length, 2);
+  assert.equal(runs[0].durationSec, 3600);
+  assert.equal(runs[1].startAt, "2024-06-03T11:00:00.000Z");
+});
+
+test("a log without recorded runs falls back to a single run covering its slice", () => {
+  const days = buildSegmentedDays({
+    entries: [entry({ id: "a", startAt: "2024-06-03T09:00:00.000Z", durationSec: 3600 })],
+    projectMap,
+  });
+
+  const runs = days[0].segments[0].runs ?? [];
+  assert.equal(runs.length, 1);
+  assert.equal(runs[0].durationSec, 3600);
+});
+
+test("runs are clipped to the day they are drawn on", () => {
+  // Local-time literals (no `Z`): day keys are local, so a UTC literal would
+  // move the expected day with the machine's timezone.
+  const days = buildSegmentedDays({
+    entries: [
+      entry({
+        id: "a",
+        startAt: "2024-06-03T20:00:00",
+        endAt: "2024-06-04T04:00:00",
+        durationSec: 7200,
+        segments: [
+          { startAt: "2024-06-03T20:00:00", endAt: "2024-06-03T21:00:00" },
+          { startAt: "2024-06-04T03:00:00", endAt: "2024-06-04T04:00:00" },
+        ],
+      }),
+    ],
+    projectMap,
+  });
+
+  const byKey = new Map(days.map((day) => [day.key, day]));
+  assert.deepEqual(
+    (byKey.get("2024-06-03")?.segments[0].runs ?? []).map((run) => run.durationSec),
+    [3600],
+  );
+  assert.deepEqual(
+    (byKey.get("2024-06-04")?.segments[0].runs ?? []).map((run) => run.durationSec),
+    [3600],
+  );
+});

@@ -29,6 +29,20 @@ segments** — one segment per work log. Segment height is proportional to that
 log's duration. Every log for a day is represented (not just the first), each in
 a distinct colour, and hovering the column surfaces details for **all** of them.
 
+### Runs, pauses, and parallel tasks
+
+A log is drawn as its worked **runs** (`WorkLogSegment.runs`), not as one bar
+stretched from its start across its duration. A log that was paused while a
+parallel task ran occupies only the stretches it was actually running, and the
+parallel task fills the stretch between them — drawing both from their own starts
+put them on top of each other and hid the second. `buildSegmentedDays` fills
+`runs` from the entry's recorded `segments` (written by `buildEntryFromTimer` on
+every pause), clipped to the day; entries with none get a single run.
+
+Runs that still overlap — manual entries, imported rows — are packed into lanes
+by `buildDayBlocks` (`lib/charts/day-blocks.ts`) so each stays visible, and a
+"no log found" gap is only drawn where *no* run covers the time.
+
 ### Status & assignment
 
 Each segment carries a derived **status** and **assignment** so the graph and the

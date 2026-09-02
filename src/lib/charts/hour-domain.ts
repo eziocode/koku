@@ -9,11 +9,40 @@
 
 import type { NotificationPreferences } from "@/lib/notifications/settings";
 import { timeInputToMinutes } from "@/lib/notifications/quiet-hours";
-import type { SegmentedDay } from "@/lib/charts/segments";
+import type { SegmentedDay, SegmentRun, WorkLogSegment } from "@/lib/charts/segments";
 
 export function hourOfDay(iso: string): number {
   const date = new Date(iso);
   return date.getHours() + date.getMinutes() / 60 + date.getSeconds() / 3600;
+}
+
+/**
+ * Hour-of-day span a single work run occupies.
+ *
+ * The end comes from the run's own wall-clock end, not from its duration added
+ * to its start: a run drawn duration-wide from its start lands in the wrong
+ * place for anything whose recorded seconds and elapsed span differ. `endAt` is
+ * null only for a live run, which is drawn duration-wide because that is all it
+ * has. A run ending at midnight is reported as hour 24, not hour 0.
+ */
+export function runHourSpan(run: SegmentRun): { from: number; to: number } {
+  const from = hourOfDay(run.startAt);
+  const startMs = Date.parse(run.startAt);
+  const endMs = run.endAt ? Date.parse(run.endAt) : startMs + run.durationSec * 1000;
+  const spanHours =
+    Number.isFinite(startMs) && Number.isFinite(endMs)
+      ? Math.max(0, (endMs - startMs) / 3_600_000)
+      : run.durationSec / 3600;
+
+  return { from, to: from + spanHours };
+}
+
+/** Every run of a segment, or a single duration-wide run when it recorded none. */
+export function segmentRunSpans(segment: WorkLogSegment): Array<{ from: number; to: number }> {
+  const runs = segment.runs?.length
+    ? segment.runs
+    : [{ startAt: segment.startAt, endAt: segment.endAt, durationSec: segment.durationSec }];
+  return runs.map(runHourSpan);
 }
 
 /** An hour-of-day window the chart's axis spans. Always a sub-range of `[0, 24]`. */
@@ -60,10 +89,13 @@ export function computeHourDomain(days: SegmentedDay[], fallback: HourDomain): H
 
   for (const day of days) {
     for (const segment of day.segments) {
-      const start = hourOfDay(segment.startAt);
-      const end = start + segment.hours;
-      if (start < min) min = start;
-      if (end > max) max = end;
+      for (const span of segmentRunSpans(segment)) {
+        if (span.from < min) min = span.from;
+        // A segment with no committed duration yet still needs a visible
+        // sliver of axis, which `hours` carries as its minimum height.
+        const end = Math.max(span.to, span.from + segment.hours);
+        if (end > max) max = end;
+      }
     }
   }
 
