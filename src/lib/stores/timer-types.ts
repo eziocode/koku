@@ -17,16 +17,24 @@ export type ActiveTimer = {
   notes?: string | null;
   /**
    * ISO. Shifted forward by the paused delta on resume, so elapsed excludes
-   * pauses. Internal to the elapsed-time math — never use this for display or
-   * for the entry eventually written to storage; use `originalStartTime`.
+   * pauses. Internal to the elapsed-time math — never use this for display, for
+   * recording a work run, or for the entry eventually written to storage; use
+   * `originalStartTime` for display and `runStartedAt` for the current run.
    */
   startTime: string;
   /** ISO. The real clock-in time, set once at creation and never mutated. */
   originalStartTime: string;
+  /**
+   * ISO. Real wall-clock start of the currently open run — unlike `startTime`
+   * this is never shifted, so a recorded run lands where the work actually
+   * happened. Optional: absent on timers persisted before this field existed
+   * or adopted from the cloud, where it falls back to `startTime`.
+   */
+  runStartedAt?: string | null;
   elapsedBeforePauseSec: number;
   pausedAt?: string | null;
   /** Closed active stretches so far (real wall-clock start/end pairs), most
-   *  recent last. The current (still-open) stretch is `startTime` onward. */
+   *  recent last. The current (still-open) stretch is `runStartedAt` onward. */
   segments: { startAt: string; endAt: string }[];
   pomodoroMode: boolean;
   /** Set on secondary ("pause") timers, pointing at the primary they hang off. */

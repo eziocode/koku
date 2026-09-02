@@ -47,6 +47,7 @@ export function createTimer(input: TimerStartInput, parentTimerId?: string | nul
     notes: input.notes ?? null,
     id: createTimerId(),
     originalStartTime: input.startTime,
+    runStartedAt: input.startTime,
     elapsedBeforePauseSec: 0,
     pausedAt: null,
     segments: [],
@@ -54,7 +55,17 @@ export function createTimer(input: TimerStartInput, parentTimerId?: string | nul
   };
 }
 
-/** Freezes elapsed at the moment of pause. */
+/**
+ * Freezes elapsed at the moment of pause.
+ *
+ * The closed run is recorded from `runStartedAt`, not `startTime`: after a
+ * previous resume, `startTime` has already been shifted forward and no longer
+ * marks where this run actually began — using it here is what made a resumed
+ * run's recorded start land earlier than it happened, overlapping whatever
+ * parallel task filled the pause. `runStartedAt` is left untouched (not
+ * nulled) so a timer paused again without an intervening resume — there is no
+ * such path today, but a future one — still has a value to fall back to.
+ */
 export function pauseTimerInPlace(timer: ActiveTimer, now = Date.now()): ActiveTimer {
   if (timer.pausedAt) {
     return timer;
@@ -64,7 +75,10 @@ export function pauseTimerInPlace(timer: ActiveTimer, now = Date.now()): ActiveT
     ...timer,
     elapsedBeforePauseSec: getActiveTimerElapsedSec(timer, now),
     pausedAt: new Date(now).toISOString(),
-    segments: [...timer.segments, { startAt: timer.startTime, endAt: new Date(now).toISOString() }],
+    segments: [
+      ...timer.segments,
+      { startAt: timer.runStartedAt ?? timer.startTime, endAt: new Date(now).toISOString() },
+    ],
   };
 }
 
@@ -87,6 +101,9 @@ export function resumePausedTimer(timer: ActiveTimer, now = Date.now()): ActiveT
   return {
     ...timer,
     startTime: new Date(startMs + pausedDelta * 1000).toISOString(),
+    // The new run starts now, for real — this is what `pauseTimerInPlace`
+    // records next, instead of the shifted `startTime` above.
+    runStartedAt: new Date(now).toISOString(),
     pausedAt: null,
   };
 }

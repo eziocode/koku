@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { buildEntryFromTimer } from "./stop-timer";
+import { pauseTimerInPlace, resumePausedTimer } from "@/lib/stores/timer-math";
 import type { ActiveTimer } from "@/lib/stores/timer-types";
 
 const START = Date.parse("2026-08-21T09:00:00.000Z");
@@ -74,4 +75,35 @@ test("appended quick notes survive into the entry", () => {
   const withNotes = timer({ notes: "[09:15] Found the leak\n[09:40] Patched it" });
 
   assert.equal(buildEntryFromTimer(withNotes, END).notes, "[09:15] Found the leak\n[09:40] Patched it");
+});
+
+test("the closed run is recorded from runStartedAt, so a resumed run's start is real, not shifted", () => {
+  // Run 1: 09:00-10:00 (real). Pause 5 min. Resume, then stop 30 min later.
+  let t = timer();
+  t = pauseTimerInPlace(t, START + 3_600_000);
+  const resumedAt = START + 3_600_000 + 300_000;
+  t = resumePausedTimer(t, resumedAt);
+  const stoppedAt = new Date(resumedAt + 1_800_000).toISOString();
+
+  const entry = buildEntryFromTimer(t, stoppedAt);
+
+  assert.equal(entry.segments?.length, 2);
+  assert.deepEqual(entry.segments?.[0], {
+    startAt: new Date(START).toISOString(),
+    endAt: new Date(START + 3_600_000).toISOString(),
+  });
+  // The resumed run's recorded start is the real resume instant, not the
+  // resume-shifted `startTime` — that shift is exactly what used to make this
+  // run overlap whatever ran during the 5-minute pause.
+  assert.equal(entry.segments?.[1].startAt, new Date(resumedAt).toISOString());
+  assert.equal(entry.segments?.[1].endAt, stoppedAt);
+  assert.equal(entry.durationSec, 3_600 + 1_800);
+});
+
+test("a legacy timer with no runStartedAt falls back to startTime for the closed run", () => {
+  const legacy = timer({ runStartedAt: undefined });
+  const entry = buildEntryFromTimer(legacy, END);
+
+  assert.equal(entry.segments, null); // single run, below the length>1 gate
+  assert.equal(entry.durationSec, 3_600);
 });

@@ -106,9 +106,11 @@ function layoutSegment(segment: WorkLogSegment, domain: HourDomain): SegmentLayo
  * joining them. Drawing both duration-wide from their starts put them on top of
  * each other, which is what hid the second one.
  *
- * Lanes are packed per *log*, not per run: a log holds one lane from its first
- * run to its last, so the parallel task started during its pause lands on a lane
- * of its own instead of threading through the gap and reading as one stripe.
+ * Lanes are packed by a log's *runs*, not its whole extent: a log's pause is
+ * not occupied time, so a parallel task that fits entirely inside it threads
+ * through on the same lane rather than being pushed to a lane of its own. Two
+ * logs only split lanes when their runs genuinely overlap — a hand-edited or
+ * imported entry, since koku never lets two timers run at once.
  *
  * A "no log found" gap is only drawn where neither a run nor a pause covers the
  * time. The empty stretch before the first log and after the last is left bare
@@ -120,20 +122,25 @@ export function buildDayBlocks(day: SegmentedDay, domain: HourDomain): DayTimeli
     .filter((layout): layout is SegmentLayout => layout !== null)
     .sort((a, b) => a.from - b.from || a.to - b.to);
 
-  // Greedy lane packing over whole logs: a log takes the first lane whose last
-  // log has ended.
-  const laneEnds: number[] = [];
+  const overlaps = (a: { from: number; to: number }, b: { from: number; to: number }) =>
+    a.from < b.to - EPS_HOURS && b.from < a.to - EPS_HOURS;
+
+  // Greedy lane packing over runs, not whole logs: a log takes the first lane
+  // none of whose already-placed runs overlap any of this log's runs — its own
+  // pause, empty of runs, never blocks that lane.
+  const laneRuns: Array<Array<{ from: number; to: number }>> = [];
   const work: WorkBlock[] = [];
   const pauses: PauseBlock[] = [];
 
   for (const layout of layouts) {
-    let lane = laneEnds.findIndex((end) => end <= layout.from + EPS_HOURS);
+    let lane = laneRuns.findIndex((taken) =>
+      layout.runs.every((run) => !taken.some((placed) => overlaps(run, placed))),
+    );
     if (lane === -1) {
-      lane = laneEnds.length;
-      laneEnds.push(layout.to);
-    } else {
-      laneEnds[lane] = layout.to;
+      lane = laneRuns.length;
+      laneRuns.push([]);
     }
+    laneRuns[lane].push(...layout.runs);
 
     layout.runs.forEach((run, index) => {
       work.push({
@@ -164,5 +171,5 @@ export function buildDayBlocks(day: SegmentedDay, domain: HourDomain): DayTimeli
   }
 
   // Gaps first, then pauses, so the work bars paint over both.
-  return { blocks: [...gaps, ...pauses, ...work], lanes: Math.max(1, laneEnds.length) };
+  return { blocks: [...gaps, ...pauses, ...work], lanes: Math.max(1, laneRuns.length) };
 }

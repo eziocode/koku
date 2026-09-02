@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 
 import { kokuDb, type TimeEntry } from "@/lib/storage/db";
-import { repairTimeEntryTimestamps } from "./repair-time-entries";
+import { repairShiftedRunStarts, repairTimeEntryTimestamps } from "./repair-time-entries";
 
 beforeEach(async () => {
   await kokuDb.timeEntries.clear();
@@ -82,4 +82,52 @@ test("a null endAt (still-running entry) is left as null, not misread as corrupt
 
   const fixed = await kokuDb.timeEntries.get("entry-1");
   assert.equal(fixed?.endAt, null);
+});
+
+test("repairShiftedRunStarts rewrites an entry whose resumed run was recorded shifted", async () => {
+  await kokuDb.timeEntries.add(entry({
+    durationSec: 7_200,
+    segments: [
+      { startAt: "2026-09-01T09:00:00.000Z", endAt: "2026-09-01T10:00:00.000Z" },
+      { startAt: "2026-09-01T10:00:00.000Z", endAt: "2026-09-01T12:00:00.000Z" },
+    ],
+  }));
+
+  const fixedCount = await repairShiftedRunStarts();
+  assert.equal(fixedCount, 1);
+
+  const fixed = await kokuDb.timeEntries.get("entry-1");
+  assert.deepEqual(fixed?.segments, [
+    { startAt: "2026-09-01T09:00:00.000Z", endAt: "2026-09-01T10:00:00.000Z" },
+    { startAt: "2026-09-01T11:00:00.000Z", endAt: "2026-09-01T12:00:00.000Z" },
+  ]);
+});
+
+test("repairShiftedRunStarts leaves clean and single-run entries untouched", async () => {
+  await kokuDb.timeEntries.bulkAdd([
+    entry({
+      id: "clean",
+      durationSec: 7_200,
+      segments: [
+        { startAt: "2026-09-01T09:00:00.000Z", endAt: "2026-09-01T10:00:00.000Z" },
+        { startAt: "2026-09-01T11:00:00.000Z", endAt: "2026-09-01T12:00:00.000Z" },
+      ],
+    }),
+    entry({ id: "no-segments", segments: null }),
+  ]);
+
+  assert.equal(await repairShiftedRunStarts(), 0);
+});
+
+test("repairShiftedRunStarts is a no-op the second time it runs", async () => {
+  await kokuDb.timeEntries.add(entry({
+    durationSec: 7_200,
+    segments: [
+      { startAt: "2026-09-01T09:00:00.000Z", endAt: "2026-09-01T10:00:00.000Z" },
+      { startAt: "2026-09-01T10:00:00.000Z", endAt: "2026-09-01T12:00:00.000Z" },
+    ],
+  }));
+
+  assert.equal(await repairShiftedRunStarts(), 1);
+  assert.equal(await repairShiftedRunStarts(), 0);
 });

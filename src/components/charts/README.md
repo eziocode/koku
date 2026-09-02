@@ -39,11 +39,12 @@ both from their own starts put them on top of each other and hid the second.
 `buildEntryFromTimer` on every pause), clipped to the day; entries with none get a
 single run.
 
-`buildDayBlocks` (`lib/charts/day-blocks.ts`) packs lanes **per log, not per
-run**: a log holds one lane from its first run to its last, so the parallel task
-started during its pause lands on a lane of its own instead of threading through
-the gap and reading as one continuous stripe. Logs that genuinely overlap —
-manual entries, imported rows — stack the same way.
+`buildDayBlocks` (`lib/charts/day-blocks.ts`) packs lanes **by a log's runs, not
+its whole extent**: a log's pause is not occupied time, so a parallel task that
+fits entirely inside the pause threads through on the same lane instead of being
+pushed to a lane of its own. Two logs only split lanes when their runs genuinely
+overlap — a hand-edited or imported entry, since koku never lets two timers run
+at once.
 
 The pause between two runs of one log is emitted as a `pause` block and drawn as
 a thin connector in the log's own colour, so the log reads as one thing spanning

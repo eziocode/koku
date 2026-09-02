@@ -54,6 +54,9 @@ export function normalizeStoredTimer(value: unknown): ActiveTimer | null {
     // mid-pause-shift at upgrade time keeps its (now slightly late) start
     // rather than losing the running timer entirely.
     originalStartTime: typeof value.originalStartTime === "string" ? value.originalStartTime : value.startTime,
+    // Absent for timers persisted before this field existed; falls back to
+    // `startTime` wherever it's read, same tradeoff as `originalStartTime` above.
+    runStartedAt: asNullableString(value.runStartedAt),
     elapsedBeforePauseSec:
       typeof value.elapsedBeforePauseSec === "number" ? value.elapsedBeforePauseSec : 0,
     pausedAt: asNullableString(value.pausedAt),

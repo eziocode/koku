@@ -42,7 +42,7 @@ function day(segments: WorkLogSegment[]): SegmentedDay {
   };
 }
 
-test("a paused log keeps its lane, the parallel task takes its own", () => {
+test("a parallel task threads through the paused log's gap in the same lane", () => {
   const timeline = buildDayBlocks(
     day([
       segment({
@@ -68,18 +68,17 @@ test("a paused log keeps its lane, the parallel task takes its own", () => {
 
   const work = timeline.blocks.filter((block) => block.kind === "work");
   assert.equal(work.length, 3, "two runs of the primary plus the parallel task");
-  assert.equal(timeline.lanes, 2, "the primary spans the pause, so the parallel task moves down");
-
-  const primaryLanes = new Set(
-    work.filter((block) => block.segment.id === "primary").map((block) => block.lane),
+  assert.equal(timeline.lanes, 1, "the parallel task fits entirely inside the pause, no second lane needed");
+  assert.ok(
+    work.every((block) => block.lane === 0),
+    "primary's runs and the parallel task all share lane 0",
   );
-  assert.deepEqual([...primaryLanes], [0], "both runs of the primary share one lane");
   assert.ok(
     work.some(
       (block) =>
-        block.segment.id === "parallel" && block.lane === 1 && block.from === 10 && block.to === 11,
+        block.segment.id === "parallel" && block.lane === 0 && block.from === 10 && block.to === 11,
     ),
-    "the parallel task sits beside the pause, not inside the primary's line",
+    "the parallel task sits in the primary's pause",
   );
 
   const pauses = timeline.blocks.filter((block) => block.kind === "pause");
@@ -87,12 +86,47 @@ test("a paused log keeps its lane, the parallel task takes its own", () => {
   assert.deepEqual(
     { from: pauses[0].from, to: pauses[0].to, lane: pauses[0].lane },
     { from: 10, to: 11, lane: 0 },
+    "the connector still spans the pause; the parallel task's bar paints over it",
   );
   assert.equal(
     timeline.blocks.filter((block) => block.kind === "gap").length,
     0,
-    "the pause is accounted for, not an unlogged gap",
+    "the pause is filled work, not an unlogged gap",
   );
+});
+
+test("two parallel tasks filling two separate pauses still fit on one lane", () => {
+  const timeline = buildDayBlocks(
+    day([
+      segment({
+        id: "primary",
+        startAt: "2024-06-03T09:00:00",
+        endAt: "2024-06-03T14:00:00",
+        durationSec: 10_800,
+        hours: 3,
+        runs: [
+          { startAt: "2024-06-03T09:00:00", endAt: "2024-06-03T10:00:00", durationSec: 3600 },
+          { startAt: "2024-06-03T11:00:00", endAt: "2024-06-03T12:00:00", durationSec: 3600 },
+          { startAt: "2024-06-03T13:00:00", endAt: "2024-06-03T14:00:00", durationSec: 3600 },
+        ],
+      }),
+      segment({
+        id: "parallel-1",
+        startAt: "2024-06-03T10:00:00",
+        endAt: "2024-06-03T11:00:00",
+        runs: [{ startAt: "2024-06-03T10:00:00", endAt: "2024-06-03T11:00:00", durationSec: 3600 }],
+      }),
+      segment({
+        id: "parallel-2",
+        startAt: "2024-06-03T12:00:00",
+        endAt: "2024-06-03T13:00:00",
+        runs: [{ startAt: "2024-06-03T12:00:00", endAt: "2024-06-03T13:00:00", durationSec: 3600 }],
+      }),
+    ]),
+    FULL_DAY_DOMAIN,
+  );
+
+  assert.equal(timeline.lanes, 1);
 });
 
 test("an uncovered pause is a connector, never a gap", () => {

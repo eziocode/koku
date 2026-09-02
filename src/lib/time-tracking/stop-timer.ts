@@ -16,7 +16,7 @@ import { createTimeEntry, type CreateTimeEntryInput } from "@/lib/time-tracking/
 export function buildEntryFromTimer(timer: ActiveTimer, endedAt: string): CreateTimeEntryInput {
   const segments = timer.pausedAt
     ? timer.segments
-    : [...timer.segments, { startAt: timer.startTime, endAt: endedAt }];
+    : [...timer.segments, { startAt: timer.runStartedAt ?? timer.startTime, endAt: endedAt }];
 
   return {
     title: timer.title,

@@ -120,7 +120,7 @@ export function DashboardClient() {
         // over the stretch a parallel task owns.
         segments: timer.pausedAt
           ? timer.segments
-          : [...timer.segments, { startAt: timer.startTime, endAt: null }],
+          : [...timer.segments, { startAt: timer.runStartedAt ?? timer.startTime, endAt: null }],
       })),
     [timers],
   );

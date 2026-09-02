@@ -107,3 +107,52 @@ test("resuming a running timer is a no-op", () => {
   const running = timer();
   assert.equal(resumePausedTimer(running, START + 5_000), running);
 });
+
+test("pause records the closed run from runStartedAt, not the (possibly already-shifted) startTime", () => {
+  const shifted = timer({
+    startTime: new Date(START + 3600 * 1000).toISOString(), // already resumed once
+    runStartedAt: new Date(START + 3600 * 1000).toISOString(),
+  });
+  const paused = pauseTimerInPlace(shifted, START + 3600 * 1000 + 60_000);
+
+  assert.equal(paused.segments.length, 1);
+  assert.equal(paused.segments[0].startAt, new Date(START + 3600 * 1000).toISOString());
+  assert.equal(paused.segments[0].endAt, new Date(START + 3600 * 1000 + 60_000).toISOString());
+});
+
+test("a legacy timer with no runStartedAt falls back to startTime when paused", () => {
+  const legacy = timer({ runStartedAt: undefined });
+  const paused = pauseTimerInPlace(legacy, START + 120_000);
+
+  assert.equal(paused.segments[0].startAt, legacy.startTime);
+});
+
+test("resume stamps runStartedAt to the real resume instant, while startTime still shifts", () => {
+  const paused = pauseTimerInPlace(timer(), START + 120_000);
+  const resumedAt = START + 120_000 + 300_000;
+  const resumed = resumePausedTimer(paused, resumedAt);
+
+  assert.equal(resumed.runStartedAt, new Date(resumedAt).toISOString());
+  assert.notEqual(resumed.runStartedAt, resumed.startTime);
+});
+
+test("pause, resume, pause again yields two disjoint runs at the real wall-clock times", () => {
+  // Run 1: 09:00-09:02. Pause 5 min. Run 2 (real): 09:07-09:09.
+  let t = timer();
+  t = pauseTimerInPlace(t, START + 120_000);
+  t = resumePausedTimer(t, START + 120_000 + 300_000);
+  t = pauseTimerInPlace(t, START + 120_000 + 300_000 + 120_000);
+
+  assert.equal(t.segments.length, 2);
+  assert.deepEqual(t.segments[0], {
+    startAt: new Date(START).toISOString(),
+    endAt: new Date(START + 120_000).toISOString(),
+  });
+  assert.deepEqual(t.segments[1], {
+    startAt: new Date(START + 120_000 + 300_000).toISOString(),
+    endAt: new Date(START + 120_000 + 300_000 + 120_000).toISOString(),
+  });
+  // The two runs must not overlap — this is exactly what the old shifted
+  // recording violated.
+  assert.ok(Date.parse(t.segments[1].startAt) >= Date.parse(t.segments[0].endAt));
+});

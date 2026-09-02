@@ -44,6 +44,9 @@ function cloudTimer(value: LiveTimerRecord): ActiveTimer {
     // The wire record doesn't carry segments either — a cloud-adopted timer
     // starts its segment history fresh, same best-effort tradeoff as above.
     segments: [],
+    // Nor the real run start; falls back to `startAt` wherever it's read, which
+    // is exact for this timer's first run after adoption.
+    runStartedAt: null,
     pomodoroMode: value.pomodoroMode, parentTimerId: value.parentTimerId, revision: value.revision, updatedAt: value.updatedAt };
 }
 function cloudBreak(value: LiveBreakRecord): ActiveBreak {

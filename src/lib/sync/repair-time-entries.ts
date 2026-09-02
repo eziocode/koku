@@ -1,5 +1,6 @@
 import { fromCatalystDateTime, isRawCatalystDateTime } from "@/lib/db/catalyst-datetime";
 import { kokuDb } from "@/lib/storage/db";
+import { reconstructRunStarts } from "@/lib/time-tracking/run-repair";
 
 /**
  * One-time local repair for entries corrupted by a since-fixed sync bug:
@@ -30,6 +31,35 @@ export async function repairTimeEntryTimestamps(): Promise<number> {
       endAt: endAt ?? entry.endAt,
       createdAt: createdAt ?? entry.createdAt,
     }];
+  });
+
+  if (fixed.length > 0) {
+    await kokuDb.timeEntries.bulkPut(fixed);
+  }
+
+  return fixed.length;
+}
+
+/**
+ * One-time local repair for entries saved by a since-fixed timer bug: a run
+ * after the first was recorded from the resume-shifted `startTime` instead of
+ * the real resume instant, so it read as overlapping whatever ran during the
+ * pause it followed instead of sitting inside it. See `run-repair.ts` for the
+ * exact corruption signature and why it inverts cleanly.
+ *
+ * `segments` never reaches the cloud (absent from the sync wire format), so
+ * this only needs to fix rows already sitting in Dexie, and is per-device.
+ * Safe to run repeatedly: an entry whose runs already sum to its duration, or
+ * that has fewer than two runs, is left untouched.
+ */
+export async function repairShiftedRunStarts(): Promise<number> {
+  const entries = await kokuDb.timeEntries.toArray();
+  const fixed = entries.flatMap((entry) => {
+    const repaired = reconstructRunStarts(entry.segments ?? null, entry.durationSec ?? null);
+    if (!repaired) {
+      return [];
+    }
+    return [{ ...entry, segments: repaired }];
   });
 
   if (fixed.length > 0) {
