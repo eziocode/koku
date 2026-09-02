@@ -15,7 +15,7 @@ import { toast } from "@/components/ui/toast";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
 import { useCloneToTimer } from "@/components/time-tracker/use-clone-to-timer";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
-import { formatTime } from "@/lib/time-format";
+import { formatRunRanges } from "@/lib/charts/run-format";
 import { formatDuration } from "@/lib/utils";
 
 interface EntryRecord {
@@ -82,15 +82,8 @@ export function DailyGrid({ entries }: DailyGridProps) {
                   <p className="font-semibold text-foreground">{entry.title}</p>
                   <p className="text-sm text-muted-foreground">
                     {entry.segments && entry.segments.length > 1
-                      ? entry.segments
-                          .map(
-                            (segment) =>
-                              `${formatTime(segment.startAt, timeFormat)} - ${formatTime(segment.endAt, timeFormat)}`,
-                          )
-                          .join(", ")
-                      : `${formatTime(entry.startAt, timeFormat)}${
-                          entry.endAt ? ` - ${formatTime(entry.endAt, timeFormat)}` : " • Running"
-                        }`}
+                      ? formatRunRanges(entry.segments, timeFormat)
+                      : formatRunRanges([{ startAt: entry.startAt, endAt: entry.endAt }], timeFormat, "Running")}
                   </p>
                 </div>
                 {entry.project ? (

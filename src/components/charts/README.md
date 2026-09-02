@@ -33,15 +33,26 @@ a distinct colour, and hovering the column surfaces details for **all** of them.
 
 A log is drawn as its worked **runs** (`WorkLogSegment.runs`), not as one bar
 stretched from its start across its duration. A log that was paused while a
-parallel task ran occupies only the stretches it was actually running, and the
-parallel task fills the stretch between them — drawing both from their own starts
-put them on top of each other and hid the second. `buildSegmentedDays` fills
-`runs` from the entry's recorded `segments` (written by `buildEntryFromTimer` on
-every pause), clipped to the day; entries with none get a single run.
+parallel task ran occupies only the stretches it was actually running — drawing
+both from their own starts put them on top of each other and hid the second.
+`buildSegmentedDays` fills `runs` from the entry's recorded `segments` (written by
+`buildEntryFromTimer` on every pause), clipped to the day; entries with none get a
+single run.
 
-Runs that still overlap — manual entries, imported rows — are packed into lanes
-by `buildDayBlocks` (`lib/charts/day-blocks.ts`) so each stays visible, and a
-"no log found" gap is only drawn where *no* run covers the time.
+`buildDayBlocks` (`lib/charts/day-blocks.ts`) packs lanes **per log, not per
+run**: a log holds one lane from its first run to its last, so the parallel task
+started during its pause lands on a lane of its own instead of threading through
+the gap and reading as one continuous stripe. Logs that genuinely overlap —
+manual entries, imported rows — stack the same way.
+
+The pause between two runs of one log is emitted as a `pause` block and drawn as
+a thin connector in the log's own colour, so the log reads as one thing spanning
+its lane without claiming the pause as worked time. A hatched "no log found" gap
+is only drawn where *neither* a run nor a pause covers the time.
+
+Every surface that prints an entry's timing uses `formatRunRanges`
+(`lib/charts/run-format.ts`), so a paused log reads `11:00 → 11:30, 12:20 → 13:30`
+rather than an outer span that contradicts the worked-only duration beside it.
 
 ### Status & assignment
 

@@ -421,49 +421,32 @@ export function GraphCanvas({
     });
 
     // ── Node bloom ──────────────────────────────────────────────────────────
-    // Dark mode: a soft additive halo under each lit node, which is what
-    // separates the look from flat vector dots.
-    //
-    // Light mode: additive light on a pale ground only produces a dirty smudge,
-    // so each body instead gets a tight cast shadow offset down-right — the same
-    // "this is a solid object in space" cue, lit by the same upper-left sun the
-    // bodies themselves are shaded for. Stars keep a small coloured halo, since
-    // a star that casts a shadow is a contradiction.
-    context.save();
-    context.globalCompositeOperation = dark ? "lighter" : "source-over";
-    placed.forEach((item) => {
-      if (item.fade > 0.35) return;
-      const focused = item.id === hovered || item.id === draggedRef.current;
-      const isStar = (item.node.kind ?? "hub") === "tag";
-
-      if (!dark && !isStar) {
-        const spread = item.r * (focused ? 2.3 : 1.9);
-        const cx = item.sx + item.r * 0.28;
-        const cy = item.sy + item.r * 0.34;
-        const strength = (focused ? 0.2 : 0.14) * (1 - item.fade);
-        const shadow = context.createRadialGradient(cx, cy, item.r * 0.75, cx, cy, spread);
-        shadow.addColorStop(0, `rgba(30,41,59,${strength.toFixed(3)})`);
-        shadow.addColorStop(1, "rgba(30,41,59,0)");
-        context.fillStyle = shadow;
+    // Bodies are flat discs, so there is no bloom pass: a halo under every node
+    // (and its light-mode counterpart, a cast shadow) was the single biggest
+    // source of visual noise, and a graph of a hundred nodes read as fog. Only
+    // the hovered node gets a whisper of a halo, as a focus cue rather than
+    // decoration.
+    const focusedId = hovered ?? draggedRef.current;
+    if (focusedId) {
+      const item = placed.find((candidate) => candidate.id === focusedId);
+      if (item && item.fade <= 0.35) {
+        const spread = item.r * 2.1;
+        const glow = context.createRadialGradient(
+          item.sx,
+          item.sy,
+          item.r * 0.9,
+          item.sx,
+          item.sy,
+          spread,
+        );
+        glow.addColorStop(0, withAlpha(item.node.color, dark ? 0.2 : 0.12));
+        glow.addColorStop(1, withAlpha(item.node.color, 0));
+        context.fillStyle = glow;
         context.beginPath();
-        context.arc(cx, cy, spread, 0, Math.PI * 2);
+        context.arc(item.sx, item.sy, spread, 0, Math.PI * 2);
         context.fill();
-        return;
       }
-
-      // Paper takes a tighter, weaker halo: a wide one is a smudge, not a glow.
-      const spread = item.r * (dark ? (focused ? 3.6 : isStar ? 3.2 : 2.5) : focused ? 2.4 : 2);
-      const strength =
-        (dark ? 0.32 : 0.13) * (focused ? 1.6 : 1) * (isStar ? 1.45 : 1) * (1 - item.fade);
-      const glow = context.createRadialGradient(item.sx, item.sy, item.r * 0.6, item.sx, item.sy, spread);
-      glow.addColorStop(0, withAlpha(item.node.color, strength));
-      glow.addColorStop(1, withAlpha(item.node.color, 0));
-      context.fillStyle = glow;
-      context.beginPath();
-      context.arc(item.sx, item.sy, spread, 0, Math.PI * 2);
-      context.fill();
-    });
-    context.restore();
+    }
 
     // ── Nodes ───────────────────────────────────────────────────────────────
     // Largest first so small nodes land on top and stay clickable.
@@ -991,10 +974,15 @@ interface NodeStyle {
  * Paints one node as a celestial body. Kind picks the body; colour still comes
  * from the caller, so grouping survives the metaphor:
  *
- * - `hub` → planet: lit from the upper left, with a terminator shadow opposite.
- * - `group` → ringed planet, the ring drawn behind and in front of the disc.
- * - `tag` → star: a four-point sparkle with a bright core.
- * - `leaf` → moon: a small disc with a crescent bite taken out of it.
+ * Bodies are flat: a filled disc plus a hairline contour, no gradients, no
+ * terminator shadow, no glow. At the radii this graph actually draws, shading
+ * read as mud rather than as depth.
+ *
+ * - `hub` → planet: a flat disc.
+ * - `group` → the same disc threaded through a thin ring, drawn behind and in
+ *   front of it.
+ * - `tag` → star: a flat four-point spark.
+ * - `leaf` → moon: a smaller, quieter disc.
  */
 function drawNode(context: CanvasRenderingContext2D, item: Placed, style: NodeStyle) {
   const { dark, focused, ringMix, time } = style;
@@ -1006,7 +994,7 @@ function drawNode(context: CanvasRenderingContext2D, item: Placed, style: NodeSt
   context.globalAlpha = alpha;
 
   if (kind === "tag") {
-    drawStar(context, item, radius, time, dark);
+    drawStar(context, item, radius, dark);
   } else if (kind === "leaf") {
     drawMoon(context, item, radius, dark);
   } else {
@@ -1035,67 +1023,35 @@ function drawNode(context: CanvasRenderingContext2D, item: Placed, style: NodeSt
   context.restore();
 }
 
-/** Lit sphere: rim light on the sunward side, terminator shadow opposite. */
+/**
+ * Flat disc with a hairline edge.
+ *
+ * The gradient body and terminator shadow this replaces modelled a lit sphere,
+ * which at the radii the graph actually draws (often under 10px) resolved to a
+ * muddy blob rather than a planet. A flat fill keeps the node's colour exactly
+ * the colour the legend promised, and the contour is what separates it from its
+ * neighbours — both themes take the same path.
+ */
 function drawPlanet(
   context: CanvasRenderingContext2D,
   item: Placed,
   radius: number,
   dark: boolean,
 ) {
-  // The lit side is pushed less far toward white on a pale ground, where a
-  // near-white highlight would eat the silhouette instead of rounding it.
-  const light = lightenColor(item.node.color, dark ? 0.5 : 0.32);
-
-  const body = context.createRadialGradient(
-    item.sx - radius * 0.4,
-    item.sy - radius * 0.45,
-    radius * 0.08,
-    item.sx,
-    item.sy,
-    radius * 1.12,
-  );
-  body.addColorStop(0, light);
-  body.addColorStop(0.45, item.node.color);
-  body.addColorStop(1, dark ? withAlpha(item.node.color, 0.72) : darkenColor(item.node.color, 0.2));
-
   context.beginPath();
   context.arc(item.sx, item.sy, radius, 0, Math.PI * 2);
-  context.fillStyle = body;
+  // Nudged toward white in dark mode so a saturated colour still reads as a
+  // solid object against the near-black ground.
+  context.fillStyle = dark ? lightenColor(item.node.color, 0.08) : item.node.color;
   context.fill();
 
-  // Night side: a shadow anchored to the lower right of the disc. Lighter on
-  // paper, where a heavy terminator reads as a smudge rather than a shadow.
-  const shadow = context.createRadialGradient(
-    item.sx + radius * 0.55,
-    item.sy + radius * 0.6,
-    radius * 0.1,
-    item.sx + radius * 0.15,
-    item.sy + radius * 0.2,
-    radius * 1.35,
-  );
-  shadow.addColorStop(0, `rgba(4,7,14,${dark ? 0.46 : 0.24})`);
-  shadow.addColorStop(1, "rgba(4,7,14,0)");
-  context.beginPath();
-  context.arc(item.sx, item.sy, radius, 0, Math.PI * 2);
-  context.fillStyle = shadow;
-  context.fill();
-
-  if (dark) {
-    // Thin sunward rim keeps the silhouette crisp against the bloom.
-    context.beginPath();
-    context.arc(item.sx, item.sy, radius - 0.4, Math.PI * 0.85, Math.PI * 1.85);
-    context.lineWidth = Math.max(0.9, radius * 0.1);
-    context.strokeStyle = withAlpha(light, 0.85);
-    context.stroke();
-    return;
-  }
-
-  // On paper the body is closed with a full contour in a darker tone of its own
-  // colour — the pale ground gives no edge of its own for the disc to sit on.
+  // Hairline, floored so it never disappears on a small node.
   context.beginPath();
   context.arc(item.sx, item.sy, radius - 0.3, 0, Math.PI * 2);
-  context.lineWidth = Math.max(0.8, radius * 0.08);
-  context.strokeStyle = withAlpha(darkenColor(item.node.color, 0.42), 0.5);
+  context.lineWidth = Math.max(0.6, radius * 0.06);
+  context.strokeStyle = dark
+    ? withAlpha(lightenColor(item.node.color, 0.5), 0.7)
+    : withAlpha(darkenColor(item.node.color, 0.35), 0.45);
   context.stroke();
 }
 
@@ -1109,16 +1065,18 @@ function drawPlanetRing(
   dark: boolean,
 ) {
   const tilt = -0.42;
-  const ringRadius = radius * 1.95;
+  // Tighter and thinner than the body it belongs to: the ring is how a group
+  // node is told apart from a hub, not an ornament in its own right.
+  const ringRadius = radius * 1.7;
 
   context.save();
   context.translate(item.sx, item.sy);
   context.rotate(tilt);
-  context.lineWidth = Math.max(1, radius * 0.2);
+  context.lineWidth = Math.max(0.6, radius * 0.09);
   // A lightened ring vanishes on a pale ground, so paper gets a darkened one.
   context.strokeStyle = dark
-    ? withAlpha(lightenColor(item.node.color, 0.6), ringMix + 0.42)
-    : withAlpha(darkenColor(item.node.color, 0.3), 0.85);
+    ? withAlpha(lightenColor(item.node.color, 0.6), ringMix * 0.5 + 0.21)
+    : withAlpha(darkenColor(item.node.color, 0.3), 0.45);
   context.beginPath();
   // Back half sweeps above the planet, front half below — together they read as
   // one ring threaded through the disc.
@@ -1135,28 +1093,28 @@ function drawPlanetRing(
   context.restore();
 }
 
-/** Four-point sparkle with a hot core — the brightest thing on the canvas. */
+/**
+ * Flat four-point spark, no pulse and no gradient.
+ *
+ * A tag still needs a silhouette of its own so it is not mistaken for a small
+ * planet, so the shape stays; what goes is the animated twinkle and the soft
+ * spikes, which were the noisiest thing on the canvas at any real node count.
+ */
 function drawStar(
   context: CanvasRenderingContext2D,
   item: Placed,
   radius: number,
-  time: number,
   dark: boolean,
 ) {
-  const pulse = 0.88 + 0.12 * Math.sin(time * 0.0016 + item.sx);
-  const reach = radius * 2.1 * pulse;
-  const waist = radius * 0.34;
+  const reach = radius * 1.8;
+  const waist = radius * 0.3;
   // A star is defined by being brighter than its ground; on paper that inverts,
-  // so the sparkle is drawn in saturated ink with its core deepest.
-  const core = dark ? lightenColor(item.node.color, 0.72) : darkenColor(item.node.color, 0.18);
+  // so the spark is drawn in saturated ink instead.
+  const core = dark ? lightenColor(item.node.color, 0.4) : darkenColor(item.node.color, 0.18);
 
   context.save();
   context.translate(item.sx, item.sy);
-
-  const spikes = context.createLinearGradient(-reach, 0, reach, 0);
-  spikes.addColorStop(0, withAlpha(item.node.color, 0));
-  spikes.addColorStop(0.5, core);
-  spikes.addColorStop(1, withAlpha(item.node.color, 0));
+  context.fillStyle = core;
 
   // Two crossed lozenges: horizontal, then the same path rotated 90°.
   for (let pass = 0; pass < 2; pass += 1) {
@@ -1164,19 +1122,14 @@ function drawStar(
     context.moveTo(-reach, 0);
     context.quadraticCurveTo(0, -waist, reach, 0);
     context.quadraticCurveTo(0, waist, -reach, 0);
-    context.fillStyle = pass === 0 ? spikes : withAlpha(core, dark ? 0.75 : 0.6);
     context.fill();
     context.rotate(Math.PI / 2);
   }
 
-  context.beginPath();
-  context.arc(0, 0, radius * 0.62, 0, Math.PI * 2);
-  context.fillStyle = core;
-  context.fill();
   context.restore();
 }
 
-/** Small disc with a crescent bite — the many leaf nodes, kept quiet. */
+/** Small flat disc — the many leaf nodes, kept quiet. */
 function drawMoon(
   context: CanvasRenderingContext2D,
   item: Placed,
@@ -1190,23 +1143,12 @@ function drawMoon(
   context.fillStyle = withAlpha(lightenColor(item.node.color, dark ? 0.2 : 0.05), 0.95);
   context.fill();
 
-  // The bite is drawn as a shadow disc offset up-right, clipped to the body.
-  context.save();
   context.beginPath();
-  context.arc(item.sx, item.sy, body, 0, Math.PI * 2);
-  context.clip();
-  context.beginPath();
-  context.arc(item.sx + body * 0.62, item.sy - body * 0.5, body * 1.05, 0, Math.PI * 2);
-  context.fillStyle = dark ? "rgba(6,10,20,.62)" : "rgba(15,23,42,.34)";
-  context.fill();
-  context.restore();
-
-  context.beginPath();
-  context.arc(item.sx, item.sy, body, 0, Math.PI * 2);
-  context.lineWidth = Math.max(0.7, radius * 0.12);
+  context.arc(item.sx, item.sy, body - 0.3, 0, Math.PI * 2);
+  context.lineWidth = Math.max(0.6, radius * 0.08);
   context.strokeStyle = dark
     ? withAlpha(lightenColor(item.node.color, 0.5), 0.6)
-    : withAlpha(darkenColor(item.node.color, 0.32), 0.65);
+    : withAlpha(darkenColor(item.node.color, 0.32), 0.45);
   context.stroke();
 }
 

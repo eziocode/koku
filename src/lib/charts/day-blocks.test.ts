@@ -42,7 +42,7 @@ function day(segments: WorkLogSegment[]): SegmentedDay {
   };
 }
 
-test("a paused log's parallel task is drawn in the gap, both in one lane", () => {
+test("a paused log keeps its lane, the parallel task takes its own", () => {
   const timeline = buildDayBlocks(
     day([
       segment({
@@ -68,16 +68,56 @@ test("a paused log's parallel task is drawn in the gap, both in one lane", () =>
 
   const work = timeline.blocks.filter((block) => block.kind === "work");
   assert.equal(work.length, 3, "two runs of the primary plus the parallel task");
-  assert.equal(timeline.lanes, 1, "nothing overlaps, so one lane is enough");
+  assert.equal(timeline.lanes, 2, "the primary spans the pause, so the parallel task moves down");
+
+  const primaryLanes = new Set(
+    work.filter((block) => block.segment.id === "primary").map((block) => block.lane),
+  );
+  assert.deepEqual([...primaryLanes], [0], "both runs of the primary share one lane");
   assert.ok(
-    work.some((block) => block.segment.id === "parallel" && block.from === 10 && block.to === 11),
-    "the parallel task occupies the primary's pause, not a bar over it",
+    work.some(
+      (block) =>
+        block.segment.id === "parallel" && block.lane === 1 && block.from === 10 && block.to === 11,
+    ),
+    "the parallel task sits beside the pause, not inside the primary's line",
+  );
+
+  const pauses = timeline.blocks.filter((block) => block.kind === "pause");
+  assert.equal(pauses.length, 1, "one connector joins the primary's two runs");
+  assert.deepEqual(
+    { from: pauses[0].from, to: pauses[0].to, lane: pauses[0].lane },
+    { from: 10, to: 11, lane: 0 },
   );
   assert.equal(
     timeline.blocks.filter((block) => block.kind === "gap").length,
     0,
-    "the pause is filled work, not an unlogged gap",
+    "the pause is accounted for, not an unlogged gap",
   );
+});
+
+test("an uncovered pause is a connector, never a gap", () => {
+  const timeline = buildDayBlocks(
+    day([
+      segment({
+        id: "primary",
+        startAt: "2024-06-03T09:00:00",
+        endAt: "2024-06-03T12:00:00",
+        durationSec: 7200,
+        hours: 2,
+        runs: [
+          { startAt: "2024-06-03T09:00:00", endAt: "2024-06-03T10:00:00", durationSec: 3600 },
+          { startAt: "2024-06-03T11:00:00", endAt: "2024-06-03T12:00:00", durationSec: 3600 },
+        ],
+      }),
+    ]),
+    FULL_DAY_DOMAIN,
+  );
+
+  assert.equal(timeline.lanes, 1);
+  assert.equal(timeline.blocks.filter((block) => block.kind === "gap").length, 0);
+  const pauses = timeline.blocks.filter((block) => block.kind === "pause");
+  assert.equal(pauses.length, 1);
+  assert.deepEqual({ from: pauses[0].from, to: pauses[0].to }, { from: 10, to: 11 });
 });
 
 test("genuinely overlapping logs are packed into separate lanes", () => {

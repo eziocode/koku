@@ -5,22 +5,20 @@ import { createPortal } from "react-dom";
 
 import { AssignmentBadge, StatusBadge } from "@/components/charts/status-badge";
 import { Badge } from "@/components/ui/badge";
+import { formatRunRanges } from "@/lib/charts/run-format";
 import type { WorkLogSegment } from "@/lib/charts/segments";
 import type { TimeFormat } from "@/lib/settings/schema";
-import { formatTime as formatClockTime } from "@/lib/time-format";
 import { formatDuration } from "@/lib/utils";
 
-function formatTime(iso: string | null, timeFormat: TimeFormat): string {
-  if (!iso) return "—";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "—";
-  return formatClockTime(date, timeFormat);
-}
-
-function formatRange(startAt: string, endAt: string | null, timeFormat: TimeFormat): string {
-  const start = formatTime(startAt, timeFormat);
-  if (!endAt) return `${start} → now`;
-  return `${start} → ${formatTime(endAt, timeFormat)}`;
+/**
+ * A log's timing, as the stretches it actually ran. A paused log reads
+ * `11:00 → 11:30, 12:20 → 13:30` rather than one span that disagrees with the
+ * worked duration printed beside it. Falls back to the segment's own start and
+ * end for entries recorded before runs were stored.
+ */
+function formatSegmentTiming(segment: WorkLogSegment, timeFormat: TimeFormat): string {
+  const runs = segment.runs?.length ? segment.runs : [{ startAt: segment.startAt, endAt: segment.endAt }];
+  return formatRunRanges(runs, timeFormat);
 }
 
 interface DayTooltipCardProps {
@@ -63,6 +61,7 @@ export function DayTooltipCard({ label, segments, activeSegmentId, timeFormat = 
       <ul className="max-h-64 space-y-2 overflow-y-auto p-2.5">
         {segments.map((segment) => {
           const active = segment.id === activeSegmentId;
+          const runCount = segment.runs?.length ?? 1;
           return (
             <li
               key={segment.id}
@@ -97,10 +96,16 @@ export function DayTooltipCard({ label, segments, activeSegmentId, timeFormat = 
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
                 <StatusBadge status={segment.status} />
                 <AssignmentBadge assignment={segment.assignment} />
-                <span className="text-[11px] tabular-nums text-muted-foreground">
-                  {formatRange(segment.startAt, segment.endAt, timeFormat)}
-                </span>
+                {runCount > 1 ? (
+                  <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+                    {runCount} runs
+                  </Badge>
+                ) : null}
               </div>
+              {/* Own line: a paused log's ranges run past the width a badge row leaves. */}
+              <p className="mt-1.5 text-[11px] tabular-nums text-muted-foreground">
+                {formatSegmentTiming(segment, timeFormat)}
+              </p>
 
               {segment.tags.length ? (
                 <div className="mt-1.5 flex flex-wrap gap-1">

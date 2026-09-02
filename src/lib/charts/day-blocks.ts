@@ -24,18 +24,77 @@ export interface WorkBlock {
   lane: number;
 }
 
+/**
+ * The stretch between two runs of the same log: time the log was paused for.
+ *
+ * Drawn as a thin connector rather than a bar, so the log reads as one thing
+ * spanning its whole extent without claiming the pause as worked time.
+ */
+export interface PauseBlock {
+  kind: "pause";
+  from: number;
+  to: number;
+  segment: WorkLogSegment;
+  lane: number;
+}
+
 export interface GapBlock {
   kind: "gap";
   from: number;
   to: number;
 }
 
-export type TimelineBlock = WorkBlock | GapBlock;
+export type TimelineBlock = WorkBlock | GapBlock | PauseBlock;
 
 export interface DayTimeline {
   blocks: TimelineBlock[];
-  /** How many lanes the day needs; 1 whenever nothing overlaps. */
+  /** How many lanes the day needs; 1 whenever no two logs overlap. */
   lanes: number;
+}
+
+/** A log's runs, already clamped to the domain, plus the extent they span. */
+interface SegmentLayout {
+  segment: WorkLogSegment;
+  runs: Array<{ from: number; to: number; runIndex: number }>;
+  from: number;
+  to: number;
+}
+
+/** Runs of one segment, clamped to `domain` and dropped when fully outside it. */
+function layoutSegment(segment: WorkLogSegment, domain: HourDomain): SegmentLayout | null {
+  const runs = segment.runs?.length
+    ? segment.runs
+    : [{ startAt: segment.startAt, endAt: segment.endAt, durationSec: segment.durationSec }];
+  const live = segment.status === "running" || segment.status === "paused";
+  const placed: SegmentLayout["runs"] = [];
+
+  runs.forEach((run, runIndex) => {
+    const span = runHourSpan(run);
+    const from = Math.max(domain.start, Math.min(domain.end, span.from));
+    // A live run with no committed duration still needs a visible sliver, which
+    // `hours` carries as the segment's minimum height.
+    const rawTo =
+      live && runIndex === runs.length - 1
+        ? Math.max(span.to, span.from + segment.hours)
+        : span.to;
+    const to = Math.max(from, Math.min(domain.end, rawTo));
+    if (to <= domain.start || from >= domain.end) {
+      return;
+    }
+    placed.push({ from, to, runIndex });
+  });
+
+  if (placed.length === 0) {
+    return null;
+  }
+
+  placed.sort((a, b) => a.from - b.from || a.to - b.to);
+  return {
+    segment,
+    runs: placed,
+    from: placed[0].from,
+    to: placed.reduce((max, run) => Math.max(max, run.to), placed[0].to),
+  };
 }
 
 /**
@@ -43,68 +102,67 @@ export interface DayTimeline {
  *
  * A log is drawn as its worked *runs*, not as one duration-wide bar from its
  * start: a log that was paused while a parallel task ran occupies only the
- * stretches it was actually running, and the parallel task fills the stretch
- * between them. Drawing both duration-wide from their starts put them on top of
+ * stretches it was actually running, and its pauses are drawn as connectors
+ * joining them. Drawing both duration-wide from their starts put them on top of
  * each other, which is what hid the second one.
  *
- * Runs that still overlap — manual entries, imported data — are packed into
- * lanes so every one of them stays visible instead of the last-drawn winning.
+ * Lanes are packed per *log*, not per run: a log holds one lane from its first
+ * run to its last, so the parallel task started during its pause lands on a lane
+ * of its own instead of threading through the gap and reading as one stripe.
  *
- * Gaps *between* logged runs become a hoverable "no log found" block; the empty
- * stretch before the first and after the last is left bare on purpose — there is
- * nothing to explain about time nobody claimed to be working.
+ * A "no log found" gap is only drawn where neither a run nor a pause covers the
+ * time. The empty stretch before the first log and after the last is left bare
+ * on purpose — there is nothing to explain about time nobody claimed.
  */
 export function buildDayBlocks(day: SegmentedDay, domain: HourDomain): DayTimeline {
+  const layouts = day.segments
+    .map((segment) => layoutSegment(segment, domain))
+    .filter((layout): layout is SegmentLayout => layout !== null)
+    .sort((a, b) => a.from - b.from || a.to - b.to);
+
+  // Greedy lane packing over whole logs: a log takes the first lane whose last
+  // log has ended.
+  const laneEnds: number[] = [];
   const work: WorkBlock[] = [];
+  const pauses: PauseBlock[] = [];
 
-  for (const segment of day.segments) {
-    const runs = segment.runs?.length
-      ? segment.runs
-      : [{ startAt: segment.startAt, endAt: segment.endAt, durationSec: segment.durationSec }];
-    const live = segment.status === "running" || segment.status === "paused";
+  for (const layout of layouts) {
+    let lane = laneEnds.findIndex((end) => end <= layout.from + EPS_HOURS);
+    if (lane === -1) {
+      lane = laneEnds.length;
+      laneEnds.push(layout.to);
+    } else {
+      laneEnds[lane] = layout.to;
+    }
 
-    runs.forEach((run, runIndex) => {
-      const span = runHourSpan(run);
-      const from = Math.max(domain.start, Math.min(domain.end, span.from));
-      // A live run with no committed duration still needs a visible sliver, which
-      // `hours` carries as the segment's minimum height.
-      const rawTo = live && runIndex === runs.length - 1
-        ? Math.max(span.to, span.from + segment.hours)
-        : span.to;
-      const to = Math.max(from, Math.min(domain.end, rawTo));
-      if (to <= domain.start || from >= domain.end) {
-        return;
+    layout.runs.forEach((run, index) => {
+      work.push({
+        kind: "work",
+        from: run.from,
+        to: run.to,
+        segment: layout.segment,
+        runIndex: run.runIndex,
+        lane,
+      });
+      const next = layout.runs[index + 1];
+      if (next && next.from > run.to + EPS_HOURS) {
+        pauses.push({ kind: "pause", from: run.to, to: next.from, segment: layout.segment, lane });
       }
-      work.push({ kind: "work", from, to, segment, runIndex, lane: 0 });
     });
   }
 
-  work.sort((a, b) => a.from - b.from || a.to - b.to);
-
-  // Greedy lane packing: a run takes the first lane whose last block has ended.
-  const laneEnds: number[] = [];
-  for (const block of work) {
-    let lane = laneEnds.findIndex((end) => end <= block.from + EPS_HOURS);
-    if (lane === -1) {
-      lane = laneEnds.length;
-      laneEnds.push(block.to);
-    } else {
-      laneEnds[lane] = block.to;
-    }
-    block.lane = lane;
-  }
-
-  // Gaps come from the union of every lane: time is only unlogged when *no*
-  // parallel task covered it.
+  // Gaps come from the union of every lane, pauses included: time is only
+  // unlogged when *nothing* — no parallel task, no paused log — covered it.
+  const covered = [...work, ...pauses].sort((a, b) => a.from - b.from || a.to - b.to);
   const gaps: GapBlock[] = [];
   let cursor = -Infinity;
-  for (const block of work) {
+  for (const block of covered) {
     if (cursor !== -Infinity && block.from > cursor + EPS_HOURS) {
       gaps.push({ kind: "gap", from: cursor, to: block.from });
     }
     cursor = Math.max(cursor, block.to);
   }
 
-  return { blocks: [...gaps, ...work], lanes: Math.max(1, laneEnds.length) };
+  // Gaps first, then pauses, so the work bars paint over both.
+  return { blocks: [...gaps, ...pauses, ...work], lanes: Math.max(1, laneEnds.length) };
 }
-

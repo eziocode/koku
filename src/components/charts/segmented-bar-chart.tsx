@@ -29,7 +29,7 @@ export { deriveFallbackHours, FULL_DAY_DOMAIN } from "@/lib/charts/hour-domain";
  * and the `space-y-1` gap between rows. Used to size the scroll frame to its
  * content instead of a fixed guess.
  */
-const ROW_HEIGHT_COMPACT = 18;
+const ROW_HEIGHT_COMPACT = 20;
 const ROW_HEIGHT_REGULAR = 36;
 const ROW_GAP = 4;
 
@@ -408,7 +408,9 @@ export function SegmentedBarChart({
                   className={cn(
                     "relative flex-1 rounded-sm",
                     markerOnly ? "bg-transparent" : "bg-muted/20",
-                    compact ? "h-3.5" : "h-6",
+                    // Tall enough that two packed lanes are still readable bars
+                    // rather than hairlines.
+                    compact ? "h-4" : "h-6",
                   )}
                 >
                   {/* Hour gridlines, kept at 3h regardless of label density. */}
@@ -436,7 +438,28 @@ export function SegmentedBarChart({
                     />
                   ) : null}
                   {blocks.map((block) =>
-                    block.kind === "work" ? (
+                    block.kind === "pause" ? (
+                      // A pause is not worked time, so it gets a hairline rather
+                      // than a bar — the log still reads as one thing spanning
+                      // its lane, with the parallel task visible below it.
+                      <div
+                        key={`${block.segment.id}#pause${block.from}`}
+                        aria-hidden
+                        title={`Paused · ${formatClockHour(block.from, timeFormat)} to ${formatClockHour(block.to, timeFormat)}`}
+                        className="pointer-events-none absolute flex items-center"
+                        style={{
+                          left: `${pct(block.from)}%`,
+                          width: `${Math.max(0, pct(block.to) - pct(block.from))}%`,
+                          top: `${block.lane * laneHeight}%`,
+                          height: `${laneHeight}%`,
+                        }}
+                      >
+                        <span
+                          className="h-px w-full rounded-full opacity-60"
+                          style={{ backgroundColor: block.segment.color }}
+                        />
+                      </div>
+                    ) : block.kind === "work" ? (
                       <button
                         key={`${block.segment.id}#${block.runIndex}`}
                         type="button"
@@ -525,6 +548,7 @@ export function SegmentedBarChart({
             <th scope="col">Project</th>
             <th scope="col">Status</th>
             <th scope="col">Assignment</th>
+            <th scope="col">Run</th>
             <th scope="col">Start</th>
             <th scope="col">End</th>
           </tr>
@@ -541,19 +565,28 @@ export function SegmentedBarChart({
                     <td>—</td>
                     <td>—</td>
                     <td>—</td>
+                    <td>—</td>
                   </tr>,
                 ]
-              : day.segments.map((segment) => (
-              <tr key={`${day.key}-${segment.id}`}>
-                <td>{day.label}</td>
-                <td>{segment.title}</td>
-                <td>{segment.projectName}</td>
-                <td>{segment.status}</td>
-                <td>{segment.assignment}</td>
-                <td>{segment.startAt}</td>
-                <td>{segment.endAt ?? "running"}</td>
-              </tr>
-            )),
+              : // One row per run, so a paused log reports the stretches it
+                // actually ran rather than a span that includes its pauses.
+                day.segments.flatMap((segment) => {
+                  const runs = segment.runs?.length
+                    ? segment.runs
+                    : [{ startAt: segment.startAt, endAt: segment.endAt }];
+                  return runs.map((run, index) => (
+                    <tr key={`${day.key}-${segment.id}-${index}`}>
+                      <td>{day.label}</td>
+                      <td>{segment.title}</td>
+                      <td>{segment.projectName}</td>
+                      <td>{segment.status}</td>
+                      <td>{segment.assignment}</td>
+                      <td>{runs.length > 1 ? `${index + 1} of ${runs.length}` : "1"}</td>
+                      <td>{run.startAt}</td>
+                      <td>{run.endAt ?? "running"}</td>
+                    </tr>
+                  ));
+                }),
           )}
         </tbody>
       </table>
