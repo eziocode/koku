@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
+import { BetaBadge } from "@/components/ui/beta-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -349,7 +350,10 @@ export function AiKeyManager() {
   return (
     <div className="space-y-8">
       <div>
-        <p className="text-sm uppercase tracking-[0.3em] text-primary">AI Keys</p>
+        <div className="flex items-center gap-3">
+          <p className="text-sm uppercase tracking-[0.3em] text-primary">AI Keys</p>
+          <BetaBadge />
+        </div>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">Provider credentials</h1>
         <p className="mt-2 max-w-2xl text-muted-foreground">
           Connect OpenAI, Codex, Anthropic, Gemini, Groq, or GitHub Models-backed workflows using an API key, a local

@@ -1,8 +1,17 @@
 import Link from "next/link";
 
+import { BetaBadge } from "@/components/ui/beta-badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
-const settingsSections = [
+interface SettingsSection {
+  title: string;
+  description: string;
+  href: string;
+  /** Renders a beta badge on the section card. */
+  beta?: boolean;
+}
+
+const settingsSections: SettingsSection[] = [
   {
     title: "Appearance",
     description: "Choose your theme (light, dark, system) and accent colour.",
@@ -37,6 +46,7 @@ const settingsSections = [
     title: "AI Keys",
     description: "Store provider credentials locally for AI workflows.",
     href: "/settings/ai-keys",
+    beta: true,
   },
   {
     title: "Storage",
@@ -65,7 +75,10 @@ export default function SettingsPage() {
           <Link key={section.href} href={section.href}>
             <Card className="h-full transition-transform hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5">
               <CardHeader>
-                <CardTitle>{section.title}</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  {section.title}
+                  {section.beta ? <BetaBadge /> : null}
+                </CardTitle>
                 <CardDescription>{section.description}</CardDescription>
               </CardHeader>
               <CardContent>

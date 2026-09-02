@@ -88,10 +88,14 @@
 
 html {
   scroll-behavior: smooth;
+  /* Set by <ViewportHeight />; `100dvh` covers the first paint. See that
+     component for why the height is measured in JS at all. */
+  height: var(--app-height, 100dvh);
 }
 
 body {
-  min-height: 100dvh;
+  height: var(--app-height, 100dvh);
+  min-height: var(--app-height, 100dvh);
   background:
     radial-gradient(circle at top left, color-mix(in srgb, var(--color-primary) 8%, transparent), transparent 26rem),
     var(--color-background);
@@ -116,6 +120,12 @@ body {
 }
 
 @layer utilities {
+  /* Height of the visible window, republished by <ViewportHeight /> so a
+     stale layout viewport cannot leave a dead strip below the shell. */
+  .app-viewport {
+    height: var(--app-height, 100dvh);
+  }
+
   /* Catalyst injects its own login form. Keep it inside auth dialog without
      creating a second scroll area or letting its default width overflow. */
   .catalyst-login-shell {

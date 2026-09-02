@@ -64,7 +64,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className="h-full antialiased"
+      className="antialiased"
     >
       <head>
         {/* Applies the persisted accent before first paint to avoid the
@@ -75,7 +75,7 @@ export default function RootLayout({
           {buildAccentScript()}
         </Script>
       </head>
-      <body className="h-full overflow-hidden bg-background text-foreground">
+      <body className="overflow-hidden bg-background text-foreground">
         <AppProviders>{children}</AppProviders>
         <ServiceWorkerRegistrar />
       </body>

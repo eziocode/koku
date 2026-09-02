@@ -8,6 +8,7 @@ import { MiniPlayerProvider } from "@/components/mini-player/mini-player-provide
 import { NotificationCenter } from "@/components/notifications/notification-center";
 import { WelcomeSetup } from "@/components/onboarding/welcome-setup";
 import { Sidebar } from "@/components/layout/sidebar";
+import { ViewportHeight } from "@/components/layout/viewport-height";
 import { Topbar } from "@/components/layout/topbar";
 import { cn } from "@/lib/utils";
 
@@ -19,7 +20,8 @@ export function AppShell({ children }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="flex h-full overflow-hidden bg-background text-foreground">
+    <div className="app-viewport flex overflow-hidden bg-background text-foreground">
+      <ViewportHeight />
       <ShortcutsProvider />
       {/* Receives notification actions (quick note / open log) from the service
           worker. Mounted here so it is route-independent, like the palette. */}

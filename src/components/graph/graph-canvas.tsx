@@ -974,15 +974,16 @@ interface NodeStyle {
  * Paints one node as a celestial body. Kind picks the body; colour still comes
  * from the caller, so grouping survives the metaphor:
  *
- * Bodies are flat: a filled disc plus a hairline contour, no gradients, no
- * terminator shadow, no glow. At the radii this graph actually draws, shading
- * read as mud rather than as depth.
+ * Bodies are modelled, not flat: one scene light from the upper left gives each
+ * a highlight, a terminator and a rim, and every body shades off the same axis
+ * so they read as objects in one space. Shading fades out under a few pixels of
+ * radius, where it would resolve to mud, leaving the old flat disc behind.
  *
- * - `hub` → planet: a flat disc.
- * - `group` → the same disc threaded through a thin ring, drawn behind and in
- *   front of it.
- * - `tag` → star: a flat four-point spark.
- * - `leaf` → moon: a smaller, quieter disc.
+ * - `hub` → planet: a lit sphere.
+ * - `group` → the same sphere threaded through a tilted ring, its back half
+ *   dimmed and drawn behind the body, its lit front half in front.
+ * - `tag` → star: a faceted four-point gem.
+ * - `leaf` → moon: a smaller sphere with shallower modelling.
  */
 function drawNode(context: CanvasRenderingContext2D, item: Placed, style: NodeStyle) {
   const { dark, focused, ringMix, time } = style;
@@ -1023,14 +1024,40 @@ function drawNode(context: CanvasRenderingContext2D, item: Placed, style: NodeSt
   context.restore();
 }
 
+/** Light comes from the upper left, so every body is lit from the same place. */
+const LIGHT_X = -0.42;
+const LIGHT_Y = -0.5;
+
 /**
- * Flat disc with a hairline edge.
+ * Shifts a colour along the light axis: positive lifts toward the highlight,
+ * negative sinks toward the terminator. One helper so every body shades from
+ * the same ramp and the palette colour stays recognisable at `0`.
+ */
+function shade(color: string, amount: number): string {
+  if (amount === 0) return color;
+  return amount > 0 ? lightenColor(color, amount) : darkenColor(color, -amount);
+}
+
+/**
+ * Below this screen radius shading resolves to mud rather than to volume, so
+ * tiny nodes stay flat and only pick the modelling back up as you zoom in.
+ */
+const SHADE_MIN_RADIUS = 3.4;
+
+/** How strongly a body is modelled — ramps in over the first few pixels. */
+function shadeStrength(radius: number): number {
+  return clamp((radius - SHADE_MIN_RADIUS) / 5, 0, 1);
+}
+
+/**
+ * Sphere: a lit body rather than a flat disc.
  *
- * The gradient body and terminator shadow this replaces modelled a lit sphere,
- * which at the radii the graph actually draws (often under 10px) resolved to a
- * muddy blob rather than a planet. A flat fill keeps the node's colour exactly
- * the colour the legend promised, and the contour is what separates it from its
- * neighbours — both themes take the same path.
+ * Three passes stack into the illusion — an offset radial gradient for the
+ * form (highlight, base colour at the palette's own value, terminator), a
+ * crescent of rim light on the shadow side so the silhouette stays crisp
+ * against the ground, and a small specular dot for the wet-marble read.
+ * Everything is scaled by `shadeStrength`, so a 3px node still renders as the
+ * flat, legible disc it needs to be.
  */
 function drawPlanet(
   context: CanvasRenderingContext2D,
@@ -1038,14 +1065,31 @@ function drawPlanet(
   radius: number,
   dark: boolean,
 ) {
+  const strength = shadeStrength(radius);
+  const base = dark ? lightenColor(item.node.color, 0.08) : item.node.color;
+
   context.beginPath();
   context.arc(item.sx, item.sy, radius, 0, Math.PI * 2);
-  // Nudged toward white in dark mode so a saturated colour still reads as a
-  // solid object against the near-black ground.
-  context.fillStyle = dark ? lightenColor(item.node.color, 0.08) : item.node.color;
-  context.fill();
 
-  // Hairline, floored so it never disappears on a small node.
+  if (strength <= 0) {
+    context.fillStyle = base;
+    context.fill();
+  } else {
+    // Highlight sits off-centre toward the light; the gradient's far edge
+    // reaches past the rim so the terminator lands on the silhouette itself.
+    const hx = item.sx + LIGHT_X * radius * 0.55;
+    const hy = item.sy + LIGHT_Y * radius * 0.55;
+    const body = context.createRadialGradient(hx, hy, radius * 0.05, item.sx, item.sy, radius * 1.12);
+    body.addColorStop(0, shade(base, 0.42 * strength));
+    body.addColorStop(0.42, shade(base, 0.1 * strength));
+    body.addColorStop(0.78, base);
+    body.addColorStop(1, shade(base, -(dark ? 0.42 : 0.3) * strength));
+    context.fillStyle = body;
+    context.fill();
+  }
+
+  // Rim light on the shadow side: the arc opposite the light source, drawn
+  // just inside the edge so it reads as a lit contour, not an outline.
   context.beginPath();
   context.arc(item.sx, item.sy, radius - 0.3, 0, Math.PI * 2);
   context.lineWidth = Math.max(0.6, radius * 0.06);
@@ -1053,9 +1097,41 @@ function drawPlanet(
     ? withAlpha(lightenColor(item.node.color, 0.5), 0.7)
     : withAlpha(darkenColor(item.node.color, 0.35), 0.45);
   context.stroke();
+
+  if (strength <= 0) return;
+
+  const rimAngle = Math.atan2(-LIGHT_Y, -LIGHT_X);
+  context.beginPath();
+  context.arc(item.sx, item.sy, radius - radius * 0.06, rimAngle - 1.05, rimAngle + 1.05);
+  context.lineWidth = Math.max(0.5, radius * 0.09);
+  context.strokeStyle = withAlpha(
+    dark ? lightenColor(item.node.color, 0.8) : lightenColor(item.node.color, 0.55),
+    (dark ? 0.5 : 0.34) * strength,
+  );
+  context.stroke();
+
+  // Specular: small, tight, and only once the body is big enough to hold it.
+  if (radius >= 5.5) {
+    const sx = item.sx + LIGHT_X * radius * 0.52;
+    const sy = item.sy + LIGHT_Y * radius * 0.52;
+    const spec = context.createRadialGradient(sx, sy, 0, sx, sy, radius * 0.34);
+    spec.addColorStop(0, `rgba(255,255,255,${(0.5 * strength).toFixed(3)})`);
+    spec.addColorStop(1, "rgba(255,255,255,0)");
+    context.fillStyle = spec;
+    context.beginPath();
+    context.arc(sx, sy, radius * 0.34, 0, Math.PI * 2);
+    context.fill();
+  }
 }
 
-/** Tilted ring around a planet, split so the disc sits inside it. */
+/**
+ * Tilted ring around a planet, split so the disc sits inside it.
+ *
+ * The back half is dimmed and the front half brightened toward the light, which
+ * is what sells the ring as passing behind the sphere rather than being drawn
+ * on top of it; the front half also takes the planet's shadow across its
+ * far-from-light side.
+ */
 function drawPlanetRing(
   context: CanvasRenderingContext2D,
   item: Placed,
@@ -1068,15 +1144,17 @@ function drawPlanetRing(
   // Tighter and thinner than the body it belongs to: the ring is how a group
   // node is told apart from a hub, not an ornament in its own right.
   const ringRadius = radius * 1.7;
+  const back = half === "back";
 
   context.save();
   context.translate(item.sx, item.sy);
   context.rotate(tilt);
-  context.lineWidth = Math.max(0.6, radius * 0.09);
+  context.lineWidth = Math.max(0.6, radius * (back ? 0.075 : 0.1));
   // A lightened ring vanishes on a pale ground, so paper gets a darkened one.
+  // The back arc runs dimmer than the front so the two halves read as depth.
   context.strokeStyle = dark
-    ? withAlpha(lightenColor(item.node.color, 0.6), ringMix * 0.5 + 0.21)
-    : withAlpha(darkenColor(item.node.color, 0.3), 0.45);
+    ? withAlpha(lightenColor(item.node.color, back ? 0.4 : 0.72), (ringMix * 0.5 + 0.21) * (back ? 0.6 : 1))
+    : withAlpha(darkenColor(item.node.color, back ? 0.12 : 0.38), back ? 0.28 : 0.5);
   context.beginPath();
   // Back half sweeps above the planet, front half below — together they read as
   // one ring threaded through the disc.
@@ -1086,19 +1164,22 @@ function drawPlanetRing(
     ringRadius,
     ringRadius * 0.3,
     0,
-    half === "back" ? Math.PI : 0,
-    half === "back" ? Math.PI * 2 : Math.PI,
+    back ? Math.PI : 0,
+    back ? Math.PI * 2 : Math.PI,
   );
   context.stroke();
   context.restore();
 }
 
 /**
- * Flat four-point spark, no pulse and no gradient.
+ * Tag body: a faceted four-point gem, not a flat spark.
  *
- * A tag still needs a silhouette of its own so it is not mistaken for a small
- * planet, so the shape stays; what goes is the animated twinkle and the soft
- * spikes, which were the noisiest thing on the canvas at any real node count.
+ * The old glyph was two crossed lozenges in one flat colour, which at small
+ * sizes read as a smudge and at large sizes as clip-art. This builds the same
+ * silhouette out of eight triangular facets — tip, waist, centre — and shades
+ * each by how much its own outward normal faces the scene light, so the shape
+ * has a visible crease down every arm and catches the same highlight as the
+ * spheres beside it.
  */
 function drawStar(
   context: CanvasRenderingContext2D,
@@ -1106,30 +1187,81 @@ function drawStar(
   radius: number,
   dark: boolean,
 ) {
-  const reach = radius * 1.8;
-  const waist = radius * 0.3;
-  // A star is defined by being brighter than its ground; on paper that inverts,
-  // so the spark is drawn in saturated ink instead.
-  const core = dark ? lightenColor(item.node.color, 0.4) : darkenColor(item.node.color, 0.18);
+  const reach = radius * 1.75;
+  const waist = radius * 0.52;
+  const strength = shadeStrength(radius);
+  const base = dark ? lightenColor(item.node.color, 0.22) : item.node.color;
 
   context.save();
   context.translate(item.sx, item.sy);
-  context.fillStyle = core;
 
-  // Two crossed lozenges: horizontal, then the same path rotated 90°.
-  for (let pass = 0; pass < 2; pass += 1) {
+  // Eight facets: each spans centre → one tip → the neighbouring waist point.
+  for (let facet = 0; facet < 8; facet += 1) {
+    const tipAngle = (Math.PI / 2) * Math.floor(facet / 2);
+    // Alternate which side of the arm the facet covers.
+    const waistAngle = tipAngle + (facet % 2 === 0 ? -Math.PI / 4 : Math.PI / 4);
+
+    const tx = Math.cos(tipAngle) * reach;
+    const ty = Math.sin(tipAngle) * reach;
+    const wx = Math.cos(waistAngle) * waist;
+    const wy = Math.sin(waistAngle) * waist;
+
+    // The facet tilts away from the arm's axis, so its normal is close to the
+    // bisector of tip and waist — good enough to give each face a distinct
+    // value without solving any actual geometry.
+    const nx = (Math.cos(tipAngle) + Math.cos(waistAngle) * 2) / 3;
+    const ny = (Math.sin(tipAngle) + Math.sin(waistAngle) * 2) / 3;
+    const length = Math.hypot(nx, ny) || 1;
+    const lit = (nx / length) * LIGHT_X + (ny / length) * LIGHT_Y;
+
     context.beginPath();
-    context.moveTo(-reach, 0);
-    context.quadraticCurveTo(0, -waist, reach, 0);
-    context.quadraticCurveTo(0, waist, -reach, 0);
+    context.moveTo(0, 0);
+    context.lineTo(wx, wy);
+    context.lineTo(tx, ty);
+    context.closePath();
+    context.fillStyle = shade(base, lit * (dark ? 0.5 : 0.34) * strength);
     context.fill();
-    context.rotate(Math.PI / 2);
+  }
+
+  // Hairline along the silhouette keeps the gem separated from the ground and
+  // from a moon of the same colour.
+  context.beginPath();
+  for (let point = 0; point < 8; point += 1) {
+    const angle = (Math.PI / 4) * point;
+    const distance = point % 2 === 0 ? reach : waist;
+    const px = Math.cos(angle) * distance;
+    const py = Math.sin(angle) * distance;
+    if (point === 0) context.moveTo(px, py);
+    else context.lineTo(px, py);
+  }
+  context.closePath();
+  context.lineWidth = Math.max(0.5, radius * 0.06);
+  context.strokeStyle = dark
+    ? withAlpha(lightenColor(item.node.color, 0.7), 0.6)
+    : withAlpha(darkenColor(item.node.color, 0.4), 0.45);
+  context.stroke();
+
+  // Core glint at the crossing point, where the eight facets meet.
+  if (strength > 0 && radius >= 4) {
+    const glint = context.createRadialGradient(0, 0, 0, 0, 0, waist * 1.1);
+    glint.addColorStop(0, `rgba(255,255,255,${((dark ? 0.72 : 0.5) * strength).toFixed(3)})`);
+    glint.addColorStop(1, "rgba(255,255,255,0)");
+    context.fillStyle = glint;
+    context.beginPath();
+    context.arc(0, 0, waist * 1.1, 0, Math.PI * 2);
+    context.fill();
   }
 
   context.restore();
 }
 
-/** Small flat disc — the many leaf nodes, kept quiet. */
+/**
+ * Moon: the same sphere model as a planet, dialled down.
+ *
+ * Leaves are the most numerous body on the canvas, so the shading is shallower
+ * and the specular is dropped entirely — enough volume to belong to the same
+ * scene, not enough to compete with the hubs.
+ */
 function drawMoon(
   context: CanvasRenderingContext2D,
   item: Placed,
@@ -1137,11 +1269,25 @@ function drawMoon(
   dark: boolean,
 ) {
   const body = radius * 0.85;
+  const strength = shadeStrength(body);
+  const base = withAlpha(lightenColor(item.node.color, dark ? 0.2 : 0.05), 0.95);
 
   context.beginPath();
   context.arc(item.sx, item.sy, body, 0, Math.PI * 2);
-  context.fillStyle = withAlpha(lightenColor(item.node.color, dark ? 0.2 : 0.05), 0.95);
-  context.fill();
+
+  if (strength <= 0) {
+    context.fillStyle = base;
+    context.fill();
+  } else {
+    const hx = item.sx + LIGHT_X * body * 0.5;
+    const hy = item.sy + LIGHT_Y * body * 0.5;
+    const fill = context.createRadialGradient(hx, hy, body * 0.05, item.sx, item.sy, body * 1.1);
+    fill.addColorStop(0, shade(base, 0.3 * strength));
+    fill.addColorStop(0.7, base);
+    fill.addColorStop(1, shade(base, -(dark ? 0.34 : 0.24) * strength));
+    context.fillStyle = fill;
+    context.fill();
+  }
 
   context.beginPath();
   context.arc(item.sx, item.sy, body - 0.3, 0, Math.PI * 2);

@@ -9,6 +9,7 @@ import { Logo } from "@/components/layout/logo";
 import { DailyQuote } from "@/components/layout/daily-quote";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { BetaBadge } from "@/components/ui/beta-badge";
 import { appNavigation } from "@/lib/navigation";
 
 interface SidebarProps {
@@ -59,7 +60,8 @@ export function Sidebar({ open, onNavigate }: SidebarProps) {
                 )}
               >
                 <Icon className="h-4 w-4" />
-                {item.title}
+                <span className="flex-1">{item.title}</span>
+                {item.beta ? <BetaBadge /> : null}
               </Link>
             );
           })}

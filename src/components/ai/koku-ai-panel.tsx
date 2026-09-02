@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 
 import { ChatMessageRow } from "@/components/ai/chat-message-row";
 import { Button } from "@/components/ui/button";
+import { BetaBadge } from "@/components/ui/beta-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -151,7 +152,10 @@ export function KokuAiPanel({ onClose }: { onClose: () => void }) {
   return (
     <Card className="flex h-[520px] w-[360px] flex-col shadow-xl">
       <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 py-3">
-        <CardTitle className="text-base">Koku AI</CardTitle>
+        <CardTitle className="flex items-center gap-2 text-base">
+          Koku AI
+          <BetaBadge />
+        </CardTitle>
         <div className="flex items-center gap-1">
           {verifiedConnections.length > 1 ? (
             <Select value={connection?.id ?? ""} onValueChange={setConnectionId}>
