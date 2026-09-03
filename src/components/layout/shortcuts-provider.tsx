@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { CommandPalette } from "@/components/layout/command-palette";
 import { ShortcutsDialog } from "@/components/layout/shortcuts-dialog";
+import { QuickTimerDialog } from "@/components/time-tracker/quick-timer-dialog";
 import { toast } from "@/components/ui/toast";
 import { useHotkeys, type ShortcutHandlers } from "@/lib/hooks/use-hotkeys";
 import { closeKokuNotifications } from "@/lib/notifications/client";
@@ -34,6 +35,7 @@ export function ShortcutsProvider() {
   const router = useRouter();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [quickTimerOpen, setQuickTimerOpen] = useState(false);
 
   const { timers, activeBreak, startTimer, stopTimer, startBreak } = useTimerStore();
   const { prefs, setDnd } = useNotificationPreferences();
@@ -116,7 +118,12 @@ export function ShortcutsProvider() {
 
   return (
     <>
-      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+      <CommandPalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        onRequestTimedTimer={() => setQuickTimerOpen(true)}
+      />
+      <QuickTimerDialog open={quickTimerOpen} onOpenChange={setQuickTimerOpen} />
       <ShortcutsDialog open={helpOpen} onOpenChange={setHelpOpen} />
     </>
   );

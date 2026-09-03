@@ -39,6 +39,18 @@ export type ActiveTimer = {
   pomodoroMode: boolean;
   /** Set on secondary ("pause") timers, pointing at the primary they hang off. */
   parentTimerId?: string | null;
+  /**
+   * Whole seconds the user meant to work for, or absent for open ended.
+   *
+   * Advisory only: elapsed time is still derived from the timestamps above and
+   * the timer never self-stops, so a due moment missed while the tab was frozen
+   * can never truncate real work. Local only, and deliberately not carried by
+   * `live-state-sync.ts` — a timer adopted from another device shows as open
+   * ended, the same tradeoff already documented there for `segments` and
+   * `runStartedAt`. Syncing it would need a `planned_duration_sec` column plus
+   * the three touch points in `api/live-sync/route.ts`.
+   */
+  plannedDurationSec?: number;
   /** Cloud live-state revision. Absent for timers created before cloud sync. */
   revision?: number;
   updatedAt?: string;
@@ -53,6 +65,8 @@ export type TimerStartInput = {
   notes?: string | null;
   startTime: string;
   pomodoroMode: boolean;
+  /** See `ActiveTimer.plannedDurationSec`. Omit for an open-ended timer. */
+  plannedDurationSec?: number;
 };
 
 /** The pre-multi-timer persisted shape, still handled by the migration. */

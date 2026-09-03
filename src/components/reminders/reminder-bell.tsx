@@ -8,12 +8,15 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ReminderFormDialog } from "@/components/reminders/reminder-form-dialog";
 import { useReminders } from "@/lib/storage/hooks/use-reminders";
+import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
+import { formatTime } from "@/lib/time-format";
 
 /**
  * Global "set a reminder" entry point, mounted in the topbar so it's reachable
  * from every page — mirrors `NotificationBell`'s popover-plus-list shape.
  */
 export function ReminderBell() {
+  const { value: timeFormat } = useTypedSetting("timeFormat");
   const { activeReminders, deleteReminder } = useReminders();
   const [formOpen, setFormOpen] = useState(false);
 
@@ -63,7 +66,7 @@ export function ReminderBell() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-foreground">{reminder.message}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      {format(new Date(reminder.triggerAt), "MMM d, h:mm a")}
+                      {`${format(new Date(reminder.triggerAt), "MMM d")}, ${formatTime(reminder.triggerAt, timeFormat)}`}
                       {reminder.repeat !== "none" ? ` · ${reminder.repeat}` : ""}
                     </p>
                   </div>

@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { createPortal } from "react-dom";
 import { format, isValid, parse } from "date-fns";
 import { CalendarIcon } from "lucide-react";
 
@@ -9,6 +8,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { TimeFormat } from "@/lib/settings/schema";
@@ -268,11 +268,28 @@ export function DateTimePicker({
     </>
   );
 
+  // On a short screen the anchored popover has nowhere to go, so the panel
+  // becomes a centered dialog instead. Deliberately a real Radix `Dialog` and
+  // not a hand-rolled portal: as a bare `<body>` child it sat outside the layer
+  // stack, so while a parent dialog held `pointer-events: none` on the body its
+  // own backdrop and Done button were unclickable and the fall-through click
+  // read as an outside click that dismissed the whole parent form. Being a
+  // layer also makes Escape ordering correct by construction, so it no longer
+  // needs a capture-phase listener that swallows the key.
   if (compact) {
     return (
       <>
         {renderTrigger(() => setOpen(true))}
-        {open ? <CompactPanel onClose={() => setOpen(false)}>{panel}</CompactPanel> : null}
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent
+            hideClose
+            aria-describedby={undefined}
+            className="flex max-h-[calc(100dvh-2rem)] w-[min(17.5rem,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden p-0"
+          >
+            <DialogTitle className="sr-only">Pick date and time</DialogTitle>
+            {panel}
+          </DialogContent>
+        </Dialog>
       </>
     );
   }
@@ -289,45 +306,5 @@ export function DateTimePicker({
         {panel}
       </PopoverContent>
     </Popover>
-  );
-}
-
-/**
- * Viewport-centered panel used instead of the anchored popover on short screens.
- * It is portalled to `document.body` so the parent dialog's own scroll container
- * can never clip it, and sized off `dvh` so it always fits the visible viewport.
- */
-function CompactPanel({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
-  React.useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        // Stop the keypress before the surrounding dialog also treats it as a
-        // close request, which would dismiss the whole entry form.
-        event.stopPropagation();
-        onClose();
-      }
-    }
-    document.addEventListener("keydown", onKeyDown, true);
-    return () => document.removeEventListener("keydown", onKeyDown, true);
-  }, [onClose]);
-
-  if (typeof document === "undefined") return null;
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-      onClick={onClose}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Pick date and time"
-        className="flex max-h-[calc(100dvh-2rem)] w-[min(17.5rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-lg"
-        onClick={(event) => event.stopPropagation()}
-      >
-        {children}
-      </div>
-    </div>,
-    document.body,
   );
 }

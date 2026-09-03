@@ -8,6 +8,7 @@ import { MiniPlayerProvider } from "@/components/mini-player/mini-player-provide
 import { NotificationCenter } from "@/components/notifications/notification-center";
 import { WelcomeSetup } from "@/components/onboarding/welcome-setup";
 import { Sidebar } from "@/components/layout/sidebar";
+import { OverlayResidueGuard } from "@/components/layout/overlay-residue-guard";
 import { ViewportHeight } from "@/components/layout/viewport-height";
 import { Topbar } from "@/components/layout/topbar";
 import { cn } from "@/lib/utils";
@@ -22,6 +23,9 @@ export function AppShell({ children }: AppShellProps) {
   return (
     <div className="app-viewport flex overflow-hidden bg-background text-foreground">
       <ViewportHeight />
+      {/* Repairs a stale shell height and any body state a closing overlay left
+          behind, so a dismissed dialog can never strand a dead strip. */}
+      <OverlayResidueGuard />
       <ShortcutsProvider />
       {/* Receives notification actions (quick note / open log) from the service
           worker. Mounted here so it is route-independent, like the palette. */}

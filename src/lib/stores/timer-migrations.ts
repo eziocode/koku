@@ -62,6 +62,12 @@ export function normalizeStoredTimer(value: unknown): ActiveTimer | null {
     pausedAt: asNullableString(value.pausedAt),
     segments: asSegments(value.segments),
     pomodoroMode: typeof value.pomodoroMode === "boolean" ? value.pomodoroMode : false,
+    // Rebuilt explicitly like every field here, so without this line a planned
+    // duration would be silently dropped on every page reload.
+    plannedDurationSec:
+      typeof value.plannedDurationSec === "number" && Number.isFinite(value.plannedDurationSec)
+        ? Math.max(0, Math.round(value.plannedDurationSec))
+        : undefined,
     parentTimerId: asOptionalString(value.parentTimerId),
     revision: typeof value.revision === "number" && Number.isInteger(value.revision) ? value.revision : 0,
     updatedAt: asOptionalString(value.updatedAt) ?? undefined,

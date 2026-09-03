@@ -41,8 +41,10 @@ import {
   useTimerStore,
 } from "@/lib/stores/timer-store";
 import { useNotificationPreferences } from "@/lib/notifications/use-notification-preferences";
+import { getTimerRemainingSec, isTimerOverdue } from "@/lib/stores/timer-math";
 import { useSecondTick } from "@/lib/stores/use-ticker";
 import { buildEntryFromTimer } from "@/lib/time-tracking/stop-timer";
+import { formatDurationLabel } from "@/lib/time/duration-presets";
 import { cn, formatDuration } from "@/lib/utils";
 import { NONE_VALUE, fromNullableId } from "@/lib/ui/list-thresholds";
 import { useTimerDraftStore } from "@/lib/stores/timer-draft-store";
@@ -87,6 +89,9 @@ interface TimerFieldsProps {
 interface TimerSessionCardProps {
   timer: ActiveTimer;
   elapsedSec: number;
+  /** Seconds left of the planned length, or `null` for an open-ended timer. */
+  remainingSec: number | null;
+  overdue: boolean;
   isPrimary: boolean;
   projectName: string;
   categoryName: string;
@@ -346,6 +351,8 @@ function TimerNotesReveal({ notes, className }: { notes: string | null | undefin
 function TimerSessionCard({
   timer,
   elapsedSec,
+  remainingSec,
+  overdue,
   isPrimary,
   projectName,
   categoryName,
@@ -383,9 +390,20 @@ function TimerSessionCard({
             {projectName} · {categoryName} · {timer.pomodoroMode ? "Pomodoro" : "Standard tracking"}
           </p>
         </div>
-        <p className="shrink-0 text-2xl font-semibold tabular-nums text-foreground">
-          {formatDuration(elapsedSec)}
-        </p>
+        <div className="shrink-0 text-right">
+          <p className="text-2xl font-semibold tabular-nums text-foreground">
+            {formatDuration(elapsedSec)}
+          </p>
+          {/* A target, not a deadline: the timer runs past it rather than
+              stopping itself, so background work is never truncated. */}
+          {remainingSec !== null && timer.plannedDurationSec ? (
+            <p className={cn("mt-0.5 text-xs tabular-nums", overdue ? "text-primary" : "text-muted-foreground")}>
+              {overdue
+                ? `Over ${formatDurationLabel(Math.round(timer.plannedDurationSec / 60))} by ${formatDuration(elapsedSec - timer.plannedDurationSec)}`
+                : `${formatDuration(remainingSec)} left of ${formatDurationLabel(Math.round(timer.plannedDurationSec / 60))}`}
+            </p>
+          ) : null}
+        </div>
       </div>
       <div className="mt-4 flex flex-wrap gap-3">
         <Button variant="secondary" onClick={isPaused ? onResume : onPause}>
@@ -906,6 +924,8 @@ export function Timer() {
                         key={timer.id}
                         timer={timer}
                         elapsedSec={getActiveTimerElapsedSec(timer, tickNow)}
+                        remainingSec={getTimerRemainingSec(timer, tickNow)}
+                        overdue={isTimerOverdue(timer, tickNow)}
                         isPrimary={!timer.parentTimerId}
                         projectName={getProjectName(timer)}
                         categoryName={getCategoryName(timer)}

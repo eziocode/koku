@@ -252,3 +252,24 @@ test("wrongly-typed quick-action fields degrade to null rather than surviving as
   assert.equal(recovered.tag, null);
   assert.equal(recovered.description, null);
 });
+
+test("a planned duration survives a persist/rehydrate round trip", () => {
+  const state = migratePersistedTimerState({
+    timers: [storedTimer({ plannedDurationSec: 600 })],
+  });
+
+  assert.equal(state.timers.length, 1);
+  assert.equal(state.timers[0].plannedDurationSec, 600);
+});
+
+test("a garbage planned duration normalises away instead of poisoning the countdown", () => {
+  const cases = ["600", Number.NaN, Number.POSITIVE_INFINITY, null, undefined, {}];
+
+  for (const plannedDurationSec of cases) {
+    const timer = normalizeStoredTimer(storedTimer({ plannedDurationSec }));
+    assert.equal(timer?.plannedDurationSec, undefined, `for ${String(plannedDurationSec)}`);
+  }
+
+  assert.equal(normalizeStoredTimer(storedTimer({ plannedDurationSec: 599.6 }))?.plannedDurationSec, 600);
+  assert.equal(normalizeStoredTimer(storedTimer({ plannedDurationSec: -5 }))?.plannedDurationSec, 0);
+});

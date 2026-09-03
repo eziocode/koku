@@ -2,6 +2,8 @@
 
 import { useEffect } from "react";
 
+import { measureAppHeight, repairAppHeightIfStale } from "@/lib/ui/app-height";
+
 /**
  * Publishes the live viewport height as `--app-height` on `<html>`.
  *
@@ -19,14 +21,19 @@ import { useEffect } from "react";
  * a reload. `window.innerHeight` is deliberate over `visualViewport.height`:
  * the latter shrinks for pinch zoom and the on-screen keyboard, which would
  * squash the shell mid-typing.
+ *
+ * `visualViewport`'s resize is still listened to, but strictly as a *trigger*
+ * for `repairAppHeightIfStale()` and never as a value: it fires in cases the
+ * window-level events miss, and the repair then checks the document against
+ * `window.innerHeight` and writes only if they have actually drifted. Overlay
+ * close is covered the same way, from `<OverlayResidueGuard />`, rather than by
+ * every dialog call site having to remember to re-measure.
  */
 export function ViewportHeight() {
   useEffect(() => {
     let frame = 0;
 
-    const apply = () => {
-      document.documentElement.style.setProperty("--app-height", `${window.innerHeight}px`);
-    };
+    const apply = measureAppHeight;
 
     // A tab that has just become visible (or a window that has just been
     // restored) can still report the pre-restore size on the event itself, so
@@ -47,6 +54,11 @@ export function ViewportHeight() {
     window.addEventListener("pageshow", applySoon);
     window.addEventListener("focus", applySoon);
     document.addEventListener("visibilitychange", onVisibility);
+    // A trigger only: the repair re-checks the document against the window and
+    // writes nothing when they already agree, so pinch zoom and the on-screen
+    // keyboard cannot squash the shell through this path.
+    const onVisualViewport = () => repairAppHeightIfStale();
+    window.visualViewport?.addEventListener("resize", onVisualViewport);
 
     return () => {
       cancelAnimationFrame(frame);
@@ -55,6 +67,7 @@ export function ViewportHeight() {
       window.removeEventListener("pageshow", applySoon);
       window.removeEventListener("focus", applySoon);
       document.removeEventListener("visibilitychange", onVisibility);
+      window.visualViewport?.removeEventListener("resize", onVisualViewport);
     };
   }, []);
 

@@ -81,13 +81,27 @@ export function startTimerPausingRunning(
   return { status: "started", timer: started };
 }
 
-/** The unconfigured "just start tracking" action used by the command palette and the `t` shortcut. */
-export function startQuickTimer(deps: QuickTimerDeps): QuickTimerResult {
+export interface QuickTimerOptions {
+  /** Whole minutes the user means to focus for. Omit for an open-ended timer. */
+  plannedMinutes?: number;
+  /** Overrides the default "Quick focus" title. */
+  title?: string;
+}
+
+/**
+ * The barely-configured "just start tracking" action used by the command
+ * palette and the `t` shortcut.
+ *
+ * `options` is defaulted, so the zero-argument open-ended start both existing
+ * call sites rely on is preserved by construction rather than by discipline.
+ */
+export function startQuickTimer(deps: QuickTimerDeps, options: QuickTimerOptions = {}): QuickTimerResult {
   return startGuardedTimer(deps, {
-    title: "Quick focus",
+    title: options.title?.trim() || "Quick focus",
     startTime: new Date().toISOString(),
     projectId: null,
     categoryId: null,
     pomodoroMode: false,
+    plannedDurationSec: options.plannedMinutes ? options.plannedMinutes * 60 : undefined,
   });
 }

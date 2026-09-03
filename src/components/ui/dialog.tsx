@@ -51,7 +51,9 @@ function isNestedOverlayTarget(target: EventTarget | null) {
   if (!target.isConnected) return true;
   return Boolean(
     target.closest(
-      "[data-radix-popper-content-wrapper], [role='listbox'], [role='menu'], [data-radix-portal]",
+      // Not `[data-radix-portal]`: `@radix-ui/react-portal` renders a bare div
+      // with no marker attribute, so that selector never matched anything.
+      "[data-radix-popper-content-wrapper], [role='listbox'], [role='menu']",
     ),
   );
 }
@@ -66,15 +68,16 @@ const DialogContent = React.forwardRef<
       ref={ref}
       className={cn(
         // pointer-events-auto!: a nested Select/DropdownMenu is modal in this
-        // Radix version and has no opt-out. While open it treats this dialog's
-        // portal as "other" content to hide from assistive tech, and that
-        // hide-others pass sets an INLINE `pointer-events: none` directly on
-        // both the overlay and this content — not just on `document.body` —
-        // lifted only asynchronously on close. A plain class can't outrank an
-        // inline style, so this needs the `!important` modifier: without it, a
-        // click landing here during that window falls through to `<html>`,
-        // which registers as a genuine outside click and closes the dialog
-        // along with the picklist.
+        // Radix version and has no opt-out. While it is open, Radix's
+        // dismissable-layer stack computes an INLINE `pointer-events: none`
+        // onto every layer below the top one — this dialog's overlay and this
+        // content included, not just `document.body` — and lifts it only
+        // asynchronously on close. (It is the layer stack that does this, not
+        // the `aria-hidden` hide-others pass, which only writes `aria-hidden`.)
+        // A plain class can't outrank an inline style, so this needs the
+        // `!important` modifier: without it, a click landing here during that
+        // window falls through to `<html>`, which registers as a genuine
+        // outside click and closes the dialog along with the picklist.
         // `max-h-[90vh]` + `overflow-y-auto`: a form with enough fields (or a
         // shorter/"mid-size" browser window) can be taller than the viewport.
         // Without a cap the fixed-centered dialog just extends past the top and

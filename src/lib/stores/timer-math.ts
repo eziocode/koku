@@ -40,6 +40,25 @@ export function getActiveTimerElapsedSec(
   return Math.max(timer.elapsedBeforePauseSec, Math.floor((now - startMs) / 1000));
 }
 
+/**
+ * Seconds left of a timer's planned duration, or `null` when it is open ended.
+ *
+ * Derived from the stored timestamps via `getActiveTimerElapsedSec`, so pause
+ * time is excluded for free and a frozen tab renders late rather than measuring
+ * wrong. Clamped at zero: past the planned end this reads `0` and
+ * `isTimerOverdue` takes over.
+ */
+export function getTimerRemainingSec(timer: ActiveTimer, now = Date.now()): number | null {
+  if (!timer.plannedDurationSec) return null;
+  return Math.max(0, timer.plannedDurationSec - getActiveTimerElapsedSec(timer, now));
+}
+
+/** True once a timer with a planned duration has run past it. Always false for an open-ended one. */
+export function isTimerOverdue(timer: ActiveTimer, now = Date.now()): boolean {
+  if (!timer.plannedDurationSec) return false;
+  return getActiveTimerElapsedSec(timer, now) >= timer.plannedDurationSec;
+}
+
 export function createTimer(input: TimerStartInput, parentTimerId?: string | null): ActiveTimer {
   return {
     ...input,

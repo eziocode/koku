@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DurationPicker } from "@/components/ui/duration-picker";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -22,7 +23,7 @@ import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 import { useTimerStore } from "@/lib/stores/timer-store";
 import { useSecondTick } from "@/lib/stores/use-ticker";
 import { writeBreakEntry } from "@/lib/breaks/finalize-break";
-import { cn, formatDuration } from "@/lib/utils";
+import { formatDuration } from "@/lib/utils";
 
 const MAX_CUSTOM_MINUTES = 240;
 /** Below this, a cancelled break is treated as a mistake and left unlogged. */
@@ -32,10 +33,14 @@ const MIN_LOGGABLE_CANCEL_SEC = 60;
 
 export function BreakButton() {
   const { prefs } = useNotificationPreferences();
+  const { value: timeFormat } = useTypedSetting("timeFormat");
   const startBreak = useTimerStore((state) => state.startBreak);
   const [open, setOpen] = useState(false);
-  const [custom, setCustom] = useState("");
+  const [minutes, setMinutes] = useState<number | null>(null);
   const [label, setLabel] = useState("");
+  // Baseline for the picker's resolved-time hint, refreshed each time the
+  // popover opens so a stale page never shows a stale end time.
+  const [openedAt, setOpenedAt] = useState(() => new Date());
 
   if (!prefs.breaks.enabled) {
     return null;
@@ -53,21 +58,22 @@ export function BreakButton() {
     }
 
     setOpen(false);
-    setCustom("");
+    setMinutes(null);
     setLabel("");
 
     toast.success(resolvePeriodCopy(started).startedToast(started.pausedTimerIds.length));
   }
 
-  const customMinutes = Number(custom);
-  const customValid =
-    custom.trim() !== "" &&
-    Number.isInteger(customMinutes) &&
-    customMinutes >= 1 &&
-    customMinutes <= MAX_CUSTOM_MINUTES;
+  function handleOpenChange(next: boolean) {
+    setOpen(next);
+    if (next) {
+      setOpenedAt(new Date());
+      setMinutes(null);
+    }
+  }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <Button variant="outline" className="gap-2">
           <Coffee className="h-4 w-4" aria-hidden="true" />
@@ -82,27 +88,18 @@ export function BreakButton() {
           </p>
         </div>
 
-        <div
-          className="grid grid-cols-2 gap-2"
-          role="radiogroup"
-          aria-label="Break length"
-        >
-          {prefs.breaks.presetMinutes.map((minutes) => (
-            <button
-              key={minutes}
-              type="button"
-              role="radio"
-              aria-checked={false}
-              onClick={() => begin(minutes * 60)}
-              className={cn(
-                "min-h-11 cursor-pointer rounded-xl border px-3 py-2 text-sm font-medium transition-colors",
-                "border-border/70 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-              )}
-            >
-              {minutes} min
-            </button>
-          ))}
-        </div>
+        <DurationPicker
+          label="Break length"
+          idPrefix="break-length"
+          value={minutes}
+          onChange={setMinutes}
+          presets={prefs.breaks.presetMinutes}
+          maxMinutes={MAX_CUSTOM_MINUTES}
+          extraOption={{ label: "Open ended", value: 0 }}
+          now={openedAt}
+          timeFormat={timeFormat}
+          className="grid gap-3"
+        />
 
         <div className="space-y-2">
           <Label htmlFor="break-label">Label</Label>
@@ -115,33 +112,15 @@ export function BreakButton() {
           />
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="break-custom">Custom length (minutes)</Label>
-          <div className="flex gap-2">
-            <Input
-              id="break-custom"
-              type="number"
-              min={1}
-              max={MAX_CUSTOM_MINUTES}
-              value={custom}
-              onChange={(event) => setCustom(event.target.value)}
-              placeholder="20"
-              className="min-h-11"
-              aria-describedby="break-custom-hint"
-            />
-            <Button disabled={!customValid} onClick={() => begin(customMinutes * 60)}>
-              Start
-            </Button>
-          </div>
-          <p id="break-custom-hint" className="text-xs text-muted-foreground">
-            1–{MAX_CUSTOM_MINUTES} minutes, or start an open-ended break below.
-          </p>
-        </div>
-
-        <Button variant="ghost" className="w-full gap-2" onClick={() => begin(0)}>
+        <Button
+          className="w-full gap-2"
+          disabled={minutes === null}
+          onClick={() => begin((minutes ?? 0) * 60)}
+        >
           <Pause className="h-4 w-4" aria-hidden="true" />
-          Open-ended break
+          {minutes === 0 ? "Start open-ended break" : "Start break"}
         </Button>
+
       </PopoverContent>
     </Popover>
   );

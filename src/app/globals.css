@@ -91,11 +91,17 @@ html {
   /* Set by <ViewportHeight />; `100dvh` covers the first paint. See that
      component for why the height is measured in JS at all. */
   height: var(--app-height, 100dvh);
+  /* Defense in depth for the stale-height dead strip: even if `--app-height`
+     goes smaller than the real window, the document still covers the viewport,
+     so the leftover band is inside the document and stays interactive instead
+     of becoming dead canvas that only a reload could clear. */
+  min-height: 100dvh;
 }
 
 body {
+  /* No `min-height` here: it would be redundant with `height` on the same
+     element, and the viewport floor above already belongs to <html>. */
   height: var(--app-height, 100dvh);
-  min-height: var(--app-height, 100dvh);
   background:
     radial-gradient(circle at top left, color-mix(in srgb, var(--color-primary) 8%, transparent), transparent 26rem),
     var(--color-background);

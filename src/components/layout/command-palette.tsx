@@ -14,6 +14,12 @@ import { toast } from "@/components/ui/toast";
 interface CommandPaletteProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * Opens the timed-start dialog. Owned by `ShortcutsProvider` rather than
+   * rendered here, so it never nests a second Radix dialog inside
+   * `Command.Dialog` and fights it over focus trapping.
+   */
+  onRequestTimedTimer: () => void;
 }
 
 /**
@@ -21,7 +27,7 @@ interface CommandPaletteProps {
  * keyboard listener (`⌘K`/`Ctrl+K` included) — see `lib/ui/shortcuts.ts` for
  * why that shortcut moved out of this component's own `keydown` handler.
  */
-export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
+export function CommandPalette({ open, onOpenChange, onRequestTimedTimer }: CommandPaletteProps) {
   const router = useRouter();
   const { timers, activeBreak, startTimer } = useTimerStore();
   const { prefs } = useNotificationPreferences();
@@ -85,6 +91,15 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           <Command.Group heading="Quick actions" className="px-2 py-2 text-xs text-muted-foreground">
             <Command.Item onSelect={handleStartQuickTimer} className="rounded-2xl px-3 py-2 text-sm aria-selected:bg-muted">
               Start timer
+            </Command.Item>
+            <Command.Item
+              onSelect={() => {
+                onOpenChange(false);
+                onRequestTimedTimer();
+              }}
+              className="rounded-2xl px-3 py-2 text-sm aria-selected:bg-muted"
+            >
+              Start timer for a set time…
             </Command.Item>
             <Command.Item onSelect={createQuickNote} className="rounded-2xl px-3 py-2 text-sm aria-selected:bg-muted">
               Create note

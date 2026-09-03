@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
+import { hasOpenOverlay } from "@/lib/ui/overlay-state";
 import { isEditableTarget, resolveShortcut, type ShortcutId } from "@/lib/ui/shortcuts";
 
 const CHORD_TIMEOUT_MS = 1500;
@@ -50,9 +51,13 @@ export function useHotkeys(handlers: ShortcutHandlers, options?: { enabled?: boo
         return;
       }
 
-      // Radix marks the document as scroll-locked while any Dialog/Popover is
-      // open; treat that as "a modal has focus" and stay out of the way.
-      if (document.body.hasAttribute("data-scroll-locked")) {
+      // Stay out of the way while a dialog, menu or popover owns the keyboard.
+      // Deliberately a live DOM read of the open layers rather than
+      // `body[data-scroll-locked]`: that attribute is set by any layer mounting
+      // `RemoveScroll` (including non-modal popovers, which should not suppress
+      // shortcuts), and if it is ever left behind it would disable every
+      // shortcut in the app until a reload.
+      if (hasOpenOverlay()) {
         return;
       }
 
