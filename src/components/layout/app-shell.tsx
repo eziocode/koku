@@ -1,6 +1,7 @@
 "use client";
 
-import { ReactNode, useState } from "react";
+import { ReactNode, useLayoutEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 
 import { KokuAiLauncher } from "@/components/ai/koku-ai-launcher";
 import { ShortcutsProvider } from "@/components/layout/shortcuts-provider";
@@ -19,6 +20,36 @@ interface AppShellProps {
 
 export function AppShell({ children }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const pathname = usePathname();
+  const mainRef = useRef<HTMLElement>(null);
+
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    root.classList.add("koku-app-shell-active");
+    return () => root.classList.remove("koku-app-shell-active");
+  }, []);
+
+  useLayoutEffect(() => {
+    let frame = 0;
+
+    const resetScroll = () => {
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+
+      if (mainRef.current) {
+        mainRef.current.scrollTop = 0;
+        mainRef.current.scrollLeft = 0;
+      }
+    };
+
+    // The app scrolls inside a shared <main>, so route changes do not remount
+    // the scroll container. Reset now and once more after Next's own scroll
+    // handling, which can otherwise move the document by the topbar height.
+    resetScroll();
+    frame = requestAnimationFrame(resetScroll);
+
+    return () => cancelAnimationFrame(frame);
+  }, [pathname]);
 
   return (
     <div className="app-viewport flex overflow-hidden bg-background text-foreground">
@@ -51,7 +82,10 @@ export function AppShell({ children }: AppShellProps) {
       ) : null}
       <div className="flex h-full min-w-0 flex-1 flex-col lg:pl-0">
         <Topbar onOpenSidebar={() => setSidebarOpen(true)} />
-        <main className={cn("min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8")}>
+        <main
+          ref={mainRef}
+          className={cn("min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 py-6 sm:px-6 lg:px-8")}
+        >
           <div className="mx-auto w-full max-w-7xl">
             {children}
           </div>

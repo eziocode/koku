@@ -98,6 +98,14 @@ html {
   min-height: 100dvh;
 }
 
+/* App routes scroll inside <main>. Keep Next's route-scroll handling and
+   trackpad scroll chaining from moving the document itself; a root offset
+   shifts the fixed-height shell upward and exposes a blank strip below it. */
+html.koku-app-shell-active {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 body {
   /* No `min-height` here: it would be redundant with `height` on the same
      element, and the viewport floor above already belongs to <html>. */
