@@ -75,7 +75,7 @@ export function ReminderScheduler() {
           void showKokuNotification(buildReminderNotification(reminder.id, reminder.message, now));
         }
 
-        await markReminderFired(reminder, new Date(now).toISOString());
+        await markReminderFired(reminder);
       }
     };
 

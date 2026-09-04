@@ -43,6 +43,33 @@ export function nextTriggerAt(firedAt: string, repeat: ReminderRepeat, customDay
   return firedAt;
 }
 
+/**
+ * First trigger for a repeating reminder created from a time-of-day only
+ * (no date picked). Uses today at `hour:minute` if that instant is still
+ * ahead, otherwise walks forward the same way `nextTriggerAt` does so a
+ * daily reminder set for a time that already passed today fires tomorrow
+ * instead of immediately.
+ */
+export function nextEligibleTriggerAt(
+  hour: number,
+  minute: number,
+  repeat: Exclude<ReminderRepeat, "none">,
+  customDays: number[] = [],
+  now: Date = new Date(),
+): string {
+  const candidate = new Date(now);
+  candidate.setHours(hour, minute, 0, 0);
+  const isFuture = candidate.getTime() > now.getTime();
+
+  if (repeat === "custom") {
+    if (isFuture && customDays.includes(candidate.getDay())) return candidate.toISOString();
+    return nextTriggerAt(candidate.toISOString(), "custom", customDays);
+  }
+
+  if (isFuture) return candidate.toISOString();
+  return nextTriggerAt(candidate.toISOString(), repeat, customDays);
+}
+
 export async function createReminder(data: CreateReminderInput): Promise<Reminder> {
   const now = new Date().toISOString();
   const reminder: Reminder = {
@@ -78,15 +105,19 @@ export async function deleteReminder(id: string): Promise<void> {
 
 /**
  * Applies one firing: `"none"` deactivates, `"daily"`/`"weekly"` advance
- * `triggerAt` to the next occurrence and stay active.
+ * `triggerAt` to the next occurrence and stay active. The next occurrence is
+ * computed from the reminder's own scheduled `triggerAt`, not from the actual
+ * (possibly-late) moment the scheduler noticed it — otherwise a reminder
+ * checked minutes or hours late would drift to that check time instead of
+ * repeating at its original time-of-day.
  */
-export async function markReminderFired(reminder: Reminder, firedAt: string): Promise<void> {
+export async function markReminderFired(reminder: Reminder): Promise<void> {
   if (reminder.repeat === "none") {
     await updateReminder(reminder.id, { active: false });
     return;
   }
 
   await updateReminder(reminder.id, {
-    triggerAt: nextTriggerAt(firedAt, reminder.repeat, reminder.customDays),
+    triggerAt: nextTriggerAt(reminder.triggerAt, reminder.repeat, reminder.customDays),
   });
 }

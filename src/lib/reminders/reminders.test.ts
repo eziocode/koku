@@ -3,7 +3,7 @@ import "fake-indexeddb/auto";
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { nextTriggerAt } from "@/lib/reminders/reminders";
+import { nextEligibleTriggerAt, nextTriggerAt } from "@/lib/reminders/reminders";
 
 test("daily repeat advances by exactly one day, weekends included", () => {
   // Saturday 2026-01-03 09:00 local.
@@ -36,4 +36,25 @@ test("custom repeat wraps to the following week when today is the only selected 
 test("custom repeat with no days selected leaves triggerAt unchanged", () => {
   const firedAt = new Date(2026, 0, 7, 9, 0).toISOString();
   assert.equal(nextTriggerAt(firedAt, "custom", []), firedAt);
+});
+
+test("daily eligible trigger uses today when the time hasn't passed yet", () => {
+  const now = new Date(2026, 0, 7, 9, 0); // Wednesday 09:00.
+  const iso = new Date(nextEligibleTriggerAt(11, 0, "daily", [], now));
+  assert.equal(iso.getDate(), 7);
+  assert.equal(iso.getHours(), 11);
+});
+
+test("daily eligible trigger rolls to tomorrow when the time already passed today", () => {
+  const now = new Date(2026, 0, 7, 15, 58); // Wednesday 15:58, past 11am.
+  const iso = new Date(nextEligibleTriggerAt(11, 0, "daily", [], now));
+  assert.equal(iso.getDate(), 8);
+  assert.equal(iso.getHours(), 11);
+});
+
+test("custom eligible trigger skips to the next selected day when today isn't picked", () => {
+  const now = new Date(2026, 0, 7, 9, 0); // Wednesday. Only Fridays selected.
+  const iso = new Date(nextEligibleTriggerAt(11, 0, "custom", [5], now));
+  assert.equal(iso.getDay(), 5);
+  assert.equal(iso.getDate(), 9);
 });

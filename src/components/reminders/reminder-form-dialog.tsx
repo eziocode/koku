@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
+import { nextEligibleTriggerAt } from "@/lib/reminders/reminders";
 import { useReminders } from "@/lib/storage/hooks/use-reminders";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 import { resolveDurationIso } from "@/lib/time/duration-presets";
@@ -26,6 +27,15 @@ function toDatetimeLocalValue(date: Date): string {
 function defaultTriggerAt(): string {
   const in15 = new Date(Date.now() + 15 * 60_000);
   return toDatetimeLocalValue(in15);
+}
+
+function toTimeValue(date: Date): string {
+  const pad = (n: number) => `${n}`.padStart(2, "0");
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function defaultTimeOfDay(): string {
+  return toTimeValue(new Date(Date.now() + 15 * 60_000));
 }
 
 /** How long from now the "In a while" mode starts on. */
@@ -52,6 +62,9 @@ export function ReminderFormDialog({ open, onOpenChange, reminder }: ReminderFor
   const [triggerAt, setTriggerAt] = useState(
     reminder ? toDatetimeLocalValue(new Date(reminder.triggerAt)) : defaultTriggerAt(),
   );
+  const [timeOfDay, setTimeOfDay] = useState(
+    reminder ? toTimeValue(new Date(reminder.triggerAt)) : defaultTimeOfDay(),
+  );
   const [repeat, setRepeat] = useState<ReminderRepeat>(reminder?.repeat ?? "none");
   const [customDays, setCustomDays] = useState<number[]>(reminder?.customDays ?? []);
   const [submitting, setSubmitting] = useState(false);
@@ -70,6 +83,7 @@ export function ReminderFormDialog({ open, onOpenChange, reminder }: ReminderFor
     if (open) {
       setMessage(reminder?.message ?? "");
       setTriggerAt(reminder ? toDatetimeLocalValue(new Date(reminder.triggerAt)) : defaultTriggerAt());
+      setTimeOfDay(reminder ? toTimeValue(new Date(reminder.triggerAt)) : defaultTimeOfDay());
       setRepeat(reminder?.repeat ?? "none");
       setCustomDays(reminder?.customDays ?? []);
       setWhenMode(reminder ? "at" : "in");
@@ -85,6 +99,11 @@ export function ReminderFormDialog({ open, onOpenChange, reminder }: ReminderFor
       return;
     }
 
+    if (repeat === "custom" && customDays.length === 0) {
+      toast.error("Pick at least one day to repeat on.");
+      return;
+    }
+
     let iso: string;
     if (whenMode === "in") {
       if (inMinutes === null) {
@@ -94,24 +113,33 @@ export function ReminderFormDialog({ open, onOpenChange, reminder }: ReminderFor
       // Resolved against submit time, not the time the dialog opened, so a form
       // left sitting still schedules the duration the user picked.
       iso = resolveDurationIso(inMinutes, new Date());
-    } else {
+    } else if (repeat === "none") {
+      // A one-off needs a specific date, since there's no recurrence to roll
+      // forward to.
       const parsed = new Date(triggerAt);
       if (Number.isNaN(parsed.getTime())) {
         toast.error("Pick a valid date and time.");
         return;
       }
       // A one-off in the past fires on the scheduler's very next tick, which
-      // reads as a bug. A repeating one is fine: it rolls forward on its own.
-      if (repeat === "none" && parsed.getTime() <= Date.now()) {
+      // reads as a bug.
+      if (parsed.getTime() <= Date.now()) {
         toast.error("Pick a time in the future.");
         return;
       }
       iso = parsed.toISOString();
-    }
-
-    if (repeat === "custom" && customDays.length === 0) {
-      toast.error("Pick at least one day to repeat on.");
-      return;
+    } else {
+      // Repeating reminders only need a time-of-day — the date is derived:
+      // today if that time is still ahead (and, for "custom", today is one
+      // of the chosen days), otherwise the next eligible day.
+      const [hourStr, minuteStr] = timeOfDay.split(":");
+      const hour = Number(hourStr);
+      const minute = Number(minuteStr);
+      if (Number.isNaN(hour) || Number.isNaN(minute)) {
+        toast.error("Pick a valid time.");
+        return;
+      }
+      iso = nextEligibleTriggerAt(hour, minute, repeat, customDays);
     }
 
     setSubmitting(true);
@@ -177,7 +205,7 @@ export function ReminderFormDialog({ open, onOpenChange, reminder }: ReminderFor
                 timeFormat={timeFormat}
                 className="pt-1"
               />
-            ) : (
+            ) : repeat === "none" ? (
               <DateTimePicker
                 id="reminder-time"
                 value={triggerAt}
@@ -185,6 +213,16 @@ export function ReminderFormDialog({ open, onOpenChange, reminder }: ReminderFor
                 timeFormat={timeFormat}
                 min={toDatetimeLocalValue(new Date())}
                 suggestion={defaultTriggerAt()}
+              />
+            ) : (
+              // Repeating reminders don't need a date — just the time they
+              // should fire at each eligible day.
+              <Input
+                id="reminder-time-only"
+                type="time"
+                value={timeOfDay}
+                onChange={(event) => setTimeOfDay(event.target.value)}
+                className="w-32"
               />
             )}
           </div>
