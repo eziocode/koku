@@ -13,7 +13,10 @@ import { toast } from "@/components/ui/toast";
 import { useReminders } from "@/lib/storage/hooks/use-reminders";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 import { resolveDurationIso } from "@/lib/time/duration-presets";
+import { cn } from "@/lib/utils";
 import type { Reminder, ReminderRepeat } from "@/lib/storage/db";
+
+const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
 function toDatetimeLocalValue(date: Date): string {
   const pad = (n: number) => `${n}`.padStart(2, "0");
@@ -50,6 +53,7 @@ export function ReminderFormDialog({ open, onOpenChange, reminder }: ReminderFor
     reminder ? toDatetimeLocalValue(new Date(reminder.triggerAt)) : defaultTriggerAt(),
   );
   const [repeat, setRepeat] = useState<ReminderRepeat>(reminder?.repeat ?? "none");
+  const [customDays, setCustomDays] = useState<number[]>(reminder?.customDays ?? []);
   const [submitting, setSubmitting] = useState(false);
   // An existing reminder holds an absolute instant, so editing opens on "at";
   // a new one opens on the quicker relative mode.
@@ -67,6 +71,7 @@ export function ReminderFormDialog({ open, onOpenChange, reminder }: ReminderFor
       setMessage(reminder?.message ?? "");
       setTriggerAt(reminder ? toDatetimeLocalValue(new Date(reminder.triggerAt)) : defaultTriggerAt());
       setRepeat(reminder?.repeat ?? "none");
+      setCustomDays(reminder?.customDays ?? []);
       setWhenMode(reminder ? "at" : "in");
       setInMinutes(DEFAULT_IN_MINUTES);
       setOpenedAt(new Date());
@@ -104,6 +109,11 @@ export function ReminderFormDialog({ open, onOpenChange, reminder }: ReminderFor
       iso = parsed.toISOString();
     }
 
+    if (repeat === "custom" && customDays.length === 0) {
+      toast.error("Pick at least one day to repeat on.");
+      return;
+    }
+
     setSubmitting(true);
     try {
       if (reminder) {
@@ -111,11 +121,12 @@ export function ReminderFormDialog({ open, onOpenChange, reminder }: ReminderFor
           message: trimmed,
           triggerAt: iso,
           repeat,
+          customDays,
           active: true,
         });
         toast.success("Reminder updated.");
       } else {
-        await createReminder({ message: trimmed, triggerAt: iso, repeat });
+        await createReminder({ message: trimmed, triggerAt: iso, repeat, customDays });
         toast.success("Reminder set.");
       }
       onOpenChange(false);
@@ -188,8 +199,39 @@ export function ReminderFormDialog({ open, onOpenChange, reminder }: ReminderFor
                 <SelectItem value="none">Once</SelectItem>
                 <SelectItem value="daily">Daily</SelectItem>
                 <SelectItem value="weekly">Weekly</SelectItem>
+                <SelectItem value="custom">Custom days</SelectItem>
               </SelectContent>
             </Select>
+            {repeat === "custom" ? (
+              <div role="group" aria-label="Repeat on days" className="flex flex-wrap gap-2 pt-1">
+                {WEEKDAY_LABELS.map((label, dayIndex) => {
+                  const active = customDays.includes(dayIndex);
+                  return (
+                    <button
+                      key={dayIndex}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() =>
+                        setCustomDays((prev) =>
+                          prev.includes(dayIndex)
+                            ? prev.filter((d) => d !== dayIndex)
+                            : [...prev, dayIndex].sort((a, b) => a - b),
+                        )
+                      }
+                      className={cn(
+                        "h-9 w-11 rounded-lg border text-xs font-medium transition-colors",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+                        active
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border bg-muted/50 text-muted-foreground hover:bg-muted",
+                      )}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
         </div>
 

@@ -54,6 +54,11 @@ export interface QuickActionPreset {
 export const MIN_INTERVAL_MINUTES = 5;
 export const MAX_INTERVAL_MINUTES = 480;
 
+/** How long the reminder alarm may keep beeping before it gives up unanswered. */
+export const MIN_REMINDER_BEEP_SECONDS = 1;
+export const MAX_REMINDER_BEEP_SECONDS = 30;
+export const REMINDER_BEEP_PRESETS = [3, 5, 10, 15, 30] as const;
+
 /** Offered in the settings dropdown; any value in range is still accepted. */
 export const INTERVAL_PRESETS = [5, 10, 15, 30, 45, 60, 90, 120] as const;
 export const AUTO_HIDE_PRESETS = [1, 2, 5, 10, 30, 60] as const;
@@ -139,6 +144,10 @@ export interface NotificationPreferences {
     enabled: boolean;
     volume: number;
   };
+  reminders: {
+    /** How long the reminder alarm keeps beeping before giving up on a response. */
+    beepSeconds: number;
+  };
   /** Days of the week on which all check-in notifications are silenced.
    *  0 = Sunday, 1 = Monday, …, 6 = Saturday. Empty array = no silent days. */
   silentDays: number[];
@@ -186,6 +195,9 @@ export const NOTIFICATION_DEFAULTS: NotificationPreferences = {
   sound: {
     enabled: true,
     volume: 0.6,
+  },
+  reminders: {
+    beepSeconds: 5,
   },
   silentDays: [],
   holidayDates: [],
@@ -296,6 +308,16 @@ export const notificationPreferencesSchema = z
         volume: z.number().min(0).max(1).catch(NOTIFICATION_DEFAULTS.sound.volume),
       })
       .catch(NOTIFICATION_DEFAULTS.sound),
+    reminders: z
+      .object({
+        beepSeconds: z
+          .number()
+          .int()
+          .min(MIN_REMINDER_BEEP_SECONDS)
+          .max(MAX_REMINDER_BEEP_SECONDS)
+          .catch(NOTIFICATION_DEFAULTS.reminders.beepSeconds),
+      })
+      .catch(NOTIFICATION_DEFAULTS.reminders),
     silentDays: z
       .array(z.number().int().min(0).max(6))
       .catch([]),

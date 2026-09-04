@@ -10,6 +10,17 @@ import { ReminderFormDialog } from "@/components/reminders/reminder-form-dialog"
 import { useReminders } from "@/lib/storage/hooks/use-reminders";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 import { formatTime } from "@/lib/time-format";
+import type { ReminderRepeat } from "@/lib/storage/db";
+
+const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+
+function formatRepeatSuffix(repeat: ReminderRepeat, customDays: number[]): string {
+  if (repeat === "none") return "";
+  if (repeat === "custom") {
+    return customDays.length > 0 ? ` · ${customDays.map((d) => WEEKDAY_LABELS[d]).join(", ")}` : "";
+  }
+  return ` · ${repeat}`;
+}
 
 /**
  * Global "set a reminder" entry point, mounted in the topbar so it's reachable
@@ -67,7 +78,7 @@ export function ReminderBell() {
                     <p className="truncate text-sm font-medium text-foreground">{reminder.message}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       {`${format(new Date(reminder.triggerAt), "MMM d")}, ${formatTime(reminder.triggerAt, timeFormat)}`}
-                      {reminder.repeat !== "none" ? ` · ${reminder.repeat}` : ""}
+                      {formatRepeatSuffix(reminder.repeat, reminder.customDays)}
                     </p>
                   </div>
                   <button

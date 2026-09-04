@@ -112,20 +112,23 @@ export interface AiKey {
   createdAt: string;
 }
 
-export type ReminderRepeat = "none" | "daily" | "weekly";
+export type ReminderRepeat = "none" | "daily" | "weekly" | "custom";
 
 /**
  * A standalone, user-set alarm — not tied to any timer or task. `triggerAt` is
  * always the *next* time this should fire; `ReminderScheduler` advances it by
- * a day/week on each firing instead of leaving it fixed, so a repeating
- * reminder never needs a separate "last fired" computation to know when it's
- * next due.
+ * a day/week/custom-weekday set on each firing instead of leaving it fixed, so
+ * a repeating reminder never needs a separate "last fired" computation to know
+ * when it's next due. Fires every day it is due regardless of weekday — the
+ * silent-days/week-off setting only silences check-ins, never reminders.
  */
 export interface Reminder {
   id: string;
   message: string;
   triggerAt: string;
   repeat: ReminderRepeat;
+  /** Weekday indices (0 = Sunday … 6 = Saturday) this fires on. Only read when `repeat === "custom"`. */
+  customDays: number[];
   active: boolean;
   createdAt: string;
   updatedAt: string;

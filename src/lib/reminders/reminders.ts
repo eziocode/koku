@@ -7,23 +7,39 @@ export interface CreateReminderInput {
   message: string;
   triggerAt: string;
   repeat?: ReminderRepeat;
+  /** Required (non-empty) when `repeat === "custom"`. */
+  customDays?: number[];
 }
 
 export interface UpdateReminderInput {
   message?: string;
   triggerAt?: string;
   repeat?: ReminderRepeat;
+  customDays?: number[];
   active?: boolean;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAY_MS;
 
-/** The next occurrence after `firedAt`, advancing by whole days/weeks so time-of-day never drifts. */
-export function nextTriggerAt(firedAt: string, repeat: ReminderRepeat): string {
+/**
+ * The next occurrence after `firedAt`, advancing by whole days/weeks so
+ * time-of-day never drifts. `"custom"` walks forward to the nearest upcoming
+ * day (1-7 days out) in `customDays` — weekends included, since nothing here
+ * treats Saturday/Sunday specially.
+ */
+export function nextTriggerAt(firedAt: string, repeat: ReminderRepeat, customDays: number[] = []): string {
   const base = Date.parse(firedAt);
   if (repeat === "daily") return new Date(base + DAY_MS).toISOString();
   if (repeat === "weekly") return new Date(base + WEEK_MS).toISOString();
+  if (repeat === "custom" && customDays.length > 0) {
+    for (let offset = 1; offset <= 7; offset++) {
+      const candidate = new Date(base + offset * DAY_MS);
+      if (customDays.includes(candidate.getDay())) {
+        return candidate.toISOString();
+      }
+    }
+  }
   return firedAt;
 }
 
@@ -34,6 +50,7 @@ export async function createReminder(data: CreateReminderInput): Promise<Reminde
     message: data.message,
     triggerAt: data.triggerAt,
     repeat: data.repeat ?? "none",
+    customDays: data.customDays ?? [],
     active: true,
     createdAt: now,
     updatedAt: now,
@@ -69,5 +86,7 @@ export async function markReminderFired(reminder: Reminder, firedAt: string): Pr
     return;
   }
 
-  await updateReminder(reminder.id, { triggerAt: nextTriggerAt(firedAt, reminder.repeat) });
+  await updateReminder(reminder.id, {
+    triggerAt: nextTriggerAt(firedAt, reminder.repeat, reminder.customDays),
+  });
 }

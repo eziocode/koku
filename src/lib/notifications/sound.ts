@@ -60,3 +60,52 @@ export function playReminderChime(volume: number): void {
   beep(context, now, 880, 0.15, clampedVolume);
   beep(context, now + 0.18, 1175, 0.2, clampedVolume);
 }
+
+/** Seconds between the start of one chime and the next while an alarm repeats. */
+const ALARM_REPEAT_INTERVAL_SEC = 1;
+
+/**
+ * Repeats the reminder chime once a second until the caller stops it (the
+ * user responded) or `maxDurationSec` elapses, whichever comes first — so a
+ * reminder demands attention instead of a single beep that's easy to miss.
+ * Returns a stop function; safe to call more than once.
+ */
+export function startReminderAlarm(volume: number, maxDurationSec: number): () => void {
+  const context = getContext();
+  const clampedVolume = Math.min(1, Math.max(0, volume));
+  if (!context || clampedVolume === 0) {
+    return () => {};
+  }
+
+  void context.resume();
+
+  let stopped = false;
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const startedAt = context.currentTime;
+
+  const ring = () => {
+    if (stopped) {
+      return;
+    }
+
+    if (context.currentTime - startedAt >= maxDurationSec) {
+      stopped = true;
+      return;
+    }
+
+    const now = context.currentTime;
+    beep(context, now, 880, 0.15, clampedVolume);
+    beep(context, now + 0.18, 1175, 0.2, clampedVolume);
+    timeoutId = setTimeout(ring, ALARM_REPEAT_INTERVAL_SEC * 1000);
+  };
+
+  ring();
+
+  return () => {
+    stopped = true;
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
+  };
+}

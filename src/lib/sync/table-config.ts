@@ -115,6 +115,7 @@ export const TABLE_CONFIG = {
       trigger_at: toCatalystDateTime(r.triggerAt),
       // "repeat" is a reserved word in Catalyst Datastore Cloud Scale.
       repeat_mode: r.repeat ?? "none",
+      custom_days: JSON.stringify(r.customDays ?? []),
       active: r.active ?? true,
       created_at: toCatalystDateTime(r.createdAt),
       updated_at: toCatalystDateTime(r.updatedAt),
@@ -126,6 +127,7 @@ export const TABLE_CONFIG = {
         message: d.message,
         triggerAt: fromCatalystDateTime(d.trigger_at) ?? d.trigger_at,
         repeat: (d.repeat_mode as string) || "none",
+        customDays: tryParse(d.custom_days as string, [] as number[]),
         // Catalyst can hand back a boolean column as a real boolean or as
         // the string "true"/"false" depending on the SDK path — normalize
         // both so a pulled reminder can't get stuck permanently "active".

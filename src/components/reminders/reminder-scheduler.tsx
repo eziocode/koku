@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import { toast } from "@/components/ui/toast";
 import { markReminderFired } from "@/lib/reminders/reminders";
 import { kokuDb } from "@/lib/storage/db";
 import { showKokuNotification } from "@/lib/notifications/client";
-import { playReminderChime } from "@/lib/notifications/sound";
+import { startReminderAlarm } from "@/lib/notifications/sound";
 import { buildReminderNotification } from "@/lib/notifications/payload";
 import { useNotificationPermission } from "@/lib/notifications/use-notification-permission";
 import { useNotificationPreferences } from "@/lib/notifications/use-notification-preferences";
@@ -25,6 +25,9 @@ export function ReminderScheduler() {
   const { permission } = useNotificationPermission();
   const leaderStatus = useLeaderStatus();
   const isLeader = leaderStatus === "leader";
+  /** One alarm per still-ringing reminder, keyed by reminder id, so its toast's
+   *  dismiss/auto-close can stop the right loop instead of all of them. */
+  const alarmStops = useRef(new Map<string, () => void>());
 
   useEffect(() => {
     if (!isLeader) {
@@ -32,6 +35,10 @@ export function ReminderScheduler() {
     }
 
     let cancelled = false;
+    // Snapshot the ref's mutable map once per effect run — it's the same Map
+    // instance for the component's lifetime, so this alias stays valid inside
+    // the cleanup closure without React flagging a stale-ref read.
+    const stops = alarmStops.current;
 
     const tick = async () => {
       if (cancelled) {
@@ -47,11 +54,22 @@ export function ReminderScheduler() {
           return;
         }
 
+        const stopAlarm = () => {
+          stops.get(reminder.id)?.();
+          stops.delete(reminder.id);
+        };
+
         if (prefs.sound.enabled) {
-          playReminderChime(prefs.sound.volume);
+          stopAlarm();
+          stops.set(reminder.id, startReminderAlarm(prefs.sound.volume, prefs.reminders.beepSeconds));
         }
 
-        toast.info(reminder.message, { id: `reminder-${reminder.id}`, duration: 10_000 });
+        toast.info(reminder.message, {
+          id: `reminder-${reminder.id}`,
+          duration: Math.max(10_000, prefs.reminders.beepSeconds * 1000),
+          onDismiss: stopAlarm,
+          onAutoClose: stopAlarm,
+        });
 
         if (permission === "granted") {
           void showKokuNotification(buildReminderNotification(reminder.id, reminder.message, now));
@@ -82,8 +100,14 @@ export function ReminderScheduler() {
       window.clearInterval(intervalId);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", run);
+      // Losing leadership (or unmounting) mid-ring shouldn't leave this tab
+      // beeping forever with nothing left to stop it.
+      for (const stop of stops.values()) {
+        stop();
+      }
+      stops.clear();
     };
-  }, [isLeader, permission, prefs.sound.enabled, prefs.sound.volume]);
+  }, [isLeader, permission, prefs.sound.enabled, prefs.sound.volume, prefs.reminders.beepSeconds]);
 
   return null;
 }
