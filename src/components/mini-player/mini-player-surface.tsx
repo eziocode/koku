@@ -1,6 +1,6 @@
 "use client";
 
-import { Coffee, Pause, Play, Square, X, Zap } from "lucide-react";
+import { Coffee, Pause, Play, Square, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import {
@@ -194,14 +194,6 @@ export function MiniPlayerSurface({ pipWindow }: MiniPlayerSurfaceProps) {
                 : "Start one in koku"}
           </p>
         </div>
-        <button
-          type="button"
-          aria-label="Close mini player"
-          onClick={() => closeMiniPlayerWindow()}
-          className={cn(BUTTON_BASE, BUTTON_QUIET, "min-h-9 px-2")}
-        >
-          <X className="h-4 w-4" aria-hidden="true" />
-        </button>
       </div>
 
       {/* ── Clock ──────────────────────────────────────────────────────────── */}

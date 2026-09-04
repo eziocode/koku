@@ -1187,8 +1187,8 @@ function drawStar(
   radius: number,
   dark: boolean,
 ) {
-  const reach = radius * 1.75;
-  const waist = radius * 0.52;
+  const reach = radius * 1.15;
+  const waist = radius * 0.42;
   const strength = shadeStrength(radius);
   const base = dark ? lightenColor(item.node.color, 0.22) : item.node.color;
 

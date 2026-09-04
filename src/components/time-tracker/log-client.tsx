@@ -225,11 +225,11 @@ export function LogClient() {
       ) : (
         <>
           {/* Timer + manual entry */}
-          <div className="grid items-start gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+          <div className="grid items-stretch gap-6 xl:grid-cols-[1.1fr_0.9fr]">
             {isSelectedDateToday ? (
               <Timer />
             ) : (
-              <Card>
+              <Card className="flex h-full flex-col">
                 <CardHeader>
                   <CardTitle>Live timer is for today</CardTitle>
                   <CardDescription>

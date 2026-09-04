@@ -845,12 +845,12 @@ export function Timer() {
   }
 
   return (
-    <Card ref={cardRef}>
+    <Card ref={cardRef} className="flex h-full flex-col">
       <CardHeader>
         <CardTitle>Live timer</CardTitle>
         <CardDescription>{statusLabel}</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-5">
+      <CardContent className="flex flex-1 flex-col space-y-5">
         <div className="rounded-3xl border border-primary/10 bg-primary/5 px-6 py-8 text-center">
           <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
             {timers.length > 1 ? "Session total" : "Elapsed"}
@@ -886,7 +886,7 @@ export function Timer() {
               onNotesChange={setNotes}
               onPomodoroModeChange={setPomodoroMode}
             />
-            <div className="flex flex-wrap gap-3">
+            <div className="mt-auto flex flex-wrap gap-3">
               <Button onClick={handleStart} className="min-w-36">
                 <Play />
                 Start timer
@@ -915,7 +915,7 @@ export function Timer() {
               </div>
             ) : null}
 
-            <div className="space-y-3">
+            <div className="flex flex-1 flex-col space-y-3">
               {(() => {
                 const list = (
                   <div ref={timerListRef} className="space-y-3">
@@ -982,7 +982,7 @@ export function Timer() {
                   </div>
                 );
               })()}
-              <div className="flex flex-wrap gap-3">
+              <div className="mt-auto flex flex-wrap gap-3">
                 <BreakButton />
                 <QuickActionButtons />
                 <PopOutButton />
