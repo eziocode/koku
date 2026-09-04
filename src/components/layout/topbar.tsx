@@ -38,23 +38,23 @@ export function Topbar({ onOpenSidebar }: TopbarProps) {
   }, []);
 
   return (
-    <header className="sticky top-0 z-30 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border/70 bg-background/75 px-4 py-3 backdrop-blur-xl sm:h-16 sm:flex-nowrap sm:py-0 sm:px-6">
-      <Button variant="ghost" size="icon" className="lg:hidden" onClick={onOpenSidebar}>
+    <header className="sticky top-0 z-30 flex h-16 items-center gap-2 border-b border-border/70 bg-background/75 px-3 backdrop-blur-xl sm:gap-3 sm:px-6">
+      <Button variant="ghost" size="icon" className="shrink-0 lg:hidden" onClick={onOpenSidebar}>
         <Menu />
       </Button>
-      <div className="min-w-0 flex-1 basis-full sm:basis-auto">
+      <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-foreground">
           {userEmail ? "Cloud-connected workspace" : "Local-first workspace"}
         </p>
-        <p className="truncate text-sm text-muted-foreground">
+        <p className="hidden truncate text-sm text-muted-foreground sm:block">
           {userEmail ? "Synced across devices, private, and calm by default." : "Private, portable, and calm by default."}
         </p>
       </div>
-      <div className="ml-auto flex flex-wrap items-center gap-2 sm:ml-0 sm:flex-nowrap sm:gap-3">
+      <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">
         {/* Renders nothing unless do-not-disturb is on. */}
         <DndPill />
         {userEmail ? (
-          <span className="hidden max-w-[180px] truncate text-xs text-muted-foreground sm:block">
+          <span className="hidden max-w-[180px] truncate text-xs text-muted-foreground lg:block">
             {userEmail}
           </span>
         ) : null}
