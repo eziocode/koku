@@ -982,7 +982,7 @@ interface NodeStyle {
  * - `hub` → planet: a lit sphere.
  * - `group` → the same sphere threaded through a tilted ring, its back half
  *   dimmed and drawn behind the body, its lit front half in front.
- * - `tag` → star: a faceted four-point gem.
+ * - `tag` → sparkle: a curved four-point twinkle.
  * - `leaf` → moon: a smaller sphere with shallower modelling.
  */
 function drawNode(context: CanvasRenderingContext2D, item: Placed, style: NodeStyle) {
@@ -1172,14 +1172,15 @@ function drawPlanetRing(
 }
 
 /**
- * Tag body: a faceted four-point gem, not a flat spark.
+ * Tag body: a four-point sparkle, not a flat spark.
  *
- * The old glyph was two crossed lozenges in one flat colour, which at small
- * sizes read as a smudge and at large sizes as clip-art. This builds the same
- * silhouette out of eight triangular facets — tip, waist, centre — and shades
- * each by how much its own outward normal faces the scene light, so the shape
- * has a visible crease down every arm and catches the same highlight as the
- * spheres beside it.
+ * The old glyph was eight straight facets meeting at a wide waist, which read
+ * as a shuriken rather than a twinkle. This traces each arm as a curved petal
+ * — two quadratic bows from the centre out to a tip and back — so the
+ * silhouette pinches to a point at the centre and at each tip with nothing
+ * straight or sharp in between, then shades each petal by how much it faces
+ * the scene light so it still catches the same highlight as the spheres
+ * beside it.
  */
 function drawStar(
   context: CanvasRenderingContext2D,
@@ -1187,68 +1188,69 @@ function drawStar(
   radius: number,
   dark: boolean,
 ) {
-  const reach = radius * 1.15;
-  const waist = radius * 0.42;
+  const reach = radius * 1.35;
+  const waist = radius * 0.16;
+  const bow = radius * 0.32;
   const strength = shadeStrength(radius);
   const base = dark ? lightenColor(item.node.color, 0.22) : item.node.color;
 
   context.save();
   context.translate(item.sx, item.sy);
 
-  // Eight facets: each spans centre → one tip → the neighbouring waist point.
-  for (let facet = 0; facet < 8; facet += 1) {
-    const tipAngle = (Math.PI / 2) * Math.floor(facet / 2);
-    // Alternate which side of the arm the facet covers.
-    const waistAngle = tipAngle + (facet % 2 === 0 ? -Math.PI / 4 : Math.PI / 4);
+  // Four petals, one per tip, each bowed out to either side of the arm's axis.
+  for (let arm = 0; arm < 4; arm += 1) {
+    const tipAngle = (Math.PI / 2) * arm;
+    const perpAngle = tipAngle + Math.PI / 2;
 
     const tx = Math.cos(tipAngle) * reach;
     const ty = Math.sin(tipAngle) * reach;
-    const wx = Math.cos(waistAngle) * waist;
-    const wy = Math.sin(waistAngle) * waist;
+    const mx = Math.cos(tipAngle) * reach * 0.55;
+    const my = Math.sin(tipAngle) * reach * 0.55;
+    const px = Math.cos(perpAngle) * bow;
+    const py = Math.sin(perpAngle) * bow;
 
-    // The facet tilts away from the arm's axis, so its normal is close to the
-    // bisector of tip and waist — good enough to give each face a distinct
-    // value without solving any actual geometry.
-    const nx = (Math.cos(tipAngle) + Math.cos(waistAngle) * 2) / 3;
-    const ny = (Math.sin(tipAngle) + Math.sin(waistAngle) * 2) / 3;
-    const length = Math.hypot(nx, ny) || 1;
-    const lit = (nx / length) * LIGHT_X + (ny / length) * LIGHT_Y;
+    const lit = Math.cos(tipAngle) * LIGHT_X + Math.sin(tipAngle) * LIGHT_Y;
 
     context.beginPath();
     context.moveTo(0, 0);
-    context.lineTo(wx, wy);
-    context.lineTo(tx, ty);
+    context.quadraticCurveTo(mx + px, my + py, tx, ty);
+    context.quadraticCurveTo(mx - px, my - py, 0, 0);
     context.closePath();
     context.fillStyle = shade(base, lit * (dark ? 0.5 : 0.34) * strength);
     context.fill();
   }
 
-  // Hairline along the silhouette keeps the gem separated from the ground and
-  // from a moon of the same colour.
+  // Hairline along the silhouette keeps the sparkle separated from the ground
+  // and from a moon of the same colour.
   context.beginPath();
-  for (let point = 0; point < 8; point += 1) {
-    const angle = (Math.PI / 4) * point;
-    const distance = point % 2 === 0 ? reach : waist;
-    const px = Math.cos(angle) * distance;
-    const py = Math.sin(angle) * distance;
-    if (point === 0) context.moveTo(px, py);
-    else context.lineTo(px, py);
+  for (let arm = 0; arm < 4; arm += 1) {
+    const tipAngle = (Math.PI / 2) * arm;
+    const perpAngle = tipAngle + Math.PI / 2;
+    const tx = Math.cos(tipAngle) * reach;
+    const ty = Math.sin(tipAngle) * reach;
+    const mx = Math.cos(tipAngle) * reach * 0.55;
+    const my = Math.sin(tipAngle) * reach * 0.55;
+    const px = Math.cos(perpAngle) * bow;
+    const py = Math.sin(perpAngle) * bow;
+
+    if (arm === 0) context.moveTo(0, 0);
+    context.quadraticCurveTo(mx + px, my + py, tx, ty);
+    context.quadraticCurveTo(mx - px, my - py, 0, 0);
   }
-  context.closePath();
   context.lineWidth = Math.max(0.5, radius * 0.06);
   context.strokeStyle = dark
     ? withAlpha(lightenColor(item.node.color, 0.7), 0.6)
     : withAlpha(darkenColor(item.node.color, 0.4), 0.45);
   context.stroke();
 
-  // Core glint at the crossing point, where the eight facets meet.
+  // Core glint at the centre, where the four petals meet.
   if (strength > 0 && radius >= 4) {
-    const glint = context.createRadialGradient(0, 0, 0, 0, 0, waist * 1.1);
+    const glint = context.createRadialGradient(0, 0, 0, 0, 0, waist * 2.2);
     glint.addColorStop(0, `rgba(255,255,255,${((dark ? 0.72 : 0.5) * strength).toFixed(3)})`);
     glint.addColorStop(1, "rgba(255,255,255,0)");
     context.fillStyle = glint;
     context.beginPath();
-    context.arc(0, 0, waist * 1.1, 0, Math.PI * 2);
+    context.arc(0, 0, waist * 2.2, 0, Math.PI * 2);
     context.fill();
   }
 
