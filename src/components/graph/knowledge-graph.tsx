@@ -10,10 +10,12 @@ import {
   GraphCanvas,
   type CanvasEdge,
   type CanvasNode,
+  type CanvasNodeKind,
   type GraphForces,
 } from "@/components/graph/graph-canvas";
 import { GraphForcesPanel } from "@/components/graph/graph-forces-panel";
 import { GRAPH_FRAME_HEIGHT } from "@/components/graph/graph-frame";
+import { GraphKindKey } from "@/components/graph/graph-kind-key";
 import { GraphLegend } from "@/components/graph/graph-legend";
 import { GraphOrganizePanel } from "@/components/graph/graph-organize-panel";
 import { GraphSideRail } from "@/components/graph/graph-side-rail";
@@ -49,6 +51,21 @@ interface NoteNode {
   groupLabel: string;
   /** Node is coloured by its own id, not by a shared group colour. */
   mixed: boolean;
+}
+
+/**
+ * Notes have no kind of their own the way log entries do, so the canvas would
+ * otherwise draw every one of them as the same planet. How connected a note is
+ * is the closest thing the graph has to a role, so that is what picks the body:
+ * a well-linked note is a hub, a lightly linked one a moon, and a note nothing
+ * points at is a lone spark rather than a small planet, which keeps orphans
+ * visually separate from the clusters instead of merely smaller.
+ */
+function kindForDegree(degree: number): CanvasNodeKind {
+  if (degree === 0) return "tag";
+  if (degree >= 6) return "hub";
+  if (degree >= 3) return "group";
+  return "leaf";
 }
 
 export function KnowledgeGraph() {
@@ -145,6 +162,7 @@ export function KnowledgeGraph() {
         label: node.title || "Untitled",
         color: node.color,
         size: Math.min(24, 6 + Math.sqrt(node.degree) * 4),
+        kind: kindForDegree(node.degree),
       })),
     [noteNodes],
   );
@@ -189,6 +207,20 @@ export function KnowledgeGraph() {
       .map(([key, value]) => ({ key, ...value }))
       .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
   }, [noteNodes]);
+
+  // The shape key doubles as a reading of the vault: which rows appear tells you
+  // whether the notes are actually linked or just piled up.
+  const kindKeyItems = useMemo(() => {
+    const present = new Set(canvasNodes.map((node) => node.kind));
+    return ([
+      { kind: "hub", label: "Well linked" },
+      { kind: "group", label: "Linked" },
+      { kind: "leaf", label: "Few links" },
+      { kind: "tag", label: "Unlinked" },
+    ] as const)
+      .filter((item) => present.has(item.kind))
+      .map((item) => ({ ...item }));
+  }, [canvasNodes]);
 
   const trimmedQuery = query.trim().toLowerCase();
   const highlightIds = useMemo(() => {
@@ -316,6 +348,8 @@ export function KnowledgeGraph() {
                 meta: `${group.count}`,
               }))}
             />
+
+            <GraphKindKey className="pointer-events-auto" items={kindKeyItems} />
 
             <GraphForcesPanel className="pointer-events-auto" forces={forces} onChange={setForces} />
             <GraphOrganizePanel notes={notes} />

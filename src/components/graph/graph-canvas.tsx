@@ -9,6 +9,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { darkenColor, lightenColor, withAlpha } from "@/lib/graph/palette";
 import { cn } from "@/lib/utils";
 
+import {
+  GROUP_GLYPH_SCALE,
+  getGlyphPath,
+  getGlyphTrail,
+  glyphAngle,
+  glyphLineWidth,
+  pickGlyph,
+  type GlyphId,
+} from "./graph-glyphs";
+
 /** Visual family of a node. Shape encodes kind so colour can encode grouping. */
 export type CanvasNodeKind = "hub" | "group" | "tag" | "leaf";
 
@@ -111,7 +121,6 @@ function chrome(dark: boolean) {
     pillStroke: dark ? "rgba(148,163,184,.28)" : "rgba(100,116,139,.22)",
     pillText: dark ? "#f4f7fb" : "#0f172a",
     edgeBase: dark ? "#aebdcf" : "#59677d",
-    ringMix: dark ? 0.38 : 0.22,
   };
 }
 
@@ -127,10 +136,11 @@ const LABEL_FONT =
  *
  * Colour comes from the caller (one colour per group); this component owns the
  * look and the interaction model. It renders with Canvas 2D rather than a WebGL
- * graph library because the aesthetic — curved edges that gradient between the
- * two nodes they join, nodes drawn as lit spheres with a soft bloom, shapes that
- * distinguish node kinds, and haloed labels instead of boxed ones — needs
- * per-primitive drawing control that a point-sprite renderer does not give.
+ * graph library because the aesthetic — dashed edges that gradient between the
+ * two nodes they join, lit spheres for the anchoring kinds and flat line-art
+ * machines and sparks for the rest, per-node glyph variety inside each kind,
+ * and haloed labels instead of boxed ones — needs per-primitive drawing control
+ * that a point-sprite renderer does not give.
  *
  * Layout is a live ForceAtlas2 simulation stepped on the animation frame, so the
  * graph settles visibly and can be dragged around like Obsidian's graph view.
@@ -412,16 +422,26 @@ export function GraphCanvas({
       gradient.addColorStop(0, withAlpha(from.node.color, alpha));
       gradient.addColorStop(1, withAlpha(to.node.color, alpha));
 
+      // Dashes read as an orbital path rather than a wire, but they only work
+      // where the line is bright enough to see gaps in: an edge hanging off the
+      // hovered node wants the continuity of a solid stroke, and a dimmed edge
+      // at 0.05 alpha would disappear into its own gaps entirely.
+      const dashed = lit && !(hovered && touchesHover);
+      const dashScale = clamp(radiusScale, 0.7, 1.8);
+      context.setLineDash(dashed ? [3.5 * dashScale, 4.5 * dashScale] : []);
       context.strokeStyle = lit ? gradient : withAlpha(theme.edgeBase, alpha);
-      context.lineWidth = base * emphasis * clamp(radiusScale, 0.7, 1.8);
+      context.lineWidth = base * emphasis * dashScale * (dashed ? 0.85 : 1);
       context.beginPath();
       context.moveTo(sx, sy);
       context.quadraticCurveTo(cx, cy, ex, ey);
       context.stroke();
     });
+    // Dash state is context-wide: leaving it set would stipple every label halo
+    // and the hover pill's border.
+    context.setLineDash([]);
 
     // ── Node bloom ──────────────────────────────────────────────────────────
-    // Bodies are flat discs, so there is no bloom pass: a halo under every node
+    // There is no bloom pass: a halo under every node
     // (and its light-mode counterpart, a cast shadow) was the single biggest
     // source of visual noise, and a graph of a hundred nodes read as fog. Only
     // the hovered node gets a whisper of a halo, as a focus cue rather than
@@ -454,7 +474,7 @@ export function GraphCanvas({
       .sort((left, right) => right.r - left.r)
       .forEach((item) => {
         const focused = item.id === hovered || item.id === draggedRef.current;
-        drawNode(context, item, { dark, focused, ringMix: theme.ringMix, time });
+        drawNode(context, item, { dark, focused, time });
       });
 
     // ── Labels ──────────────────────────────────────────────────────────────
@@ -607,7 +627,13 @@ export function GraphCanvas({
     let bestDistance = Infinity;
     for (const item of placedRef.current) {
       const distance = Math.hypot(item.sx - x, item.sy - y);
-      if (distance <= item.r + 5 && distance < bestDistance) {
+      // Spheres end at their radius, but the stroke-only bodies reach past it —
+      // a sparkle's tips run to 1.2× and an orbit ring nearly as far — so those
+      // kinds get their overshoot added to the grab pad. Without it you can see
+      // a point and not be able to click it.
+      const kind = item.node.kind ?? "hub";
+      const reach = kind === "tag" || kind === "group" ? item.r * 0.25 : 0;
+      if (distance <= item.r + reach + 5 && distance < bestDistance) {
         best = item;
         bestDistance = distance;
       }
@@ -878,8 +904,11 @@ function drawStarfield(
     Math.max(width, height) * 0.78,
   );
   if (dark) {
-    ground.addColorStop(0, "rgba(7,10,20,.35)");
-    ground.addColorStop(1, "rgba(3,5,12,.78)");
+    // Navy rather than near-black: the printed star charts this look borrows
+    // from are ink on deep blue, and a true black ground flattens the nebulae
+    // into grey smoke.
+    ground.addColorStop(0, "rgba(12,20,44,.4)");
+    ground.addColorStop(1, "rgba(6,11,28,.82)");
   } else {
     ground.addColorStop(0, "rgba(255,255,255,.7)");
     ground.addColorStop(1, "rgba(203,213,228,.38)");
@@ -926,9 +955,39 @@ function drawStarfield(
     const radius = (0.5 + starRandom(index, 4) * 1.15) * (dark ? 1 : 0.85);
     const alpha = (dark ? 0.5 : 0.3) * twinkle * (0.45 + depth * 0.5);
 
-    context.fillStyle = dark
+    const ink = dark
       ? `rgba(226,236,248,${alpha.toFixed(3)})`
       : `rgba(51,65,88,${alpha.toFixed(3)})`;
+
+    // Roughly one star in six is drawn as a mark instead of a speck — the same
+    // small crosses and plusses that pepper the icon sheet. They read as
+    // *brighter* stars rather than as a second kind of object, so they are kept
+    // rare: a sky of crosses looks like a texture swatch.
+    const mark = starRandom(index, 5);
+    if (mark > 0.84) {
+      const reach = radius * (mark > 0.94 ? 2.6 : 1.9);
+      const diagonal = mark > 0.94;
+      context.strokeStyle = ink;
+      context.lineWidth = Math.max(0.6, radius * 0.55);
+      context.lineCap = "round";
+      context.beginPath();
+      if (diagonal) {
+        const leg = reach * Math.SQRT1_2;
+        context.moveTo(x - leg, y - leg);
+        context.lineTo(x + leg, y + leg);
+        context.moveTo(x + leg, y - leg);
+        context.lineTo(x - leg, y + leg);
+      } else {
+        context.moveTo(x - reach, y);
+        context.lineTo(x + reach, y);
+        context.moveTo(x, y - reach);
+        context.lineTo(x, y + reach);
+      }
+      context.stroke();
+      continue;
+    }
+
+    context.fillStyle = ink;
     context.beginPath();
     context.arc(x, y, radius, 0, Math.PI * 2);
     context.fill();
@@ -965,43 +1024,75 @@ function arcPath(from: Placed, to: Placed) {
 interface NodeStyle {
   dark: boolean;
   focused: boolean;
-  ringMix: number;
   /** `performance.now()` — drives twinkle and the orbiting focus ring. */
   time: number;
 }
 
 /**
+ * Detail thresholds, in screen pixels of node radius.
+ *
+ * Line art has a floor that a filled disc does not: a stroked satellite at 4px
+ * is a smudge, and a canvas can hold hundreds of them. Below `LOD_DOT` a node
+ * is a plain dot; between the two it gets its body but no artwork; only past
+ * `LOD_DETAIL` is there room for the glyph to say anything. This is the same
+ * idea as `shadeStrength` below, stepped rather than ramped because a
+ * half-faded line reads as a rendering fault where half-faded shading does not.
+ */
+const LOD_DOT = 4;
+const LOD_DETAIL = 8;
+
+/**
  * Paints one node as a celestial body. Kind picks the body; colour still comes
  * from the caller, so grouping survives the metaphor:
  *
- * Bodies are modelled, not flat: one scene light from the upper left gives each
- * a highlight, a terminator and a rim, and every body shades off the same axis
- * so they read as objects in one space. Shading fades out under a few pixels of
- * radius, where it would resolve to mud, leaving the old flat disc behind.
+ * - `hub` → planet: a lit sphere, with stroked surface artwork inside it.
+ * - `group` → a stroke-only machine: an orbit system, a satellite or a dish.
+ * - `leaf` → moon: a smaller sphere, sometimes trailing as a comet or meteor.
+ * - `tag` → a stroke-only spark.
  *
- * - `hub` → planet: a lit sphere.
- * - `group` → the same sphere threaded through a tilted ring, its back half
- *   dimmed and drawn behind the body, its lit front half in front.
- * - `tag` → sparkle: a curved four-point twinkle.
- * - `leaf` → moon: a smaller sphere with shallower modelling.
+ * The two families are deliberately different media. Spheres are modelled from
+ * one scene light at the upper left, which is what makes the palette colour
+ * legible at a glance; the machines and sparks are flat line art in that same
+ * colour, which is what makes them read as a different *class* of thing rather
+ * than as a smaller planet. Within a kind, the exact glyph is a stable hash of
+ * the node id, so a graph has the variety of an icon sheet without the kind
+ * ever becoming ambiguous.
  */
 function drawNode(context: CanvasRenderingContext2D, item: Placed, style: NodeStyle) {
-  const { dark, focused, ringMix, time } = style;
+  const { dark, focused, time } = style;
   const kind = item.node.kind ?? "hub";
   const radius = item.r * (focused ? 1.16 : 1);
   const alpha = 1 - item.fade * 0.82;
+  const detail = radius >= LOD_DETAIL;
+  const glyph = pickGlyph(kind, item.id);
 
   context.save();
   context.globalAlpha = alpha;
 
-  if (kind === "tag") {
-    drawStar(context, item, radius, dark);
+  if (radius < LOD_DOT) {
+    // Too small to hold anything. A dot is honest; a 3px satellite is not.
+    context.beginPath();
+    context.arc(item.sx, item.sy, radius, 0, Math.PI * 2);
+    context.fillStyle = dark ? lightenColor(item.node.color, 0.12) : item.node.color;
+    context.fill();
+  } else if (kind === "tag") {
+    // Below the detail threshold the whole tag family collapses to the plainest
+    // member, which is the only one that survives at that size.
+    drawLineGlyph(context, item, radius * 1.2, detail ? glyph : "cross-spark", dark, 1.25);
+  } else if (kind === "group") {
+    const shown = detail ? glyph : "orbit-system";
+    drawLineGlyph(
+      context,
+      item,
+      radius * (GROUP_GLYPH_SCALE[shown] ?? 1),
+      shown,
+      dark,
+      1.35,
+    );
   } else if (kind === "leaf") {
-    drawMoon(context, item, radius, dark);
+    drawMoon(context, item, radius, dark, detail ? glyph : null);
   } else {
-    if (kind === "group") drawPlanetRing(context, item, radius, "back", ringMix, dark);
-    drawPlanet(context, item, radius, dark);
-    if (kind === "group") drawPlanetRing(context, item, radius, "front", ringMix, dark);
+    drawPlanet(context, item, radius, dark, detail ? glyph : null);
   }
 
   // Focus marker: a dashed orbit that slowly rotates, so the hovered body reads
@@ -1021,6 +1112,95 @@ function drawNode(context: CanvasRenderingContext2D, item: Placed, style: NodeSt
     context.restore();
   }
 
+  context.restore();
+}
+
+/**
+ * Strokes a unit-space glyph as a node's whole body.
+ *
+ * `lineWidth` is set after the scale so the stroke lands at a fixed screen
+ * weight — see `glyphLineWidth`. On paper the palette colour is darkened rather
+ * than lifted: a lightened line vanishes on a pale ground, the same trap the
+ * old ring code had to work around.
+ */
+function drawLineGlyph(
+  context: CanvasRenderingContext2D,
+  item: Placed,
+  scale: number,
+  glyph: GlyphId,
+  dark: boolean,
+  weight: number,
+) {
+  context.save();
+  context.translate(item.sx, item.sy);
+  context.scale(scale, scale);
+  context.lineWidth = glyphLineWidth(weight, scale);
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  context.strokeStyle = dark
+    ? lightenColor(item.node.color, 0.45)
+    : darkenColor(item.node.color, 0.22);
+  context.stroke(getGlyphPath(glyph));
+  context.restore();
+}
+
+/**
+ * Surface artwork stroked inside a sphere — bands, a storm, craters.
+ *
+ * Clipped to the body so no line crosses the silhouette: the moment a crater
+ * pokes out past the rim, the sphere stops reading as a sphere. Kept at low
+ * alpha because this is texture, not structure; it should be visible when you
+ * look at a node and invisible when you look at the graph.
+ */
+function drawBodyOverlay(
+  context: CanvasRenderingContext2D,
+  item: Placed,
+  radius: number,
+  glyph: GlyphId,
+  dark: boolean,
+) {
+  context.save();
+  context.beginPath();
+  context.arc(item.sx, item.sy, radius - 0.6, 0, Math.PI * 2);
+  context.clip();
+  context.translate(item.sx, item.sy);
+  context.scale(radius, radius);
+  context.lineWidth = glyphLineWidth(1, radius);
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  context.strokeStyle = withAlpha(
+    dark ? lightenColor(item.node.color, 0.72) : darkenColor(item.node.color, 0.5),
+    dark ? 0.62 : 0.48,
+  );
+  context.stroke(getGlyphPath(glyph));
+  context.restore();
+}
+
+/**
+ * Trail behind a travelling leaf. Drawn outside the body clip, and rotated by a
+ * hash of the node id so a field of comets does not look like a rainstorm.
+ */
+function drawTrail(
+  context: CanvasRenderingContext2D,
+  item: Placed,
+  radius: number,
+  glyph: GlyphId,
+  dark: boolean,
+) {
+  const trail = getGlyphTrail(glyph);
+  if (!trail) return;
+
+  context.save();
+  context.translate(item.sx, item.sy);
+  context.rotate(glyphAngle(item.id));
+  context.scale(radius, radius);
+  context.lineWidth = glyphLineWidth(1.1, radius);
+  context.lineCap = "round";
+  context.strokeStyle = withAlpha(
+    dark ? lightenColor(item.node.color, 0.7) : darkenColor(item.node.color, 0.3),
+    dark ? 0.48 : 0.36,
+  );
+  context.stroke(trail);
   context.restore();
 }
 
@@ -1064,6 +1244,7 @@ function drawPlanet(
   item: Placed,
   radius: number,
   dark: boolean,
+  overlay: GlyphId | null,
 ) {
   const strength = shadeStrength(radius);
   const base = dark ? lightenColor(item.node.color, 0.08) : item.node.color;
@@ -1110,6 +1291,8 @@ function drawPlanet(
   );
   context.stroke();
 
+  if (overlay) drawBodyOverlay(context, item, radius, overlay, dark);
+
   // Specular: small, tight, and only once the body is big enough to hold it.
   if (radius >= 5.5) {
     const sx = item.sx + LIGHT_X * radius * 0.52;
@@ -1125,139 +1308,6 @@ function drawPlanet(
 }
 
 /**
- * Tilted ring around a planet, split so the disc sits inside it.
- *
- * The back half is dimmed and the front half brightened toward the light, which
- * is what sells the ring as passing behind the sphere rather than being drawn
- * on top of it; the front half also takes the planet's shadow across its
- * far-from-light side.
- */
-function drawPlanetRing(
-  context: CanvasRenderingContext2D,
-  item: Placed,
-  radius: number,
-  half: "back" | "front",
-  ringMix: number,
-  dark: boolean,
-) {
-  const tilt = -0.42;
-  // Tighter and thinner than the body it belongs to: the ring is how a group
-  // node is told apart from a hub, not an ornament in its own right.
-  const ringRadius = radius * 1.7;
-  const back = half === "back";
-
-  context.save();
-  context.translate(item.sx, item.sy);
-  context.rotate(tilt);
-  context.lineWidth = Math.max(0.6, radius * (back ? 0.075 : 0.1));
-  // A lightened ring vanishes on a pale ground, so paper gets a darkened one.
-  // The back arc runs dimmer than the front so the two halves read as depth.
-  context.strokeStyle = dark
-    ? withAlpha(lightenColor(item.node.color, back ? 0.4 : 0.72), (ringMix * 0.5 + 0.21) * (back ? 0.6 : 1))
-    : withAlpha(darkenColor(item.node.color, back ? 0.12 : 0.38), back ? 0.28 : 0.5);
-  context.beginPath();
-  // Back half sweeps above the planet, front half below — together they read as
-  // one ring threaded through the disc.
-  context.ellipse(
-    0,
-    0,
-    ringRadius,
-    ringRadius * 0.3,
-    0,
-    back ? Math.PI : 0,
-    back ? Math.PI * 2 : Math.PI,
-  );
-  context.stroke();
-  context.restore();
-}
-
-/**
- * Tag body: a four-point sparkle, not a flat spark.
- *
- * The old glyph was eight straight facets meeting at a wide waist, which read
- * as a shuriken rather than a twinkle. This traces each arm as a curved petal
- * — two quadratic bows from the centre out to a tip and back — so the
- * silhouette pinches to a point at the centre and at each tip with nothing
- * straight or sharp in between, then shades each petal by how much it faces
- * the scene light so it still catches the same highlight as the spheres
- * beside it.
- */
-function drawStar(
-  context: CanvasRenderingContext2D,
-  item: Placed,
-  radius: number,
-  dark: boolean,
-) {
-  const reach = radius * 1.35;
-  const waist = radius * 0.16;
-  const bow = radius * 0.32;
-  const strength = shadeStrength(radius);
-  const base = dark ? lightenColor(item.node.color, 0.22) : item.node.color;
-
-  context.save();
-  context.translate(item.sx, item.sy);
-
-  // Four petals, one per tip, each bowed out to either side of the arm's axis.
-  for (let arm = 0; arm < 4; arm += 1) {
-    const tipAngle = (Math.PI / 2) * arm;
-    const perpAngle = tipAngle + Math.PI / 2;
-
-    const tx = Math.cos(tipAngle) * reach;
-    const ty = Math.sin(tipAngle) * reach;
-    const mx = Math.cos(tipAngle) * reach * 0.55;
-    const my = Math.sin(tipAngle) * reach * 0.55;
-    const px = Math.cos(perpAngle) * bow;
-    const py = Math.sin(perpAngle) * bow;
-
-    const lit = Math.cos(tipAngle) * LIGHT_X + Math.sin(tipAngle) * LIGHT_Y;
-
-    context.beginPath();
-    context.moveTo(0, 0);
-    context.quadraticCurveTo(mx + px, my + py, tx, ty);
-    context.quadraticCurveTo(mx - px, my - py, 0, 0);
-    context.closePath();
-    context.fillStyle = shade(base, lit * (dark ? 0.5 : 0.34) * strength);
-    context.fill();
-  }
-
-  // Hairline along the silhouette keeps the sparkle separated from the ground
-  // and from a moon of the same colour.
-  context.beginPath();
-  for (let arm = 0; arm < 4; arm += 1) {
-    const tipAngle = (Math.PI / 2) * arm;
-    const perpAngle = tipAngle + Math.PI / 2;
-    const tx = Math.cos(tipAngle) * reach;
-    const ty = Math.sin(tipAngle) * reach;
-    const mx = Math.cos(tipAngle) * reach * 0.55;
-    const my = Math.sin(tipAngle) * reach * 0.55;
-    const px = Math.cos(perpAngle) * bow;
-    const py = Math.sin(perpAngle) * bow;
-
-    if (arm === 0) context.moveTo(0, 0);
-    context.quadraticCurveTo(mx + px, my + py, tx, ty);
-    context.quadraticCurveTo(mx - px, my - py, 0, 0);
-  }
-  context.lineWidth = Math.max(0.5, radius * 0.06);
-  context.strokeStyle = dark
-    ? withAlpha(lightenColor(item.node.color, 0.7), 0.6)
-    : withAlpha(darkenColor(item.node.color, 0.4), 0.45);
-  context.stroke();
-
-  // Core glint at the centre, where the four petals meet.
-  if (strength > 0 && radius >= 4) {
-    const glint = context.createRadialGradient(0, 0, 0, 0, 0, waist * 2.2);
-    glint.addColorStop(0, `rgba(255,255,255,${((dark ? 0.72 : 0.5) * strength).toFixed(3)})`);
-    glint.addColorStop(1, "rgba(255,255,255,0)");
-    context.fillStyle = glint;
-    context.beginPath();
-    context.arc(0, 0, waist * 2.2, 0, Math.PI * 2);
-    context.fill();
-  }
-
-  context.restore();
-}
-
-/**
  * Moon: the same sphere model as a planet, dialled down.
  *
  * Leaves are the most numerous body on the canvas, so the shading is shallower
@@ -1269,10 +1319,14 @@ function drawMoon(
   item: Placed,
   radius: number,
   dark: boolean,
+  overlay: GlyphId | null,
 ) {
   const body = radius * 0.85;
   const strength = shadeStrength(body);
   const base = withAlpha(lightenColor(item.node.color, dark ? 0.2 : 0.05), 0.95);
+
+  // The trail goes down first so the body sits on top of where it leaves from.
+  if (overlay) drawTrail(context, item, body, overlay, dark);
 
   context.beginPath();
   context.arc(item.sx, item.sy, body, 0, Math.PI * 2);
@@ -1298,6 +1352,8 @@ function drawMoon(
     ? withAlpha(lightenColor(item.node.color, 0.5), 0.6)
     : withAlpha(darkenColor(item.node.color, 0.32), 0.45);
   context.stroke();
+
+  if (overlay) drawBodyOverlay(context, item, body, overlay, dark);
 }
 
 interface Box {

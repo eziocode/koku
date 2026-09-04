@@ -15,6 +15,7 @@ import {
 } from "@/components/graph/graph-canvas";
 import { GraphForcesPanel } from "@/components/graph/graph-forces-panel";
 import { GRAPH_FRAME_HEIGHT } from "@/components/graph/graph-frame";
+import { GraphKindKey } from "@/components/graph/graph-kind-key";
 import { GraphLegend } from "@/components/graph/graph-legend";
 import { GraphSideRail } from "@/components/graph/graph-side-rail";
 import {
@@ -176,12 +177,24 @@ export function LoggerGraph() {
         // Area ∝ hours reads more honestly than radius ∝ hours.
         size: maxHours > 0 ? 5 + Math.sqrt(node.hours / maxHours) * 17 : 6,
         // Shape carries the node kind so colour is free to carry the grouping:
-        // categories are spheres, projects containers, tags diamonds, and the
-        // many individual entries stay hollow rings.
+        // categories are planets, projects the machinery in orbit around them,
+        // tags sparks, and the many individual entries moons.
         kind: CANVAS_KIND_BY_NODE_KIND[node.kind],
       })),
     [maxHours, model.nodes],
   );
+
+  // Only the kinds actually on the canvas: with tags switched off, a "Tag" row
+  // in the key points at nothing.
+  const kindKeyItems = useMemo(() => {
+    const present = new Set(model.nodes.map((node) => node.kind));
+    return (Object.keys(CANVAS_KIND_BY_NODE_KIND) as LoggerNodeKind[])
+      .filter((kind) => present.has(kind))
+      .map((kind) => ({
+        kind: CANVAS_KIND_BY_NODE_KIND[kind],
+        label: `${kind.charAt(0).toUpperCase()}${kind.slice(1)}`,
+      }));
+  }, [model.nodes]);
 
   const canvasEdges = useMemo<CanvasEdge[]>(() => {
     const maxEdgeHours = model.edges.reduce((max, edge) => Math.max(max, edge.hours), 0);
@@ -310,8 +323,17 @@ export function LoggerGraph() {
                   color: group.color,
                   mixed: group.mixed,
                   meta: formatDuration(Math.round(group.hours * 3600)),
+                  // In `kind` mode the group *is* the node type, so the swatch
+                  // can show the body instead of a dot. In the other modes a
+                  // group spans every kind, and there is no one shape to show.
+                  glyph:
+                    colorMode === "kind"
+                      ? CANVAS_KIND_BY_NODE_KIND[group.key as LoggerNodeKind]
+                      : undefined,
                 }))}
               />
+
+              <GraphKindKey className="pointer-events-auto" items={kindKeyItems} />
 
               <GraphForcesPanel
                 className="pointer-events-auto"

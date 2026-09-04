@@ -1,5 +1,7 @@
 "use client";
 
+import type { CanvasNodeKind } from "@/components/graph/graph-canvas";
+import { KindGlyph } from "@/components/graph/graph-kind-key";
 import { cn } from "@/lib/utils";
 
 export interface GraphLegendItem {
@@ -10,6 +12,12 @@ export interface GraphLegendItem {
   meta?: string;
   /** Group whose nodes are individually coloured; drawn as a rainbow swatch. */
   mixed?: boolean;
+  /**
+   * Every node in this group shares one body. Set it and the swatch becomes
+   * that body's outline instead of a dot, so the legend names the shape you are
+   * looking at on the canvas rather than only its colour.
+   */
+  glyph?: CanvasNodeKind;
 }
 
 interface GraphLegendProps {
@@ -41,17 +49,21 @@ export function GraphLegend({ title, items, maxItems = 8, className }: GraphLege
       <ul className="mt-2 space-y-1.5">
         {visible.map((item) => (
           <li key={item.key} className="flex items-center gap-2 text-xs">
-            <span
-              className="h-2.5 w-2.5 shrink-0 rounded-full"
-              style={
-                item.mixed
-                  ? {
-                      backgroundImage:
-                        "conic-gradient(#e0603f, #c9993a, #4bab6a, #2fa8a0, #3f8fd0, #8a6ede, #e0699e, #e0603f)",
-                    }
-                  : { backgroundColor: item.color }
-              }
-            />
+            {item.glyph && !item.mixed ? (
+              <KindGlyph kind={item.glyph} color={item.color} />
+            ) : (
+              <span
+                className="h-2.5 w-2.5 shrink-0 rounded-full"
+                style={
+                  item.mixed
+                    ? {
+                        backgroundImage:
+                          "conic-gradient(#e0603f, #c9993a, #4bab6a, #2fa8a0, #3f8fd0, #8a6ede, #e0699e, #e0603f)",
+                      }
+                    : { backgroundColor: item.color }
+                }
+              />
+            )}
             <span className="truncate text-foreground">
               {item.label}
               {item.mixed ? <span className="text-muted-foreground"> · mixed</span> : null}
