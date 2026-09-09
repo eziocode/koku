@@ -160,6 +160,15 @@ export interface NotificationPreferences {
    * sorted and de-duplicated by `normalizeHolidayDates`.
    */
   holidayDates: string[];
+  /**
+   * Individual local calendar days marked as planned leave, as `yyyy-MM-dd`.
+   *
+   * Same treatment as `holidayDates` (silences check-ins and the end-of-day
+   * wrap-up, marked as its own non-working kind in charts) except future
+   * dates are allowed, since leave is booked ahead of time rather than
+   * declared on the day. Kept sorted and de-duplicated by `normalizeLeaveDates`.
+   */
+  leaveDates: string[];
 }
 
 export const NOTIFICATION_DEFAULTS: NotificationPreferences = {
@@ -201,6 +210,7 @@ export const NOTIFICATION_DEFAULTS: NotificationPreferences = {
   },
   silentDays: [],
   holidayDates: [],
+  leaveDates: [],
 };
 
 /* ─── Schema ──────────────────────────────────────────────────────────────── */
@@ -325,6 +335,10 @@ export const notificationPreferencesSchema = z
       .array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/))
       .transform((dates) => normalizeHolidayDates(dates))
       .catch([]),
+    leaveDates: z
+      .array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/))
+      .transform((dates) => normalizeLeaveDates(dates))
+      .catch([]),
   })
   .catch(NOTIFICATION_DEFAULTS);
 
@@ -357,10 +371,16 @@ export function isValidIntervalMinutes(value: unknown): value is number {
   );
 }
 
-/* ─── Holidays ────────────────────────────────────────────────────────────── */
+/* ─── Holidays & leave ────────────────────────────────────────────────────── */
+/* Both are lists of individual local calendar days (`yyyy-MM-dd`) with the   */
+/* same shape and the same set of operations — only the cap differs — so the */
+/* normalize/check/toggle logic lives once as a generic and each concept     */
+/* gets a thin named wrapper around it.                                      */
 
 /** Guards the settings row against unbounded growth from a stuck loop. */
 export const MAX_HOLIDAY_DATES = 366;
+/** Guards the settings row against unbounded growth from a stuck loop. */
+export const MAX_LEAVE_DATES = 366;
 
 export const HOLIDAY_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -372,8 +392,8 @@ export function toHolidayDateKey(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-/** Sorted, de-duplicated, well-formed, and capped. */
-export function normalizeHolidayDates(dates: readonly string[]): string[] {
+/** Sorted, de-duplicated, well-formed, and capped to `cap` entries. */
+function normalizeDateList(dates: readonly string[], cap: number): string[] {
   const seen = new Set<string>();
 
   for (const value of dates) {
@@ -383,15 +403,42 @@ export function normalizeHolidayDates(dates: readonly string[]): string[] {
     }
   }
 
-  return Array.from(seen).sort().slice(-MAX_HOLIDAY_DATES);
+  return Array.from(seen).sort().slice(-cap);
 }
 
-export function isHolidayDate(dates: readonly string[], date: Date | number): boolean {
+function isDateInList(dates: readonly string[], date: Date | number): boolean {
   return dates.includes(toHolidayDateKey(new Date(date)));
 }
 
-export function toggleHolidayDate(dates: readonly string[], dateKey: string): string[] {
-  return normalizeHolidayDates(
+function toggleDateInList(dates: readonly string[], dateKey: string, cap: number): string[] {
+  return normalizeDateList(
     dates.includes(dateKey) ? dates.filter((value) => value !== dateKey) : [...dates, dateKey],
+    cap,
   );
+}
+
+/** Sorted, de-duplicated, well-formed, and capped. */
+export function normalizeHolidayDates(dates: readonly string[]): string[] {
+  return normalizeDateList(dates, MAX_HOLIDAY_DATES);
+}
+
+export function isHolidayDate(dates: readonly string[], date: Date | number): boolean {
+  return isDateInList(dates, date);
+}
+
+export function toggleHolidayDate(dates: readonly string[], dateKey: string): string[] {
+  return toggleDateInList(dates, dateKey, MAX_HOLIDAY_DATES);
+}
+
+/** Sorted, de-duplicated, well-formed, and capped. */
+export function normalizeLeaveDates(dates: readonly string[]): string[] {
+  return normalizeDateList(dates, MAX_LEAVE_DATES);
+}
+
+export function isLeaveDate(dates: readonly string[], date: Date | number): boolean {
+  return isDateInList(dates, date);
+}
+
+export function toggleLeaveDate(dates: readonly string[], dateKey: string): string[] {
+  return toggleDateInList(dates, dateKey, MAX_LEAVE_DATES);
 }

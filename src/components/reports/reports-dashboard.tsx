@@ -128,6 +128,7 @@ export function ReportsDashboard() {
         // Holidays and week-off days are labelled rather than left as blank
         // rows, so a zero-hour day off does not read as a missed day.
         holidayDates: notificationPrefs.holidayDates,
+        leaveDates: notificationPrefs.leaveDates,
         weekendDays: notificationPrefs.silentDays,
       }),
     [
@@ -137,6 +138,7 @@ export function ReportsDashboard() {
       monthStart,
       monthEnd,
       notificationPrefs.holidayDates,
+      notificationPrefs.leaveDates,
       notificationPrefs.silentDays,
     ],
   );

@@ -145,6 +145,7 @@ export const CHART_TOKENS = {
  */
 export const NON_WORKING_COLORS = {
   holiday: "#3b6ea5", // steel blue — a declared holiday
+  leave: "#8b6bb8", // lilac — planned personal leave
   weekend: "#e0bc79", // sand — a recurring week-off day
 } as const;
 

@@ -458,6 +458,41 @@ test("an explicit holiday wins over the recurring week-off day", () => {
   assert.equal(days[0].nonWorking?.kind, "holiday");
 });
 
+test("planned leave is marked on the day it falls on, distinct from a holiday", () => {
+  // 2026-08-15 is a Saturday, 2026-08-16 a Sunday.
+  const days = buildSegmentedDays({
+    entries: [],
+    projectMap,
+    interval: {
+      start: new Date("2026-08-14T00:00:00"),
+      end: new Date("2026-08-16T23:59:59.999"),
+    },
+    leaveDates: ["2026-08-14"],
+    weekendDays: [0, 6],
+  });
+
+  assert.deepEqual(
+    days.map((day) => day.nonWorking?.kind ?? null),
+    ["leave", "weekend", "weekend"],
+  );
+  assert.equal(days[0].nonWorking?.label, "Leave");
+});
+
+test("an explicit holiday wins over leave on the same day", () => {
+  const days = buildSegmentedDays({
+    entries: [],
+    projectMap,
+    interval: {
+      start: new Date("2026-08-14T00:00:00"),
+      end: new Date("2026-08-14T23:59:59.999"),
+    },
+    holidayDates: ["2026-08-14"],
+    leaveDates: ["2026-08-14"],
+  });
+
+  assert.equal(days[0].nonWorking?.kind, "holiday");
+});
+
 test("days carry no marker when no holidays or week-off days are configured", () => {
   const days = buildSegmentedDays({
     entries: [],

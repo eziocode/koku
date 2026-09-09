@@ -3,11 +3,15 @@ import { test } from "node:test";
 
 import {
   MAX_HOLIDAY_DATES,
+  MAX_LEAVE_DATES,
   isHolidayDate,
+  isLeaveDate,
   normalizeHolidayDates,
+  normalizeLeaveDates,
   notificationPreferencesSchema,
   toHolidayDateKey,
   toggleHolidayDate,
+  toggleLeaveDate,
 } from "./settings";
 
 test("a date key is the local calendar day, not the UTC one", () => {
@@ -58,5 +62,39 @@ test("preferences default to no holidays and survive a corrupt list", () => {
   assert.deepEqual(
     notificationPreferencesSchema.parse({ holidayDates: ["2026-08-03", "2026-08-02"] }).holidayDates,
     ["2026-08-02", "2026-08-03"],
+  );
+});
+
+test("leave dates normalize, cap, toggle, and match the same way as holidays", () => {
+  assert.deepEqual(
+    normalizeLeaveDates(["2026-08-02", "2026-01-01", "2026-08-02", "", "not-a-date"]),
+    ["2026-01-01", "2026-08-02"],
+  );
+
+  const many = Array.from({ length: MAX_LEAVE_DATES + 20 }, (_value, index) => {
+    const day = new Date(2027, 0, 1 + index);
+    return toHolidayDateKey(day);
+  });
+  assert.equal(normalizeLeaveDates(many).length, MAX_LEAVE_DATES);
+
+  const added = toggleLeaveDate([], "2027-03-10");
+  assert.deepEqual(added, ["2027-03-10"]);
+  assert.deepEqual(toggleLeaveDate(added, "2027-03-10"), []);
+
+  assert.equal(isLeaveDate(["2027-03-10"], new Date(2027, 2, 10, 23, 59, 59)), true);
+  assert.equal(isLeaveDate(["2027-03-10"], new Date(2027, 2, 11, 0, 0, 0)), false);
+});
+
+test("leave dates allow future dates and default to empty, unlike a corrupt list", () => {
+  assert.deepEqual(notificationPreferencesSchema.parse({}).leaveDates, []);
+  const future = "2099-01-01";
+  assert.deepEqual(
+    notificationPreferencesSchema.parse({ leaveDates: [future] }).leaveDates,
+    [future],
+  );
+  assert.deepEqual(
+    notificationPreferencesSchema.parse({ leaveDates: [future, 7, null] }).leaveDates,
+    [],
+    "a list with a non-string member falls back rather than half-parsing",
   );
 });

@@ -8,7 +8,7 @@ import { format, parseISO } from "date-fns";
 import { DndMenu } from "@/components/notifications/dnd-menu";
 import { MasterStateNotice } from "@/components/settings/notifications/master-state-notice";
 import { ToggleRow } from "@/components/settings/toggle-row";
-import { DatePicker } from "@/components/ui/date-picker";
+import { MultiDatePicker } from "@/components/ui/multi-date-picker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,7 +17,11 @@ import { toast } from "@/components/ui/toast";
 import { formatDndRemaining, resolveDnd } from "@/lib/notifications/dnd";
 import {
   MAX_HOLIDAY_DATES,
+  MAX_LEAVE_DATES,
+  normalizeHolidayDates,
+  normalizeLeaveDates,
   toggleHolidayDate,
+  toggleLeaveDate,
 } from "@/lib/notifications/settings";
 import { minutesToTimeInput, timeInputToMinutes } from "@/lib/notifications/quiet-hours";
 import { useNotificationPreferences } from "@/lib/notifications/use-notification-preferences";
@@ -43,7 +47,6 @@ const WEEKDAY_NAMES = [
  */
 export function ScheduleSettings() {
   const { prefs, patch } = useNotificationPreferences();
-  const [holidayDraft, setHolidayDraft] = useState<string>("");
   const tickNow = useSecondTick();
 
   const master = prefs.enabled;
@@ -190,37 +193,20 @@ export function ScheduleSettings() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap items-center gap-3">
-            <DatePicker
-              value={holidayDraft}
-              onChange={setHolidayDraft}
-              placeholder="Pick a day"
-              className="min-h-11 w-52"
-            />
-            <Button
-              variant="secondary"
-              disabled={!holidayDraft}
-              onClick={async () => {
-                if (!holidayDraft) {
-                  return;
-                }
-
-                if (prefs.holidayDates.includes(holidayDraft)) {
-                  toast.error("That day is already marked as a holiday.");
-                  return;
-                }
-
-                if (prefs.holidayDates.length >= MAX_HOLIDAY_DATES) {
+            <MultiDatePicker
+              existing={prefs.holidayDates}
+              placeholder="Pick days"
+              addLabel="Mark as holiday"
+              disabledMatcher={{ after: new Date() }}
+              onAdd={async (values) => {
+                const merged = normalizeHolidayDates([...prefs.holidayDates, ...values]);
+                if (merged.length >= MAX_HOLIDAY_DATES && merged.length > prefs.holidayDates.length) {
                   toast.error(`You can keep up to ${MAX_HOLIDAY_DATES} holidays.`);
-                  return;
                 }
-
-                await patch({ holidayDates: toggleHolidayDate(prefs.holidayDates, holidayDraft) });
-                setHolidayDraft("");
-                toast.success("Holiday added.");
+                await patch({ holidayDates: merged });
+                toast.success(values.length === 1 ? "Holiday added." : `${values.length} holidays added.`);
               }}
-            >
-              Mark as holiday
-            </Button>
+            />
             <Button
               variant="outline"
               onClick={async () => {
@@ -262,6 +248,60 @@ export function ScheduleSettings() {
             Only today and past days can be picked, matching the rest of koku: a holiday silences
             the day it names, and past days simply record that the day was off.
           </p>
+        </CardContent>
+      </Card>
+
+      {/* ── Planned leave ──────────────────────────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Planned leave</CardTitle>
+          <CardDescription>
+            Mark days you&apos;ll be away, including upcoming ones. Notifications are skipped the
+            same as a holiday.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <MultiDatePicker
+              existing={prefs.leaveDates}
+              placeholder="Pick days"
+              addLabel="Mark as leave"
+              onAdd={async (values) => {
+                const merged = normalizeLeaveDates([...prefs.leaveDates, ...values]);
+                if (merged.length >= MAX_LEAVE_DATES && merged.length > prefs.leaveDates.length) {
+                  toast.error(`You can keep up to ${MAX_LEAVE_DATES} leave days.`);
+                }
+                await patch({ leaveDates: merged });
+                toast.success(values.length === 1 ? "Leave added." : `${values.length} leave days added.`);
+              }}
+            />
+          </div>
+
+          {prefs.leaveDates.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              No planned leave yet, notifications run on every day that isn’t silent, quiet, or a
+              holiday.
+            </p>
+          ) : (
+            <ul className="flex flex-wrap gap-2">
+              {[...prefs.leaveDates].reverse().map((dateKey) => (
+                <li key={dateKey}>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await patch({ leaveDates: toggleLeaveDate(prefs.leaveDates, dateKey) });
+                      toast.success("Leave removed.");
+                    }}
+                    className="flex items-center gap-2 rounded-full border border-border bg-muted/50 px-3 py-1.5 text-sm text-foreground transition-colors hover:bg-muted"
+                    aria-label={`Remove leave on ${dateKey}`}
+                  >
+                    {format(parseISO(`${dateKey}T00:00:00`), "EEE, d MMM yyyy")}
+                    <X className="h-3.5 w-3.5 opacity-60" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </CardContent>
       </Card>
     </div>

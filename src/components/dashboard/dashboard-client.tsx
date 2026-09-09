@@ -175,6 +175,7 @@ export function DashboardClient() {
         labelFormat: "weekday",
         excludeTags: WORK_EXCLUDED_TAGS,
         holidayDates: notificationPrefs.holidayDates,
+        leaveDates: notificationPrefs.leaveDates,
         weekendDays: notificationPrefs.silentDays,
       }),
     [
@@ -185,6 +186,7 @@ export function DashboardClient() {
       weekStart,
       weekEnd,
       notificationPrefs.holidayDates,
+      notificationPrefs.leaveDates,
       notificationPrefs.silentDays,
     ],
   );

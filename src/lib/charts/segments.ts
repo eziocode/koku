@@ -78,11 +78,12 @@ export interface WorkLogSegment {
 /**
  * Why a day carried no work.
  *
- * `holiday` comes from the explicit `holidayDates` list, `weekend` from the
- * recurring week-off weekdays. A day can be both on paper; the explicit
- * one-off wins because it is the more specific statement about that date.
+ * `holiday` comes from the explicit `holidayDates` list, `leave` from the
+ * `leaveDates` list, `weekend` from the recurring week-off weekdays. A day
+ * can be more than one of these on paper; the explicit one-off (holiday,
+ * then leave) wins because it is the more specific statement about that date.
  */
-export type NonWorkingKind = "holiday" | "weekend";
+export type NonWorkingKind = "holiday" | "leave" | "weekend";
 
 /** A non-working day's marker, rendered in place of an empty track. */
 export interface NonWorkingMarker {
@@ -166,12 +167,19 @@ export interface BuildSegmentsOptions {
    */
   holidayDates?: readonly string[];
   /**
+   * Local calendar days (`yyyy-MM-dd`) marked as planned leave — the
+   * `notifications.leaveDates` setting. Days in this list carry a `leave`
+   * marker, same as a holiday but distinct so charts can tell them apart.
+   */
+  leaveDates?: readonly string[];
+  /**
    * Weekday indices treated as recurring days off (0 = Sunday … 6 = Saturday),
    * i.e. the `notifications.silentDays` setting. Labelled `weekend`.
    */
   weekendDays?: readonly number[];
   /** Marker copy, overridable for wording that differs per surface. */
   holidayLabel?: string;
+  leaveLabel?: string;
   weekendLabel?: string;
 }
 
@@ -321,19 +329,25 @@ export function buildSegmentedDays({
   labelFormat = "date",
   excludeTags = [],
   holidayDates = [],
+  leaveDates = [],
   weekendDays = [],
   holidayLabel = "Holiday",
+  leaveLabel = "Leave",
   weekendLabel = "Weekend",
 }: BuildSegmentsOptions): SegmentedDay[] {
   const labelFor = (date: Date) =>
     labelFormat === "weekday" ? format(date, "EEE") : format(date, "MMM d");
 
   const holidaySet = new Set(holidayDates);
+  const leaveSet = new Set(leaveDates);
   const weekendSet = new Set(weekendDays);
 
   const nonWorkingFor = (date: Date, key: string): NonWorkingMarker | null => {
     if (holidaySet.has(key)) {
       return { kind: "holiday", label: holidayLabel };
+    }
+    if (leaveSet.has(key)) {
+      return { kind: "leave", label: leaveLabel };
     }
     if (weekendSet.has(date.getDay())) {
       return { kind: "weekend", label: weekendLabel };
