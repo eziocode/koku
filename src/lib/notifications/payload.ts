@@ -25,6 +25,7 @@ export const NOTIFICATION_TAGS = {
   endOfDay: "koku-eod",
   endOfDayDone: "koku-eod-done",
   reminder: "koku-reminder",
+  adminAlert: "koku-admin-alert",
 } as const;
 
 export const NOTIFICATION_ICON = "/icon-192.png";
@@ -332,6 +333,39 @@ export function buildReminderNotification(
       tag: `${NOTIFICATION_TAGS.reminder}-${id}`,
       renotify: true,
       requireInteraction: true,
+      icon: NOTIFICATION_ICON,
+      badge: NOTIFICATION_BADGE,
+      data,
+    },
+  };
+}
+
+/**
+ * Tag is per-alert (not the shared `NOTIFICATION_TAGS.adminAlert` constant),
+ * same reasoning as reminders: two alerts sent close together each keep their
+ * own tray entry instead of the second replacing the first.
+ */
+export function buildAdminAlertNotification(
+  id: string,
+  message: string,
+  senderName: string,
+  scope: "global" | "direct",
+  now = Date.now(),
+): BuiltNotification {
+  const data: KokuNotificationData = {
+    kokuType: "admin-alert",
+    timerId: null,
+    breakId: null,
+    createdAt: now,
+  };
+
+  return {
+    title: scope === "global" ? `Message from ${senderName}, to everyone` : `Message from ${senderName}`,
+    options: {
+      body: message,
+      tag: `${NOTIFICATION_TAGS.adminAlert}-${id}`,
+      renotify: true,
+      requireInteraction: false,
       icon: NOTIFICATION_ICON,
       badge: NOTIFICATION_BADGE,
       data,

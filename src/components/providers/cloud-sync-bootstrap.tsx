@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { flushPendingChanges } from "@/lib/sync/sync-engine";
 import { repairTimeEntryTimestamps, repairShiftedRunStarts } from "@/lib/sync/repair-time-entries";
 import { startLiveStateSync } from "@/lib/stores/live-state-sync";
+import { startAdminAlertSync } from "@/lib/notifications/admin-alert-sync";
 import { kokuDb } from "@/lib/storage/db";
 
 export const RETRY_INTERVAL_MS = 15 * 60 * 1000;
@@ -45,10 +46,12 @@ export function CloudSyncBootstrap() {
     const interval = window.setInterval(retry, RETRY_INTERVAL_MS);
     window.addEventListener("online", retry);
     const stopLiveSync = startLiveStateSync();
+    const stopAdminAlertSync = startAdminAlertSync();
     return () => {
       window.clearInterval(interval);
       window.removeEventListener("online", retry);
       stopLiveSync();
+      stopAdminAlertSync();
     };
   }, []);
 

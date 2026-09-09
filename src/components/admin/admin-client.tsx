@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
 import { sortAdminUsersByPresence, type AdminGroup, type AdminUser } from "@/lib/admin-data";
 import { GROUP_MEMBER_SEARCH_THRESHOLD } from "@/lib/ui/list-thresholds";
@@ -237,6 +238,7 @@ export function AdminClient() {
         </Card>
       ) : null}
       <AdminGroups name={newGroupName} setName={setNewGroupName} onChanged={load} canManage={canManageAdmins} />
+      <NotifyPanel users={filteredUsers} />
       <Card>
         <CardHeader>
           <CardTitle>Data explorer</CardTitle>
@@ -319,6 +321,91 @@ function AdminGroups({
         ) : (
           <p className="text-sm text-muted-foreground">Group management owner-only.</p>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function NotifyPanel({ users }: { users: AdminUser[] }) {
+  const [scope, setScope] = useState<"global" | "direct">("global");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [query, setQuery] = useState("");
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const trimmedQuery = query.trim().toLowerCase();
+  const visibleUsers = trimmedQuery
+    ? users.filter((user) => (user.displayName || "").toLowerCase().includes(trimmedQuery) || user.email.toLowerCase().includes(trimmedQuery))
+    : users;
+
+  async function send() {
+    const trimmed = message.trim();
+    if (!trimmed) return;
+    if (scope === "direct" && !selectedIds.length) return;
+    setSending(true);
+    try {
+      const response = await fetch("/api/admin/notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(scope === "global" ? { message: trimmed, target: "global" } : { message: trimmed, target: { userIds: selectedIds } }),
+      });
+      if (!response.ok) { toast.error(await errorMessage(response, "Notification failed to send.")); return; }
+      const body = (await response.json()) as { sent?: number };
+      toast.success(`Alert sent to ${body.sent ?? 0} user${body.sent === 1 ? "" : "s"}.`);
+      setMessage("");
+      setSelectedIds([]);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Notify users</CardTitle>
+        <CardDescription>Send an alert to everyone, or to specific users. Delivered with a sound within seconds.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex gap-4 text-sm">
+          <label className="flex items-center gap-2">
+            <input type="radio" name="notify-scope" checked={scope === "global"} onChange={() => setScope("global")} />
+            Everyone
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="radio" name="notify-scope" checked={scope === "direct"} onChange={() => setScope("direct")} />
+            Specific users
+          </label>
+        </div>
+        {scope === "direct" ? (
+          <div className="space-y-2">
+            {users.length > GROUP_MEMBER_SEARCH_THRESHOLD ? (
+              <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search users by name or email" aria-label="Search users to notify" />
+            ) : null}
+            <div className="max-h-56 space-y-2 overflow-auto rounded-lg border p-3">
+              {visibleUsers.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No users match.</p>
+              ) : (
+                visibleUsers.map((user) => {
+                  const selected = selectedIds.includes(user.id);
+                  return (
+                    <label key={user.id} className="flex items-start gap-2 text-sm">
+                      <input type="checkbox" checked={selected}
+                        onChange={() => setSelectedIds(selected ? selectedIds.filter((id) => id !== user.id) : [...selectedIds, user.id])} />
+                      <span>{user.displayName || "Unnamed user"}
+                        <span className="block text-xs text-muted-foreground">{user.email}</span>
+                      </span>
+                    </label>
+                  );
+                })
+              )}
+            </div>
+            {selectedIds.length ? <p className="text-xs text-muted-foreground">{selectedIds.length} selected</p> : null}
+          </div>
+        ) : null}
+        <Textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Message to send" rows={3} />
+        <Button disabled={sending || !message.trim() || (scope === "direct" && !selectedIds.length)} onClick={() => void send()}>
+          {sending ? "Sending…" : "Send alert"}
+        </Button>
       </CardContent>
     </Card>
   );

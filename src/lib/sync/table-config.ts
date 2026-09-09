@@ -138,6 +138,26 @@ export const TABLE_CONFIG = {
     },
     sinceField: "updated_at",
   },
+  notifications: {
+    table: "notifications_koku",
+    toFields: (r: Record<string, unknown>) => ({
+      message: r.message ?? "",
+      sender_name: r.senderName ?? "",
+      scope: r.scope ?? "direct",
+      created_at: toCatalystDateTime(r.createdAt),
+    }),
+    fromRow: (r: Record<string, unknown>) => {
+      const d = (r.notifications_koku ?? r) as Record<string, unknown>;
+      return {
+        id: d.id,
+        message: d.message,
+        senderName: d.sender_name,
+        scope: (d.scope as string) || "direct",
+        createdAt: fromCatalystDateTime(d.created_at) ?? d.created_at,
+      };
+    },
+    sinceField: "created_at",
+  },
 } as const;
 
 export type TableKey = keyof typeof TABLE_CONFIG;
@@ -152,6 +172,7 @@ const REQUIRED_STRING_FIELDS: Record<TableKey, string[]> = {
   noteLinks: ["id", "sourceNoteId", "targetNoteId"],
   settings: ["key"],
   reminders: ["id", "message", "triggerAt", "createdAt", "updatedAt"],
+  notifications: ["id", "message", "senderName", "scope", "createdAt"],
 };
 
 const DATE_FIELDS: Partial<Record<TableKey, string[]>> = {
@@ -162,6 +183,7 @@ const DATE_FIELDS: Partial<Record<TableKey, string[]>> = {
   notes: ["createdAt", "updatedAt"],
   personalNotes: ["createdAt", "updatedAt"],
   reminders: ["triggerAt", "createdAt", "updatedAt"],
+  notifications: ["createdAt"],
 };
 
 const TASK_STATUSES = ["open", "in_progress", "paused", "done"];
