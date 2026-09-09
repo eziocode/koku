@@ -15,7 +15,7 @@ import { toast } from "@/components/ui/toast";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
 import { useCloneToTimer } from "@/components/time-tracker/use-clone-to-timer";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
-import { formatRunRanges } from "@/lib/charts/run-format";
+import { formatRunLog } from "@/lib/charts/run-format";
 import { formatDuration } from "@/lib/utils";
 
 interface EntryRecord {
@@ -80,11 +80,16 @@ export function DailyGrid({ entries }: DailyGridProps) {
               <div className="flex flex-wrap items-center gap-3">
                 <div>
                   <p className="font-semibold text-foreground">{entry.title}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {entry.segments && entry.segments.length > 1
-                      ? formatRunRanges(entry.segments, timeFormat)
-                      : formatRunRanges([{ startAt: entry.startAt, endAt: entry.endAt }], timeFormat, "Running")}
-                  </p>
+                  <div className="space-y-0.5 text-sm text-muted-foreground">
+                    {(entry.segments && entry.segments.length > 1
+                      ? formatRunLog(entry.segments, timeFormat)
+                      : formatRunLog([{ startAt: entry.startAt, endAt: entry.endAt }], timeFormat)
+                    ).map((event, index) => (
+                      <p key={index}>
+                        [{event.time}] {event.label}
+                      </p>
+                    ))}
+                  </div>
                 </div>
                 {entry.project ? (
                   <Badge variant="outline" style={{ borderColor: entry.project.color, color: entry.project.color }}>

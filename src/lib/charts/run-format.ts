@@ -62,3 +62,42 @@ export function formatRunRanges(
   }
   return runs.map((run) => formatRunRange(run, timeFormat, openLabel)).join(", ");
 }
+
+/** One line in a run's event log: `[9:45 am] Started`. */
+export interface RunLogEvent {
+  label: string;
+  time: string;
+}
+
+/**
+ * Every run expanded into Started/Paused/Resumed/Stopped events, in order:
+ * a run paused once and resumed reads as Started, Paused, Resumed, Stopped
+ * instead of a single outer range that hides the pause.
+ *
+ * The final run's end is labeled `stoppedLabel`; every other run's end is a
+ * pause. A still-open run (no `endAt`) contributes only its start.
+ */
+export function formatRunLog(
+  runs: readonly FormattableRun[] | null | undefined,
+  timeFormat: TimeFormat,
+  stoppedLabel = "Stopped",
+): RunLogEvent[] {
+  if (!runs?.length) {
+    return [];
+  }
+  const events: RunLogEvent[] = [];
+  runs.forEach((run, index) => {
+    events.push({
+      label: index === 0 ? "Started" : "Resumed",
+      time: safeTime(run.startAt, timeFormat),
+    });
+    if (run.endAt) {
+      const isLastRun = index === runs.length - 1;
+      events.push({
+        label: isLastRun ? stoppedLabel : "Paused",
+        time: safeTime(run.endAt, timeFormat),
+      });
+    }
+  });
+  return events;
+}
