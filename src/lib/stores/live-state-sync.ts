@@ -3,6 +3,7 @@
 import { kokuDb, type PendingLiveMutation } from "@/lib/storage/db";
 import { getAuthUser } from "@/lib/sync/sync-engine";
 import { isBreakFinished } from "@/lib/stores/finished-breaks";
+import { reconcileCloudTimer } from "@/lib/stores/live-timer-merge";
 import { useTimerStore } from "@/lib/stores/timer-store";
 import type { ActiveBreak, ActiveTimer } from "@/lib/stores/timer-types";
 
@@ -41,8 +42,9 @@ function cloudTimer(value: LiveTimerRecord): ActiveTimer {
     // The wire record doesn't carry the pre-pause original separately from the
     // (possibly already-shifted) `startAt` it was serialised from — best effort.
     notes: value.notes, startTime: value.startAt, originalStartTime: value.startAt, elapsedBeforePauseSec: value.elapsedBeforePauseSec, pausedAt: value.pausedAt,
-    // The wire record doesn't carry segments either — a cloud-adopted timer
-    // starts its segment history fresh, same best-effort tradeoff as above.
+    // The wire record doesn't carry segments either. A timer this device
+    // already knows keeps its own run history — `reconcileCloudTimer` puts it
+    // back — so this empty history only applies to a genuinely new adoption.
     segments: [],
     // Nor the real run start; falls back to `startAt` wherever it's read, which
     // is exact for this timer's first run after adoption.
@@ -187,7 +189,16 @@ export function flushLiveState(): Promise<void> {
 }
 
 function applyCloud(payload: LivePayload) {
-  const cloudTimers = (payload.timers ?? []).filter((timer) => !timer.deletedAt).map(cloudTimer);
+  // Reconciled against what this device already has, not replaced by it: the
+  // wire record carries no run history, and this poll runs every few seconds
+  // against a live timer. See `live-timer-merge.ts`.
+  const localTimers = useTimerStore.getState().timers;
+  const cloudTimers = (payload.timers ?? [])
+    .filter((timer) => !timer.deletedAt)
+    .map((record) => reconcileCloudTimer(
+      localTimers.find((timer) => timer.id === record.id),
+      cloudTimer(record),
+    ));
   // A break this client already finalised (see `finished-breaks.ts`) must
   // never come back from a pull, even a live one: the cloud row has no
   // `completedAt` of its own, so a stale row — one whose delete lagged, e.g.
