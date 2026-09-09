@@ -26,7 +26,10 @@ export function buildEntryFromTimer(timer: ActiveTimer, endedAt: string): Create
     startAt: timer.originalStartTime,
     endAt: endedAt,
     durationSec: getActiveTimerElapsedSec(timer, Date.parse(endedAt)),
-    segments: segments.length > 1 ? segments : null,
+    // Every recorded run is kept, one included: the log reads its events off
+    // `segments`, so dropping a single run would force it back onto the outer
+    // start/end span it is meant to replace.
+    segments: segments.length ? segments : null,
     tags: timer.pomodoroMode ? Array.from(new Set(["pomodoro", ...timer.tags])) : timer.tags,
     notes: timer.notes || (timer.pomodoroMode ? "Pomodoro focus session" : null),
   };

@@ -104,6 +104,9 @@ test("a legacy timer with no runStartedAt falls back to startTime for the closed
   const legacy = timer({ runStartedAt: undefined });
   const entry = buildEntryFromTimer(legacy, END);
 
-  assert.equal(entry.segments, null); // single run, below the length>1 gate
+  // A never-paused session still records its one run: the event log reads its
+  // times off `segments`, so dropping it would push the log back onto the
+  // outer start/end span.
+  assert.deepEqual(entry.segments, [{ startAt: new Date(START).toISOString(), endAt: END }]);
   assert.equal(entry.durationSec, 3_600);
 });

@@ -10,11 +10,31 @@ function tryParse<T>(str: string | undefined | null, fallback: T): T {
   try { return JSON.parse(str) as T; } catch { return fallback; }
 }
 
+/**
+ * A time entry's recorded runs, off the wire.
+ *
+ * `undefined` when the column is missing entirely (an older remote table, or a
+ * row written before the column existed) — that is load-bearing: `pullTable`
+ * keeps the device's local runs for a field the wire did not speak about, and
+ * would clobber them if this returned `null` instead.
+ */
+function parseSegments(value: unknown): { startAt: string; endAt: string }[] | null | undefined {
+  if (value === undefined) return undefined;
+  const parsed = tryParse(value as string, [] as { startAt: string; endAt: string }[]);
+  return Array.isArray(parsed) && parsed.length ? parsed : null;
+}
+
 export const TABLE_CONFIG = {
   timeEntries: {
+    // `segments` (the pause-separated runs the event log reads) requires a
+    // `segments` text column on the remote `time_entries_koku` table, holding
+    // the same JSON-string shape as `tags`. Until it exists, an
+    // unrecognized-column push error here means dropping that one key, not
+    // deleting `segments` from `TimeEntry` — it still has to persist locally,
+    // and `LOCAL_ONLY_FIELDS` keeps pulls from erasing it meanwhile.
     table: "time_entries_koku",
-    toFields: (r: Record<string, unknown>) => ({ title: r.title ?? "", project_id: r.projectId ?? null, category_id: r.categoryId ?? null, task_id: r.taskId ?? null, start_at: toCatalystDateTime(r.startAt), end_at: r.endAt === null || r.endAt === undefined ? null : toCatalystDateTime(r.endAt), duration_sec: r.durationSec ?? null, tags: JSON.stringify(r.tags ?? []), notes: r.notes ?? null, created_at: toCatalystDateTime(r.createdAt) }),
-    fromRow: (r: Record<string, unknown>) => { const d = (r.time_entries_koku ?? r) as Record<string, unknown>; return { id: d.id, title: d.title, projectId: d.project_id || null, categoryId: d.category_id || null, taskId: d.task_id || null, startAt: fromCatalystDateTime(d.start_at) ?? d.start_at, endAt: fromCatalystDateTime(d.end_at), durationSec: d.duration_sec === null || d.duration_sec === undefined || d.duration_sec === "" ? null : Number(d.duration_sec), tags: tryParse(d.tags as string, []), notes: d.notes || null, createdAt: fromCatalystDateTime(d.created_at) ?? d.created_at }; },
+    toFields: (r: Record<string, unknown>) => ({ title: r.title ?? "", project_id: r.projectId ?? null, category_id: r.categoryId ?? null, task_id: r.taskId ?? null, start_at: toCatalystDateTime(r.startAt), end_at: r.endAt === null || r.endAt === undefined ? null : toCatalystDateTime(r.endAt), duration_sec: r.durationSec ?? null, tags: JSON.stringify(r.tags ?? []), segments: JSON.stringify(r.segments ?? []), notes: r.notes ?? null, created_at: toCatalystDateTime(r.createdAt) }),
+    fromRow: (r: Record<string, unknown>) => { const d = (r.time_entries_koku ?? r) as Record<string, unknown>; return { id: d.id, title: d.title, projectId: d.project_id || null, categoryId: d.category_id || null, taskId: d.task_id || null, startAt: fromCatalystDateTime(d.start_at) ?? d.start_at, endAt: fromCatalystDateTime(d.end_at), durationSec: d.duration_sec === null || d.duration_sec === undefined || d.duration_sec === "" ? null : Number(d.duration_sec), tags: tryParse(d.tags as string, []), segments: parseSegments(d.segments), notes: d.notes || null, createdAt: fromCatalystDateTime(d.created_at) ?? d.created_at }; },
     sinceField: "created_at",
   },
   tasks: {
@@ -162,6 +182,18 @@ export const TABLE_CONFIG = {
 
 export type TableKey = keyof typeof TABLE_CONFIG;
 
+/**
+ * Fields a pull must never erase.
+ *
+ * A pulled row is written over the local one wholesale, so a field the wire
+ * format does not carry (or that a remote table predates) would vanish from
+ * the device that recorded it. `pullTable` carries these over from the local
+ * row whenever the incoming row says nothing about them.
+ */
+export const LOCAL_ONLY_FIELDS: Partial<Record<TableKey, readonly string[]>> = {
+  timeEntries: ["segments"],
+};
+
 const REQUIRED_STRING_FIELDS: Record<TableKey, string[]> = {
   timeEntries: ["id", "title", "startAt", "createdAt"],
   tasks: ["id", "title", "status", "priority", "createdAt", "updatedAt"],
@@ -215,6 +247,18 @@ export function validateSyncRow(table: TableKey, value: unknown): SyncRowValidat
   if (table === "timeEntries" && row.endAt !== null && row.endAt !== undefined
     && toCatalystDateTime(row.endAt) === null) {
     return { ok: false, error: "endAt must be a valid datetime or null." };
+  }
+
+  if (table === "timeEntries" && row.segments !== null && row.segments !== undefined) {
+    if (!Array.isArray(row.segments)) {
+      return { ok: false, error: "segments must be an array or null." };
+    }
+    for (const run of row.segments) {
+      const span = run as Record<string, unknown> | null;
+      if (!span || toCatalystDateTime(span.startAt) === null || toCatalystDateTime(span.endAt) === null) {
+        return { ok: false, error: "each segment needs a valid startAt and endAt." };
+      }
+    }
   }
 
   if (table === "tasks") {

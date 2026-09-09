@@ -32,3 +32,18 @@ a plain break leaves them unset.
 
 `deleted_at` is live-state tombstone. API rejects stale revision writes and GET
 purges tombstones older than 24 hours.
+
+## Added column: `time_entries_koku.segments`
+
+The run event log in the day view reads an entry's pause-separated runs off
+`TimeEntry.segments`, so that field now rides the sync wire format
+(`timeEntries.toFields` / `fromRow` in `src/lib/sync/table-config.ts`).
+
+| Column | Type |
+| --- | --- |
+| segments | Text (JSON array of `{ startAt, endAt }`, same shape as `tags`) |
+
+Add it to the existing `time_entries_koku` table. Until it exists, pushes of a
+time entry fail with a per-row 207 error from `/api/sync/timeEntries`. Runs
+still persist locally either way: `LOCAL_ONLY_FIELDS` keeps a pull from erasing
+`segments` when the column is missing or a row predates it.

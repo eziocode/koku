@@ -4,6 +4,7 @@ import { useLiveQuery } from "@/lib/storage/use-live-query";
 
 import { kokuDb, type TimeEntry } from "@/lib/storage/db";
 import { deleteRow, syncRow } from "@/lib/sync/sync-engine";
+import { adjustSegmentsForRangeEdit } from "@/lib/time-tracking/segment-edit";
 import {
   createTimeEntry,
   getDurationSec,
@@ -136,8 +137,9 @@ export function useTimeEntries(filters: TimeEntryFilters = {}) {
               patch.startAt ?? existing.startAt,
               patch.endAt !== undefined ? patch.endAt : existing.endAt,
             ),
-      // A hand-edited range invalidates the recorded work stretches.
-      segments: patch.startAt !== undefined || patch.endAt !== undefined ? null : existing.segments,
+      // A moved range carries its recorded work stretches with it; a resized
+      // one drops them rather than inventing pause times. See `segment-edit`.
+      segments: adjustSegmentsForRangeEdit(existing, patch),
     };
 
     await kokuDb.timeEntries.put(next);

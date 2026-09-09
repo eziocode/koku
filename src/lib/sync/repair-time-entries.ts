@@ -47,8 +47,9 @@ export async function repairTimeEntryTimestamps(): Promise<number> {
  * pause it followed instead of sitting inside it. See `run-repair.ts` for the
  * exact corruption signature and why it inverts cleanly.
  *
- * `segments` never reaches the cloud (absent from the sync wire format), so
- * this only needs to fix rows already sitting in Dexie, and is per-device.
+ * `segments` now rides the sync wire format, but the corrupted runs were
+ * written before it did, so the bad values only exist in Dexie: this fixes
+ * rows in place, and the repaired runs push on the entry's next sync.
  * Safe to run repeatedly: an entry whose runs already sum to its duration, or
  * that has fewer than two runs, is left untouched.
  */

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { formatRunRange, formatRunRanges } from "./run-format";
+import { formatRunLog, formatRunRange, formatRunRanges } from "./run-format";
 
 // Local-time literals (no `Z`) so the hour digits are timezone-independent.
 const first = { startAt: "2024-06-03T11:00:00", endAt: "2024-06-03T11:30:00" };
@@ -30,4 +30,54 @@ test("no runs formats to nothing, so callers can fall back", () => {
 
 test("an unparseable time degrades instead of throwing", () => {
   assert.equal(formatRunRanges([{ startAt: "not-a-date", endAt: "also-not" }], "24h"), "? → ?");
+});
+
+test("a paused run's log names every pause and resume", () => {
+  assert.deepEqual(
+    formatRunLog([first, second], "24h").map((event) => [event.time, event.label, event.kind]),
+    [
+      ["11:00", "Started", "start"],
+      ["11:30", "Paused", "pause"],
+      ["12:20", "Resumed", "resume"],
+      ["13:30", "Stopped", "stop"],
+    ],
+  );
+});
+
+test("each log line carries the stretch it closes off", () => {
+  const events = formatRunLog([first, second], "24h");
+  assert.equal(events[0].spanSec, undefined);
+  assert.equal(events[1].spanSec, 30 * 60, "the run that just ended");
+  assert.equal(events[2].spanSec, 50 * 60, "the pause that just ended");
+  assert.equal(events[3].spanSec, 70 * 60);
+});
+
+test("an unpaused run logs as a plain start and stop", () => {
+  assert.deepEqual(
+    formatRunLog([first], "12h").map((event) => `${event.time} ${event.label}`),
+    ["11:00 AM Started", "11:30 AM Stopped"],
+  );
+});
+
+test("an open final run closes on the running marker, not a bare start", () => {
+  assert.deepEqual(
+    formatRunLog([first, { startAt: "2024-06-03T12:20:00", endAt: null }], "24h").map(
+      (event) => `${event.time} ${event.label}`,
+    ),
+    ["11:00 Started", "11:30 Paused", "12:20 Resumed", "now Running"],
+  );
+});
+
+test("the stopped and running labels are overridable", () => {
+  const events = formatRunLog([{ startAt: "2024-06-03T12:20:00" }], "24h", "Ended", "In progress");
+  assert.deepEqual(events.map((event) => event.label), ["Started", "In progress"]);
+  assert.deepEqual(
+    formatRunLog([first], "24h", "Ended").map((event) => event.label),
+    ["Started", "Ended"],
+  );
+});
+
+test("no runs logs nothing, so callers can fall back to the outer span", () => {
+  assert.deepEqual(formatRunLog([], "24h"), []);
+  assert.deepEqual(formatRunLog(null, "24h"), []);
 });

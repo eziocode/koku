@@ -13,9 +13,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { LazyScrollList } from "@/components/ui/lazy-scroll-list";
 import { toast } from "@/components/ui/toast";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
+import { RunEventLog } from "@/components/time-tracker/run-event-log";
 import { useCloneToTimer } from "@/components/time-tracker/use-clone-to-timer";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
-import { formatRunLog } from "@/lib/charts/run-format";
 import { formatDuration } from "@/lib/utils";
 
 interface EntryRecord {
@@ -80,16 +80,15 @@ export function DailyGrid({ entries }: DailyGridProps) {
               <div className="flex flex-wrap items-center gap-3">
                 <div>
                   <p className="font-semibold text-foreground">{entry.title}</p>
-                  <div className="space-y-0.5 text-sm text-muted-foreground">
-                    {(entry.segments && entry.segments.length > 1
-                      ? formatRunLog(entry.segments, timeFormat)
-                      : formatRunLog([{ startAt: entry.startAt, endAt: entry.endAt }], timeFormat)
-                    ).map((event, index) => (
-                      <p key={index}>
-                        [{event.time}] {event.label}
-                      </p>
-                    ))}
-                  </div>
+                  <RunEventLog
+                    className="mt-1.5"
+                    runs={
+                      entry.segments?.length
+                        ? entry.segments
+                        : [{ startAt: entry.startAt, endAt: entry.endAt }]
+                    }
+                    timeFormat={timeFormat}
+                  />
                 </div>
                 {entry.project ? (
                   <Badge variant="outline" style={{ borderColor: entry.project.color, color: entry.project.color }}>

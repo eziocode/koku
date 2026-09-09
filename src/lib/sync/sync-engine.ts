@@ -6,6 +6,7 @@ import {
   type PendingUpsert,
 } from "@/lib/storage/db";
 import { toast } from "@/components/ui/toast";
+import { LOCAL_ONLY_FIELDS } from "@/lib/sync/table-config";
 
 // "tasks" comes before "timeEntries" so a pushed entry's taskId never points
 // at a task the cloud mirror doesn't have yet.
@@ -273,19 +274,63 @@ export async function compareSyncData(): Promise<SyncConflict | null> {
   return total ? { total, addedLocal, addedCloud, changed, byTable } : null;
 }
 
+/**
+ * Local values of a table's `LOCAL_ONLY_FIELDS`, keyed by row id.
+ *
+ * Read *before* a `replace` clear, since after it there is nothing left to
+ * carry over.
+ */
+async function snapshotLocalOnlyFields(
+  table: SyncTable,
+  fields: readonly string[],
+): Promise<Map<string, Record<string, unknown>>> {
+  const snapshot = new Map<string, Record<string, unknown>>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const localRows = (await (kokuDb as any)[table].toArray()) as Record<string, unknown>[];
+  for (const local of localRows) {
+    const kept: Record<string, unknown> = {};
+    for (const field of fields) {
+      if (local[field] !== undefined) kept[field] = local[field];
+    }
+    if (Object.keys(kept).length) snapshot.set(rowId(local), kept);
+  }
+  return snapshot;
+}
+
+/** A pulled row with any local-only field the wire did not carry restored. */
+function mergeLocalOnlyFields(
+  row: unknown,
+  fields: readonly string[],
+  snapshot: Map<string, Record<string, unknown>>,
+): unknown {
+  const kept = snapshot.get(rowId(row));
+  if (!kept) return row;
+  const merged = { ...(row as Record<string, unknown>) };
+  for (const field of fields) {
+    if (merged[field] === undefined && kept[field] !== undefined) merged[field] = kept[field];
+  }
+  return merged;
+}
+
 async function pullTable(table: SyncTable, since: string | null, replace = false): Promise<number> {
   const url = since ? `/api/sync/${table}?since=${encodeURIComponent(since)}` : `/api/sync/${table}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(await responseError(res, `Pull ${table} failed: ${res.status}`));
 
   const payload = (await res.json()) as { rows?: unknown[] };
-  const rows = (payload.rows ?? []).filter((row) => !isInternalSetting(table, row));
+  let rows = (payload.rows ?? []).filter((row) => !isInternalSetting(table, row));
+  const localOnly = LOCAL_ONLY_FIELDS[table];
+  const snapshot = localOnly?.length ? await snapshotLocalOnlyFields(table, localOnly) : null;
   if (replace) {
     // Cloud choice replaces synced tables only. AI keys remain local.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (kokuDb as any)[table].clear();
   }
   if (!rows.length) return 0;
+
+  if (localOnly?.length && snapshot?.size) {
+    rows = rows.map((row) => mergeLocalOnlyFields(row, localOnly, snapshot));
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await (kokuDb as any)[table].bulkPut(rows);
