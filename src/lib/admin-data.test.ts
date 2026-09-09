@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { adminRowsToSegmentEntries, adminUserFromDetails, dashboardForRange, extractCatalystRowId, extractCatalystRowUserId, formatDate, formatDuration, getPresenceStatus, groupRowsByUser, plainTextToTiptap, sortAdminUsersByPresence, tiptapToPlainText } from "@/lib/admin-data";
+import { adminRowsToSegmentEntries, adminTaskAccruedSec, adminUserFromDetails, calculateAdminStats, dashboardForRange, extractCatalystRowId, extractCatalystRowUserId, formatDate, formatDuration, getPresenceStatus, groupRowsByUser, pickAdminWorkSchedule, plainTextToTiptap, sortAdminUsersByPresence, tiptapToPlainText } from "@/lib/admin-data";
+import { NOTIFICATION_DEFAULTS } from "@/lib/notifications/settings";
 
 test("adapts admin rows into chart entries and drops the unusable ones", () => {
   const entries = adminRowsToSegmentEntries([
@@ -73,6 +74,88 @@ test("dashboard filters range, excludes breaks, groups projects and timelines no
   assert.equal(dashboard.breakEntries.length, 1);
   assert.deepEqual(dashboard.projects, [{ id: "p1", name: "Client", color: "#ff0000", seconds: 3600 }]);
   assert.equal(dashboard.notes.length, 1);
+});
+
+test("dashboard reports break time, categories and tags alongside work", () => {
+  const rows = [
+    { table: "projects", id: "p1", name: "Client", color: "#ff0000" },
+    { table: "categories", id: "c1", name: "Delivery", color: "#00ff00" },
+    { table: "timeEntries", id: "work", startAt: "2026-08-20T09:00:00Z", durationSec: 3600, projectId: "p1", categoryId: "c1", tags: ["deep", "Deep"] },
+    { table: "timeEntries", id: "other", startAt: "2026-08-20T14:00:00Z", durationSec: 1800, tags: ["admin"] },
+    { table: "timeEntries", id: "break", startAt: "2026-08-20T12:00:00Z", durationSec: 900, tags: ["break"] },
+  ];
+  const dashboard = dashboardForRange(rows, "2026-08-20T00:00:00Z", "2026-08-21T23:59:59Z", new Date("2026-08-20T10:00:00Z"));
+
+  // Breaks stay out of the work total but are still reported.
+  assert.equal(dashboard.totalSeconds, 5400);
+  assert.equal(dashboard.breakSeconds, 900);
+  assert.deepEqual(dashboard.categories, [
+    { id: "unassigned", name: "Uncategorized", color: "#94a3b8", seconds: 1800 },
+    { id: "c1", name: "Delivery", color: "#00ff00", seconds: 3600 },
+  ].sort((a, b) => b.seconds - a.seconds));
+  // A tag repeated on one entry counts that entry's time once, and the break
+  // tag never reaches the ranking because breaks are not work.
+  assert.deepEqual(dashboard.tags, [
+    { tag: "deep", seconds: 3600, count: 1 },
+    { tag: "admin", seconds: 1800, count: 1 },
+  ]);
+});
+
+test("stats separate break time, count auxiliary tables and running entries", () => {
+  const now = Date.parse("2026-08-20T10:00:00Z");
+  const rows = [
+    { table: "timeEntries", id: "work", startAt: "2026-08-20T08:00:00Z", endAt: "2026-08-20T09:00:00Z", durationSec: 3600 },
+    { table: "timeEntries", id: "break", startAt: "2026-08-20T09:30:00Z", endAt: "2026-08-20T09:45:00Z", durationSec: 900, tags: ["break"] },
+    { table: "timeEntries", id: "live", startAt: "2026-08-20T09:50:00Z", durationSec: 0 },
+    { table: "tasks", id: "t1", status: "open", accumulatedSec: 120 },
+    { table: "tasks", id: "t2", status: "in_progress", accumulatedSec: 60, inProgressSince: "2026-08-20T09:59:00Z" },
+    { table: "reminders", id: "r1" },
+    { table: "notifications", id: "n1" },
+    { table: "noteLinks", id: "l1" },
+  ];
+  const stats = calculateAdminStats(rows, now);
+
+  assert.equal(stats.totalTrackedDuration, 3600);
+  assert.equal(stats.breakSeconds, 900);
+  assert.equal(stats.runningEntryCount, 1);
+  // 120 banked, plus 60 banked and 60 seconds still running.
+  assert.equal(stats.taskAccruedSec, 240);
+  assert.equal(stats.reminderCount, 1);
+  assert.equal(stats.notificationCount, 1);
+  assert.equal(stats.noteLinkCount, 1);
+});
+
+test("task accrual reads the stopwatch off an untyped row", () => {
+  const now = Date.parse("2026-08-20T10:00:00Z");
+  assert.equal(adminTaskAccruedSec({ accumulatedSec: 90 }, now), 90);
+  assert.equal(adminTaskAccruedSec({ accumulatedSec: 90, inProgressSince: "2026-08-20T09:59:00Z" }, now), 150);
+  // A garbage or missing bank must not produce NaN in a duration label.
+  assert.equal(adminTaskAccruedSec({}, now), 0);
+  assert.equal(adminTaskAccruedSec({ accumulatedSec: "nope", inProgressSince: "not-a-date" }, now), 0);
+});
+
+test("work schedule exposes only the allow-listed settings", () => {
+  const schedule = pickAdminWorkSchedule({
+    ...NOTIFICATION_DEFAULTS,
+    holidayDates: ["2026-12-25"],
+    leaveDates: ["2026-11-02"],
+    silentDays: [0, 6],
+  });
+
+  assert.deepEqual(schedule.holidayDates, ["2026-12-25"]);
+  assert.deepEqual(schedule.leaveDates, ["2026-11-02"]);
+  assert.deepEqual(schedule.silentDays, [0, 6]);
+  assert.deepEqual(Object.keys(schedule).sort(), [
+    "breaks", "checkIn", "enabled", "endOfDay", "holidayDates", "leaveDates", "quietHours", "silentDays",
+  ]);
+  // Personal preferences that live in the same settings row must not ride along.
+  assert.equal("quickActions" in schedule, false);
+  assert.equal("dnd" in schedule, false);
+  assert.equal("sound" in schedule, false);
+  // Arrays are copied, so a caller mutating the response cannot reach back into
+  // the parsed preferences object.
+  schedule.holidayDates.push("2026-01-01");
+  assert.deepEqual(pickAdminWorkSchedule(NOTIFICATION_DEFAULTS).holidayDates, NOTIFICATION_DEFAULTS.holidayDates);
 });
 
 test("presence status favors work and breaks, expires stale heartbeats", () => {

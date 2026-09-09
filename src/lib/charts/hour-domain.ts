@@ -7,7 +7,6 @@
  * the whole chart component into its bundle.
  */
 
-import type { NotificationPreferences } from "@/lib/notifications/settings";
 import { timeInputToMinutes } from "@/lib/notifications/quiet-hours";
 import type { SegmentedDay, SegmentRun, WorkLogSegment } from "@/lib/charts/segments";
 
@@ -54,6 +53,12 @@ export interface HourDomain {
 /** The full day — used when nothing narrower has been computed yet. */
 export const FULL_DAY_DOMAIN: HourDomain = { start: 0, end: 24 };
 
+/** The only two settings `deriveFallbackHours` reads. */
+export interface FallbackHoursSource {
+  quietHours: { enabled: boolean; endMinute: number };
+  endOfDay: { enabled: boolean; logoffTime: string };
+}
+
 /**
  * Axis window for a chart with no logged segments at all (an empty month, a
  * week that's all holiday), derived from the notification settings that come
@@ -61,8 +66,12 @@ export const FULL_DAY_DOMAIN: HourDomain = { start: 0, end: 24 };
  * the end-of-day log-off time as its end. Each half falls back to the edge of
  * the full day independently when its setting is off, so e.g. quiet hours on
  * with end-of-day off still narrows the start.
+ *
+ * Takes only the two fields it reads rather than the whole preferences object,
+ * so the admin side can pass the redacted `AdminWorkSchedule` it receives for
+ * another user instead of that user's full settings.
  */
-export function deriveFallbackHours(prefs: NotificationPreferences): HourDomain {
+export function deriveFallbackHours(prefs: FallbackHoursSource): HourDomain {
   const start = prefs.quietHours.enabled ? prefs.quietHours.endMinute / 60 : 0;
   const logoffMinutes = timeInputToMinutes(prefs.endOfDay.logoffTime);
   const end = prefs.endOfDay.enabled && logoffMinutes !== null ? logoffMinutes / 60 : 24;

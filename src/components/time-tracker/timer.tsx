@@ -515,6 +515,10 @@ export function Timer() {
   const [resumeDialogOpen, setResumeDialogOpen] = useState(false);
   const [resumeSubmitting, setResumeSubmitting] = useState(false);
   const cardRef = useRef<HTMLDivElement | null>(null);
+  // Timers this component paused to make room for the parallel-task dialog.
+  // If the dialog closes without a task starting, these get resumed so
+  // cancelling doesn't leave the user's timers paused behind their back.
+  const autoPausedTimerIdsRef = useRef<string[]>([]);
 
   const { draft, nonce, consumeDraft, setTimerMounted } = useTimerDraftStore();
 
@@ -761,6 +765,7 @@ export function Timer() {
     }
 
     resetForm(setSecondaryTitle, setSecondaryProjectId, setSecondaryCategoryId, setSecondaryPomodoroMode, setSecondaryTags, setSecondaryNotes, setSecondaryTaskId);
+    autoPausedTimerIdsRef.current = [];
     setParallelTaskOpen(false);
     toast.success("Parallel task started.");
   }
@@ -939,11 +944,14 @@ export function Timer() {
                           // for a parallel task, so the button does exactly that.
                           !timer.parentTimerId && !allTimersPaused
                             ? () => {
+                                const paused: string[] = [];
                                 for (const running of timers) {
                                   if (!running.pausedAt) {
                                     pauseTimer(running.id);
+                                    paused.push(running.id);
                                   }
                                 }
+                                autoPausedTimerIdsRef.current = paused;
                                 setParallelTaskOpen(true);
                               }
                             : undefined
@@ -992,7 +1000,18 @@ export function Timer() {
         )}
       </CardContent>
 
-      <Dialog open={parallelTaskOpen} onOpenChange={setParallelTaskOpen}>
+      <Dialog
+        open={parallelTaskOpen}
+        onOpenChange={(open) => {
+          setParallelTaskOpen(open);
+          if (!open && autoPausedTimerIdsRef.current.length) {
+            for (const id of autoPausedTimerIdsRef.current) {
+              resumeTimer(id);
+            }
+            autoPausedTimerIdsRef.current = [];
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Start a parallel task</DialogTitle>

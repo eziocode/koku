@@ -1,6 +1,8 @@
 import type { SegmentSourceEntry } from "@/lib/charts/segments";
+import type { NotificationPreferences } from "@/lib/notifications/settings";
 import type { TimeFormat } from "@/lib/settings/schema";
 import { formatTime } from "@/lib/time-format";
+import { buildTagTotals, type TagTotal } from "@/lib/time-tracking/tag-stats";
 
 export type AdminRow = Record<string, unknown>;
 
@@ -63,6 +65,64 @@ export interface AdminStats {
   noteCount: number;
   taskCount: number;
   openTaskCount: number;
+  /** Time logged under the break tag, kept apart from `totalTrackedDuration`. */
+  breakSeconds: number;
+  /** Sum of every task's own stopwatch, independent of linked time entries. */
+  taskAccruedSec: number;
+  reminderCount: number;
+  notificationCount: number;
+  noteLinkCount: number;
+  /** Entries with no end recorded, i.e. a timer still running. */
+  runningEntryCount: number;
+}
+
+/**
+ * The slice of a user's notification settings an admin is allowed to see.
+ *
+ * Deliberately an explicit pick rather than a spread of `NotificationPreferences`:
+ * a field added to that interface later must be opted in here before it reaches
+ * an admin, not leak by default.
+ */
+export type AdminWorkSchedule = {
+  /** Whether the user has notifications switched on at all. */
+  enabled: boolean;
+  holidayDates: string[];
+  leaveDates: string[];
+  /** Weekday indices treated as recurring days off, 0 = Sunday. */
+  silentDays: number[];
+  quietHours: { enabled: boolean; startMinute: number; endMinute: number };
+  endOfDay: { enabled: boolean; logoffTime: string; gracePeriodMinutes: number };
+  checkIn: { enabled: boolean; intervalMinutes: number };
+  breaks: { enabled: boolean; defaultMinutes: number; presetMinutes: number[] };
+};
+
+/** Narrow a user's full notification preferences to the admin-visible fields. */
+export function pickAdminWorkSchedule(prefs: NotificationPreferences): AdminWorkSchedule {
+  return {
+    enabled: prefs.enabled,
+    holidayDates: [...prefs.holidayDates],
+    leaveDates: [...prefs.leaveDates],
+    silentDays: [...prefs.silentDays],
+    quietHours: {
+      enabled: prefs.quietHours.enabled,
+      startMinute: prefs.quietHours.startMinute,
+      endMinute: prefs.quietHours.endMinute,
+    },
+    endOfDay: {
+      enabled: prefs.endOfDay.enabled,
+      logoffTime: prefs.endOfDay.logoffTime,
+      gracePeriodMinutes: prefs.endOfDay.gracePeriodMinutes,
+    },
+    checkIn: {
+      enabled: prefs.checkIn.enabled,
+      intervalMinutes: prefs.checkIn.intervalMinutes,
+    },
+    breaks: {
+      enabled: prefs.breaks.enabled,
+      defaultMinutes: prefs.breaks.defaultMinutes,
+      presetMinutes: [...prefs.breaks.presetMinutes],
+    },
+  };
 }
 
 export type AdminPresence = {
@@ -100,6 +160,12 @@ export type DashboardData = {
   activeDays: number;
   daily: Array<{ day: string; seconds: number }>;
   projects: Array<{ id: string; name: string; color: string; seconds: number }>;
+  /** Same split as `projects`, but by category. Unassigned work is folded in. */
+  categories: Array<{ id: string; name: string; color: string; seconds: number }>;
+  /** Every tag used in the range, ranked by tracked time. */
+  tags: TagTotal[];
+  /** Time under the break tag. Reported alongside work, never inside it. */
+  breakSeconds: number;
   lastActivity: string | null;
 };
 
@@ -134,7 +200,9 @@ export function dashboardForRange(rows: AdminRow[], start: string, end: string, 
   const workEntries = inRange.filter((row) => !isBreak(row));
   const dailyMap = new Map<string, number>();
   const projectMap = new Map<string, { id: string; name: string; color: string; seconds: number }>();
+  const categoryMap = new Map<string, { id: string; name: string; color: string; seconds: number }>();
   const projects = new Map(rows.filter((row) => row.table === "projects").map((row) => [String(row.id), row]));
+  const categories = new Map(rows.filter((row) => row.table === "categories").map((row) => [String(row.id), row]));
   let totalSeconds = 0;
   const todayKey = dateKey(today.toISOString());
   let todaySeconds = 0;
@@ -150,9 +218,31 @@ export function dashboardForRange(rows: AdminRow[], start: string, end: string, 
     const old = projectMap.get(id) ?? { id, name: String(project?.name ?? "Unassigned"), color: String(project?.color ?? "#94a3b8"), seconds: 0 };
     old.seconds += seconds;
     projectMap.set(id, old);
+    const categoryId = String(row.categoryId ?? "unassigned");
+    const category = categories.get(categoryId);
+    const oldCategory = categoryMap.get(categoryId) ?? { id: categoryId, name: String(category?.name ?? "Uncategorized"), color: String(category?.color ?? "#94a3b8"), seconds: 0 };
+    oldCategory.seconds += seconds;
+    categoryMap.set(categoryId, oldCategory);
   }
+  // Breaks are excluded from every work figure above, so they are summed here
+  // instead of being dropped: a day with no work and two hours of break reads
+  // very differently from a day with nothing at all.
+  const breakSeconds = breakEntries.reduce((sum, row) => sum + Math.max(0, Number(row.durationSec) || 0), 0);
   const activity = [...entries, ...rows.filter((row) => row.table === "notes")].map((row) => validDate(row.updatedAt ?? row.startAt ?? row.createdAt)?.toISOString()).filter((value): value is string => Boolean(value)).sort();
-  return { workEntries, breakEntries, notes, totalSeconds, todaySeconds, activeDays: dailyMap.size, daily: [...dailyMap].map(([day, seconds]) => ({ day, seconds })).sort((a, b) => a.day.localeCompare(b.day)), projects: [...projectMap.values()].sort((a, b) => b.seconds - a.seconds), lastActivity: activity.at(-1) ?? null };
+  return {
+    workEntries,
+    breakEntries,
+    notes,
+    totalSeconds,
+    todaySeconds,
+    activeDays: dailyMap.size,
+    daily: [...dailyMap].map(([day, seconds]) => ({ day, seconds })).sort((a, b) => a.day.localeCompare(b.day)),
+    projects: [...projectMap.values()].sort((a, b) => b.seconds - a.seconds),
+    categories: [...categoryMap.values()].sort((a, b) => b.seconds - a.seconds),
+    tags: buildTagTotals(adminRowsToSegmentEntries(workEntries)),
+    breakSeconds,
+    lastActivity: activity.at(-1) ?? null,
+  };
 }
 
 function optionalString(value: unknown): string | null {
@@ -212,7 +302,24 @@ export function getPresenceStatus(presence: AdminPresence | undefined, now = Dat
   return "online";
 }
 
-export function calculateAdminStats(rows: AdminRow[]): AdminStats {
+/**
+ * A task's own stopwatch, read straight off an untyped admin row.
+ *
+ * Mirrors `getTaskAccruedSec` in `src/lib/tasks/task-time.ts`, which takes a
+ * fully-typed Dexie `Task`. Admin rows carry the same two columns but none of
+ * the other required `Task` fields, so casting one to the other would be a lie.
+ */
+export function adminTaskAccruedSec(row: AdminRow, now: number = Date.now()): number {
+  const accumulated = Number(row.accumulatedSec);
+  const banked = Number.isFinite(accumulated) && accumulated > 0 ? accumulated : 0;
+  const since = optionalString(row.inProgressSince);
+  if (!since) return banked;
+  const startedAt = Date.parse(since);
+  if (Number.isNaN(startedAt)) return banked;
+  return banked + Math.max(0, Math.floor((now - startedAt) / 1000));
+}
+
+export function calculateAdminStats(rows: AdminRow[], now: number = Date.now()): AdminStats {
   const entries = rows.filter((row) => row.table === "timeEntries");
   const projects = rows.filter((row) => row.table === "projects");
   const categories = rows.filter((row) => row.table === "categories");
@@ -221,9 +328,16 @@ export function calculateAdminStats(rows: AdminRow[]): AdminStats {
   const dates = new Set<string>();
   const activity: string[] = [];
   let duration = 0;
+  let breakSeconds = 0;
+  let runningEntryCount = 0;
   for (const row of entries) {
     const seconds = Number(row.durationSec);
-    if (Number.isFinite(seconds) && seconds >= 0) duration += seconds;
+    const valid = Number.isFinite(seconds) && seconds >= 0 ? seconds : 0;
+    // Break time is tracked but never counted as work, matching how
+    // `dashboardForRange` and every user-facing report treat the break tag.
+    if (isBreak(row)) breakSeconds += valid;
+    else if (Number.isFinite(seconds) && seconds >= 0) duration += seconds;
+    if (!optionalString(row.endAt)) runningEntryCount += 1;
     const date = row.startAt ?? row.createdAt;
     if (date) { const parsed = new Date(String(date)); if (!Number.isNaN(parsed.getTime())) { dates.add(parsed.toISOString().slice(0, 10)); activity.push(parsed.toISOString()); } }
   }
@@ -234,7 +348,25 @@ export function calculateAdminStats(rows: AdminRow[]): AdminStats {
   }
   activity.sort();
   const openTaskCount = tasks.filter((row) => row.status !== "done").length;
-  return { totalTrackedDuration: duration, timeEntryCount: entries.length, activeDays: dates.size, firstActivity: activity[0] ?? null, latestActivity: activity.at(-1) ?? null, projectCount: projects.length, categoryCount: categories.length, noteCount: notes.length, taskCount: tasks.length, openTaskCount };
+  const taskAccruedSec = tasks.reduce((sum, row) => sum + adminTaskAccruedSec(row, now), 0);
+  return {
+    totalTrackedDuration: duration,
+    timeEntryCount: entries.length,
+    activeDays: dates.size,
+    firstActivity: activity[0] ?? null,
+    latestActivity: activity.at(-1) ?? null,
+    projectCount: projects.length,
+    categoryCount: categories.length,
+    noteCount: notes.length,
+    taskCount: tasks.length,
+    openTaskCount,
+    breakSeconds,
+    taskAccruedSec,
+    reminderCount: rows.filter((row) => row.table === "reminders").length,
+    notificationCount: rows.filter((row) => row.table === "notifications").length,
+    noteLinkCount: rows.filter((row) => row.table === "noteLinks").length,
+    runningEntryCount,
+  };
 }
 
 export function extractCatalystRowId(raw: AdminRow, table?: string): string | number | null {

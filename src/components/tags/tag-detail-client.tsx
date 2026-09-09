@@ -14,6 +14,7 @@ import { useProjects } from "@/lib/storage/hooks/use-projects";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 import { formatTime } from "@/lib/time-format";
+import { buildTagStats, normalizeTag } from "@/lib/time-tracking/tag-stats";
 import { formatDuration } from "@/lib/utils";
 
 interface TagDetailClientProps {
@@ -21,7 +22,7 @@ interface TagDetailClientProps {
 }
 
 export function TagDetailClient({ tag }: TagDetailClientProps) {
-  const normalizedTag = tag.trim().toLowerCase();
+  const normalizedTag = normalizeTag(tag);
   const { entries } = useTimeEntries({ tags: [normalizedTag] });
   const { projects } = useProjects();
   const { categories } = useCategories();
@@ -30,48 +31,10 @@ export function TagDetailClient({ tag }: TagDetailClientProps) {
   const projectMap = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
   const categoryMap = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
 
-  const stats = useMemo(() => {
-    const totalSec = entries.reduce((sum, e) => sum + (e.durationSec ?? 0), 0);
-    const sortedByDate = [...entries].sort((a, b) => a.startAt.localeCompare(b.startAt));
-    const firstSeen = sortedByDate[0]?.startAt ?? null;
-    const lastSeen = sortedByDate[sortedByDate.length - 1]?.startAt ?? null;
-
-    const byProject = new Map<string, { name: string; color: string; sec: number }>();
-    const byCategory = new Map<string, { name: string; sec: number }>();
-    const coTags = new Map<string, number>();
-
-    for (const entry of entries) {
-      const sec = entry.durationSec ?? 0;
-      if (entry.projectId) {
-        const project = projectMap.get(entry.projectId);
-        const key = entry.projectId;
-        const existing = byProject.get(key) ?? { name: project?.name ?? "Unknown", color: project?.color ?? "#888", sec: 0 };
-        existing.sec += sec;
-        byProject.set(key, existing);
-      }
-      if (entry.categoryId) {
-        const category = categoryMap.get(entry.categoryId);
-        const key = entry.categoryId;
-        const existing = byCategory.get(key) ?? { name: category?.name ?? "Unknown", sec: 0 };
-        existing.sec += sec;
-        byCategory.set(key, existing);
-      }
-      for (const t of entry.tags) {
-        const norm = t.trim().toLowerCase();
-        if (norm === normalizedTag) continue;
-        coTags.set(norm, (coTags.get(norm) ?? 0) + 1);
-      }
-    }
-
-    return {
-      totalSec,
-      firstSeen,
-      lastSeen,
-      byProject: Array.from(byProject.values()).sort((a, b) => b.sec - a.sec),
-      byCategory: Array.from(byCategory.values()).sort((a, b) => b.sec - a.sec),
-      coTags: Array.from(coTags.entries()).sort((a, b) => b[1] - a[1]).slice(0, 12),
-    };
-  }, [entries, projectMap, categoryMap, normalizedTag]);
+  const stats = useMemo(
+    () => buildTagStats(normalizedTag, entries, { projectMap, categoryMap }),
+    [entries, projectMap, categoryMap, normalizedTag],
+  );
 
   const grouped = useMemo(() => {
     const byDay = new Map<string, typeof entries>();
@@ -114,13 +77,13 @@ export function TagDetailClient({ tag }: TagDetailClientProps) {
         <Card>
           <CardHeader className="pb-2"><p className="text-sm text-muted-foreground">First seen</p></CardHeader>
           <CardContent className="pt-0 text-lg font-semibold">
-            {stats.firstSeen ? format(new Date(stats.firstSeen), "d MMM yyyy") : "—"}
+            {stats.firstSeen ? format(new Date(stats.firstSeen), "d MMM yyyy") : "Never"}
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2"><p className="text-sm text-muted-foreground">Last seen</p></CardHeader>
           <CardContent className="pt-0 text-lg font-semibold">
-            {stats.lastSeen ? format(new Date(stats.lastSeen), "d MMM yyyy") : "—"}
+            {stats.lastSeen ? format(new Date(stats.lastSeen), "d MMM yyyy") : "Never"}
           </CardContent>
         </Card>
       </div>
@@ -132,7 +95,7 @@ export function TagDetailClient({ tag }: TagDetailClientProps) {
               <CardHeader><CardTitle className="text-base">By project</CardTitle></CardHeader>
               <CardContent className="space-y-2">
                 {stats.byProject.map((p) => (
-                  <div key={p.name} className="flex items-center justify-between text-sm">
+                  <div key={p.id} className="flex items-center justify-between text-sm">
                     <Badge variant="outline" style={{ borderColor: p.color, color: p.color }}>{p.name}</Badge>
                     <span className="font-medium tabular-nums">{formatDuration(p.sec)}</span>
                   </div>
@@ -145,7 +108,7 @@ export function TagDetailClient({ tag }: TagDetailClientProps) {
               <CardHeader><CardTitle className="text-base">By category</CardTitle></CardHeader>
               <CardContent className="space-y-2">
                 {stats.byCategory.map((c) => (
-                  <div key={c.name} className="flex items-center justify-between text-sm">
+                  <div key={c.id} className="flex items-center justify-between text-sm">
                     <Badge variant="secondary">{c.name}</Badge>
                     <span className="font-medium tabular-nums">{formatDuration(c.sec)}</span>
                   </div>

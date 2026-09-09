@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 import { initCatalyst, upsertRow, zcqlEscape, zcqlQuery } from "@/lib/db/catalyst-client";
 import { TABLE_CONFIG } from "@/lib/sync/table-config";
 import { deleteAdminGroup, getAdminGroups, getAdminKeys, isOwnerUser, saveAdminGroup, setAdmin, type AdminGroup } from "@/lib/auth/user-registry";
-import { adminUserFromDetails, calculateAdminStats, dashboardForRange, extractCatalystRowId, type AdminPresence, type AdminRow, type AdminUser } from "@/lib/admin-data";
+import { adminUserFromDetails, calculateAdminStats, dashboardForRange, extractCatalystRowId, pickAdminWorkSchedule, type AdminPresence, type AdminRow, type AdminUser, type AdminWorkSchedule } from "@/lib/admin-data";
+import { parseSetting } from "@/lib/settings/schema";
 
 export const runtime = "nodejs";
 
@@ -27,6 +28,44 @@ function getConfig(table: string) {
 const ADMIN_VISIBLE_TABLES = Object.keys(TABLE_CONFIG).filter(
   (table) => table !== "settings" && table !== "personalNotes",
 );
+
+/**
+ * The two settings rows an admin may see for another user, read in one query.
+ *
+ * `settings` stays out of `ADMIN_VISIBLE_TABLES` on purpose: that list drives
+ * the generic `?table=` fetch, which would hand back every stored preference
+ * including AI keys. Everything an admin sees from this table goes through the
+ * allow-list in `pickAdminWorkSchedule` instead.
+ */
+async function readUserSettings(app: ReturnType<typeof initCatalyst>, userId: string) {
+  let presence: AdminPresence | undefined;
+  let workSchedule: AdminWorkSchedule | undefined;
+
+  try {
+    const settings = await zcqlQuery(app, `SELECT * FROM ${TABLE_CONFIG.settings.table} WHERE user_id = '${zcqlEscape(userId)}'`);
+    for (const raw of settings) {
+      const nested = (raw[TABLE_CONFIG.settings.table] ?? raw) as Record<string, unknown>;
+      if (typeof nested.setting_value !== "string") continue;
+
+      if (nested.setting_key === "adminPresence") {
+        try {
+          const value = JSON.parse(nested.setting_value) as AdminPresence;
+          if (typeof value.seenAt === "string") presence = value;
+        } catch { /* Ignore a malformed optional presence row. */ }
+      }
+
+      if (nested.setting_key === "notifications") {
+        try {
+          // `parseSetting` never throws and degrades field by field, so a
+          // partial or older-shaped row still yields a usable schedule.
+          workSchedule = pickAdminWorkSchedule(parseSetting("notifications", JSON.parse(nested.setting_value)));
+        } catch { /* Ignore a malformed optional preferences row. */ }
+      }
+    }
+  } catch { /* The detail view still works without either row. */ }
+
+  return { presence, workSchedule };
+}
 
 export async function GET(request: Request) {
   try {
@@ -82,9 +121,8 @@ export async function GET(request: Request) {
       const limit = Math.min(Math.max(Number(params.get("limit") ?? 25) || 25, 1), 100);
       const offset = Math.max(Number(params.get("cursor") ?? 0) || 0, 0);
       const rows = scoped.slice(offset, offset + limit);
-      let presence: AdminPresence | undefined;
-      try { const settings = await zcqlQuery(auth.app, `SELECT * FROM ${TABLE_CONFIG.settings.table} WHERE user_id = '${zcqlEscape(userId)}'`); for (const raw of settings) { const nested = (raw[TABLE_CONFIG.settings.table] ?? raw) as Record<string, unknown>; if (nested.setting_key === "adminPresence" && typeof nested.setting_value === "string") { const value = JSON.parse(nested.setting_value) as AdminPresence; if (typeof value.seenAt === "string") presence = value; } } } catch { /* optional */ }
-      return NextResponse.json({ user, rows, table, nextCursor: offset + rows.length < scoped.length ? String(offset + rows.length) : null, summary: calculateAdminStats(allRows), dashboard: dashboardForRange(allRows, `${start ?? "1900-01-01"}T00:00:00`, `${end ?? "2999-12-31"}T23:59:59.999`), presence });
+      const { presence, workSchedule } = await readUserSettings(auth.app, userId);
+      return NextResponse.json({ user, rows, table, nextCursor: offset + rows.length < scoped.length ? String(offset + rows.length) : null, summary: calculateAdminStats(allRows), dashboard: dashboardForRange(allRows, `${start ?? "1900-01-01"}T00:00:00`, `${end ?? "2999-12-31"}T23:59:59.999`), presence, workSchedule });
     }
     const users = [...usersById.values()];
     // Presence is stored as one user-scoped settings row. Read it once for
