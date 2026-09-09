@@ -46,9 +46,7 @@ export function EndOfDaySettings() {
         </CardHeader>
         <CardContent className="space-y-4">
           <ToggleRow
-            id="eod-enabled"
-            label="Auto-stop at end of day"
-            description="Requires notifications to be allowed above."
+            settingId="eod-enabled"
             checked={prefs.endOfDay.enabled}
             disabled={!granted}
             onCheckedChange={(checked) => void patch({ endOfDay: { enabled: checked } })}
@@ -62,7 +60,7 @@ export function EndOfDaySettings() {
             )}
           >
             <legend className="sr-only">End-of-day timing</legend>
-            <div className="space-y-2">
+            <div data-setting-row className="space-y-2">
               <Label htmlFor="eod-logoff-time">Logoff time</Label>
               <Input
                 id="eod-logoff-time"
@@ -74,7 +72,7 @@ export function EndOfDaySettings() {
                 }}
               />
             </div>
-            <div className="space-y-2">
+            <div data-setting-row className="space-y-2">
               <Label htmlFor="eod-grace-period">Grace period</Label>
               <Select
                 value={String(prefs.endOfDay.gracePeriodMinutes)}

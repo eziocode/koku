@@ -40,7 +40,13 @@ export function AppearanceSettings() {
           <CardDescription>Choose how Koku looks on this device.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex gap-2" role="radiogroup" aria-label="Theme selection">
+          <div
+            id="appearance-theme"
+            data-setting-row
+            className="flex gap-2"
+            role="radiogroup"
+            aria-label="Theme selection"
+          >
             {THEMES.map(({ key, label, Icon }) => (
               <button
                 key={key}
@@ -69,7 +75,13 @@ export function AppearanceSettings() {
           <CardDescription>Use 12-hour or 24-hour time across Koku.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex gap-2" role="radiogroup" aria-label="Time format selection">
+          <div
+            id="appearance-time-format"
+            data-setting-row
+            className="flex gap-2"
+            role="radiogroup"
+            aria-label="Time format selection"
+          >
             {TIME_FORMATS.map((format) => (
               <button
                 key={format}
@@ -98,9 +110,7 @@ export function AppearanceSettings() {
         </CardHeader>
         <CardContent>
           <ToggleRow
-            id="entry-notes-display"
-            label="Show notes by default"
-            description="Off shows a note count you expand on demand, instead of the full text."
+            settingId="entry-notes-display"
             checked={entryNotesDisplay === "always"}
             onCheckedChange={(checked) => void setEntryNotesDisplay(checked ? "always" : "on-demand")}
           />
@@ -117,6 +127,8 @@ export function AppearanceSettings() {
         </CardHeader>
         <CardContent>
           <div
+            id="appearance-accent"
+            data-setting-row
             className="grid grid-cols-3 gap-3 sm:grid-cols-6"
             role="radiogroup"
             aria-label="Accent colour selection"

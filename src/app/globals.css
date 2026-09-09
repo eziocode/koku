@@ -17,6 +17,10 @@
   --color-secondary-foreground: #181512;
   --color-destructive: #d92d20;
   --color-ring: #0d6e64;
+  /* Primary, nudged toward the page in dark mode so brand-coloured TEXT and
+     rings clear AA. Derived from --color-primary, so every [data-accent]
+     palette inherits it without declaring anything extra. */
+  --color-primary-accessible: var(--color-primary);
   --color-popover: #ffffff;
   --color-popover-foreground: #181512;
   --radius: 1rem;
@@ -40,6 +44,10 @@
   --color-secondary-foreground: #f7f1ea;
   --color-popover: #181614;
   --color-popover-foreground: #f7f1ea;
+  /* The dark theme keeps the brand hue, which on a #181614 surface leaves the
+     raw primary at ~2.2-3.2:1 — unreadable as text, and under the 3:1 floor a
+     ring needs. Lightening it here lifts every palette to 7:1 or better. */
+  --color-primary-accessible: color-mix(in oklab, var(--color-primary) 45%, #ffffff);
   color-scheme: dark;
 }
 
@@ -166,6 +174,45 @@ body {
     border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
     background: color-mix(in srgb, var(--color-card) 88%, transparent);
     box-shadow: 0 1px 2px color-mix(in srgb, var(--color-foreground) 5%, transparent);
+  }
+
+  /* ─── Settings deep-link highlight ───────────────────────────────────── */
+  /* Applied at runtime by SettingsHighlightReader when a ?highlight= link      */
+  /* lands. An attribute rather than a class on purpose: a class name set via   */
+  /* setAttribute never appears in the source Tailwind scans, so the utility    */
+  /* would never be generated.                                                  */
+
+  @keyframes koku-setting-flash {
+    0% {
+      background-color: color-mix(in srgb, var(--color-primary) 12%, transparent);
+      box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-ring) 55%, transparent);
+    }
+    60% {
+      background-color: color-mix(in srgb, var(--color-primary) 8%, transparent);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-ring) 26%, transparent);
+    }
+    100% {
+      background-color: transparent;
+      box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-ring) 0%, transparent);
+    }
+  }
+
+  [data-setting-highlight] {
+    animation: koku-setting-flash 1800ms ease-out 1;
+    border-radius: var(--radius);
+  }
+
+  /* Clears the sticky header when a row is scrolled into view. */
+  [data-setting-row] {
+    scroll-margin-top: 6rem;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    [data-setting-highlight] {
+      animation: none;
+      outline: 2px solid var(--color-ring);
+      outline-offset: 2px;
+    }
   }
 
   /* ─── Running-state indicators ────────────────────────────────────────── */

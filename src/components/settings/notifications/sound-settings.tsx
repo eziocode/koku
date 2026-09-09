@@ -26,14 +26,12 @@ export function SoundSettings() {
         </CardHeader>
         <CardContent className="space-y-4">
           <ToggleRow
-            id="sound-enabled"
-            label="Play a sound for reminders"
-            description="Turn off to silence reminder sound-fx entirely."
+            settingId="sound-enabled"
             checked={prefs.sound.enabled}
             onCheckedChange={(checked) => void patch({ sound: { enabled: checked } })}
           />
 
-          <div className={cn("space-y-2", !prefs.sound.enabled && "opacity-50")}>
+          <div data-setting-row className={cn("space-y-2", !prefs.sound.enabled && "opacity-50")}>
             <Label htmlFor="sound-volume">Volume</Label>
             <input
               id="sound-volume"
@@ -56,7 +54,7 @@ export function SoundSettings() {
             Preview sound
           </Button>
 
-          <div className={cn("space-y-2", !prefs.sound.enabled && "opacity-50")}>
+          <div data-setting-row className={cn("space-y-2", !prefs.sound.enabled && "opacity-50")}>
             <Label htmlFor="reminder-beep-seconds">Reminder alarm length</Label>
             <Select
               value={String(prefs.reminders.beepSeconds)}

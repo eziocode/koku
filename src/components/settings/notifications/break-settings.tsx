@@ -54,14 +54,12 @@ export function BreakSettings() {
         </CardHeader>
         <CardContent className="space-y-4">
           <ToggleRow
-            id="breaks-enabled"
-            label="Show the break button"
-            description="Turn off to hide breaks entirely."
+            settingId="breaks-enabled"
             checked={prefs.breaks.enabled}
             onCheckedChange={(checked) => void patch({ breaks: { enabled: checked } })}
           />
 
-          <div className={cn("space-y-2", !prefs.breaks.enabled && "opacity-50")}>
+          <div data-setting-row className={cn("space-y-2", !prefs.breaks.enabled && "opacity-50")}>
             <Label htmlFor="break-presets">Preset lengths (minutes)</Label>
             <div className="flex gap-2">
               <Input
@@ -83,25 +81,19 @@ export function BreakSettings() {
           </div>
 
           <ToggleRow
-            id="breaks-auto-resume"
-            label="Resume timers afterwards"
-            description="Picks your paused timers back up when the break ends."
+            settingId="breaks-auto-resume"
             checked={prefs.breaks.autoResume}
             disabled={!prefs.breaks.enabled}
             onCheckedChange={(checked) => void patch({ breaks: { autoResume: checked } })}
           />
           <ToggleRow
-            id="breaks-notify"
-            label="Notify me when a break ends"
-            description="Needs check-in reminders to be allowed above."
+            settingId="breaks-notify"
             checked={prefs.breaks.notifyOnComplete}
             disabled={!prefs.breaks.enabled}
             onCheckedChange={(checked) => void patch({ breaks: { notifyOnComplete: checked } })}
           />
           <ToggleRow
-            id="breaks-block"
-            label="Block new timers during a break"
-            description="Keeps a break honest. Turn off if you want to start tracking mid-break."
+            settingId="breaks-block"
             checked={prefs.breaks.blockNewTimers}
             disabled={!prefs.breaks.enabled}
             onCheckedChange={(checked) => void patch({ breaks: { blockNewTimers: checked } })}

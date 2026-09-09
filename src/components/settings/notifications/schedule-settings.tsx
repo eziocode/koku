@@ -73,7 +73,11 @@ export function ScheduleSettings() {
             top bar so you can’t forget.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-wrap items-center gap-3">
+        <CardContent
+          id="dnd-controls"
+          data-setting-row
+          className="flex flex-wrap items-center gap-3"
+        >
           <DndMenu align="start">
             <Button variant="outline" className="min-h-11 gap-2">
               <BellOff className="h-4 w-4" aria-hidden="true" />
@@ -98,17 +102,13 @@ export function ScheduleSettings() {
         </CardHeader>
         <CardContent className="space-y-4">
           <ToggleRow
-            id="quiet-hours-enabled"
-            label="Use quiet hours"
-            description="Off by default, so it changes nothing until you want it."
+            settingId="quiet-hours-enabled"
             checked={prefs.quietHours.enabled}
             disabled={off}
             onCheckedChange={(checked) => void patch({ quietHours: { enabled: checked } })}
           />
           <ToggleRow
-            id="quiet-hours-auto"
-            label="Adapt to my activity"
-            description="Recomputed from your last 30 days of logs instead of a fixed time. Needs at least 5 logged days."
+            settingId="quiet-hours-auto"
             checked={prefs.quietHours.auto}
             disabled={off || !prefs.quietHours.enabled}
             onCheckedChange={(checked) => void patch({ quietHours: { auto: checked } })}
@@ -121,7 +121,7 @@ export function ScheduleSettings() {
             )}
           >
             <legend className="sr-only">Quiet hours window</legend>
-            <div className="space-y-2">
+            <div data-setting-row className="space-y-2">
               <Label htmlFor="quiet-start">From</Label>
               <Input
                 id="quiet-start"
@@ -136,7 +136,7 @@ export function ScheduleSettings() {
                 }}
               />
             </div>
-            <div className="space-y-2">
+            <div data-setting-row className="space-y-2">
               <Label htmlFor="quiet-end">Until</Label>
               <Input
                 id="quiet-end"
@@ -169,11 +169,13 @@ export function ScheduleSettings() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <SilentDaysGroup
-            selected={prefs.silentDays}
-            disabled={off}
-            onChange={(next) => void patch({ silentDays: next })}
-          />
+          <div id="silent-days" data-setting-row>
+            <SilentDaysGroup
+              selected={prefs.silentDays}
+              disabled={off}
+              onChange={(next) => void patch({ silentDays: next })}
+            />
+          </div>
           <p className="text-xs text-muted-foreground">
             {prefs.silentDays.length === 0
               ? "No days selected, notifications run every day."
@@ -192,7 +194,7 @@ export function ScheduleSettings() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-wrap items-center gap-3">
+          <div id="holiday-dates" data-setting-row className="flex flex-wrap items-center gap-3">
             <MultiDatePicker
               existing={prefs.holidayDates}
               placeholder="Pick days"
@@ -261,7 +263,7 @@ export function ScheduleSettings() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-wrap items-center gap-3">
+          <div id="leave-dates" data-setting-row className="flex flex-wrap items-center gap-3">
             <MultiDatePicker
               existing={prefs.leaveDates}
               placeholder="Pick days"

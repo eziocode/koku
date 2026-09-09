@@ -4,7 +4,7 @@ import * as React from "react";
 import { format, isValid, parse } from "date-fns";
 import { CalendarIcon } from "lucide-react";
 
-import { Calendar } from "@/components/ui/calendar";
+import { Calendar, calendarDayButtonModifiers } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -182,7 +182,7 @@ export function DateTimePicker({
         <button
           type="button"
           onClick={() => onChange(suggestion)}
-          className="shrink-0 border-b border-border px-3 py-2 text-left text-xs text-primary hover:bg-accent"
+          className="shrink-0 border-b border-border px-3 py-2 text-left text-xs text-primary hover:bg-muted"
         >
           Use suggested: {suggestionLabel}
         </button>
@@ -206,12 +206,17 @@ export function DateTimePicker({
             // The shared Calendar leaves the nav buttons free-floating, which
             // parks them beside the grid instead of the month label.
             nav: "absolute inset-x-1 top-1 z-10 flex items-center justify-between",
-            button_previous: "inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-30",
-            button_next: "inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-30",
+            button_previous: "inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-30",
+            button_next: "inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-30",
             weekday: "text-muted-foreground w-8 rounded-md font-normal text-[0.7rem]",
             week: "mt-0.5 flex w-full",
-            day: "relative h-7 w-8 p-0 text-center text-[0.8rem] focus-within:relative focus-within:z-20 [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md",
-            day_button: "inline-flex h-7 w-8 items-center justify-center rounded-md p-0 font-normal hover:bg-accent hover:text-accent-foreground aria-selected:opacity-100",
+            day: "group relative h-7 w-8 p-0 text-center text-[0.8rem] focus-within:relative focus-within:z-20",
+            // Overriding `day_button` replaces the shared string wholesale, so
+            // the modifiers have to be composed back in explicitly.
+            day_button: cn(
+              "inline-flex h-7 w-8 items-center justify-center rounded-full p-0 font-normal transition-colors hover:bg-muted hover:text-foreground",
+              calendarDayButtonModifiers,
+            ),
           }}
         />
       </div>

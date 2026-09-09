@@ -9,6 +9,11 @@
  *
  * Pure data, no React: the rotation lives in the component, and the list is
  * imported by tests to assert every `href` resolves to a real route.
+ *
+ * A tip whose label promises one control (“Set your logoff time”) carries a
+ * `?highlight=` anchor from `lib/settings/registry`, so it lands on that control
+ * and flashes it rather than dropping the reader on a hub page. The tests assert
+ * those anchors are real, which is why the param is not free-form text.
  */
 
 export interface DashboardTip {
@@ -40,7 +45,7 @@ export const DASHBOARD_TIPS: DashboardTip[] = [
     id: "breaks",
     area: "Breaks",
     text: "Taking a break pauses your timers and logs itself separately, so break time never inflates your work total.",
-    href: "/settings/notifications",
+    href: "/settings/notifications/breaks?highlight=breaks-enabled",
     actionLabel: "Tune breaks",
   },
   {
@@ -103,28 +108,28 @@ export const DASHBOARD_TIPS: DashboardTip[] = [
     id: "check-ins",
     area: "Notifications",
     text: "Recurring check-ins nudge you to log what you are doing, with a quick-note button right on the notification.",
-    href: "/settings/notifications",
+    href: "/settings/notifications/check-ins?highlight=checkin-enabled",
     actionLabel: "Set up check-ins",
   },
   {
     id: "holidays",
     area: "Notifications",
     text: "Mark a day as a holiday and every notification for it is skipped, check-ins and the end-of-day wrap-up alike.",
-    href: "/settings/notifications",
+    href: "/settings/notifications/schedule?highlight=holiday-dates",
     actionLabel: "Mark a holiday",
   },
   {
     id: "quiet-hours",
     area: "Notifications",
     text: "Quiet hours and silent days silence check-ins on a schedule, without switching the feature off.",
-    href: "/settings/notifications",
+    href: "/settings/notifications/schedule?highlight=quiet-hours-enabled",
     actionLabel: "Set quiet hours",
   },
   {
     id: "end-of-day",
     area: "Notifications",
     text: "End-of-day auto-stop catches the timer you forgot to stop, after a grace period you choose.",
-    href: "/settings/notifications",
+    href: "/settings/notifications/end-of-day?highlight=eod-logoff-time",
     actionLabel: "Set your logoff time",
   },
   {

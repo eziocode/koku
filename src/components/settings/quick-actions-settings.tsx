@@ -161,9 +161,7 @@ export function QuickActionsSettings() {
         </CardHeader>
         <CardContent className="space-y-4">
           <ToggleRow
-            id="quick-actions-enabled"
-            label="Show quick action buttons"
-            description="Turn off to hide them entirely."
+            settingId="quick-actions-enabled"
             checked={prefs.quickActions.enabled}
             onCheckedChange={(checked) => void patch({ quickActions: { enabled: checked } })}
           />

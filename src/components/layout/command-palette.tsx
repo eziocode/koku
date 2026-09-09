@@ -5,6 +5,11 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { appNavigation } from "@/lib/navigation";
+import {
+  SETTINGS_ENTRIES,
+  SETTINGS_SECTIONS_BY_ID,
+  settingHref,
+} from "@/lib/settings/registry";
 import { startQuickTimer } from "@/lib/time-tracking/quick-timer";
 import { useNotes } from "@/lib/storage/hooks/use-notes";
 import { useNotificationPreferences } from "@/lib/notifications/use-notification-preferences";
@@ -120,6 +125,31 @@ export function CommandPalette({ open, onOpenChange, onRequestTimedTimer }: Comm
                 {item.value}
               </Command.Item>
             ))}
+          </Command.Group>
+
+          {/* Every entry is rendered and cmdk's own scoring narrows them, the
+              same way the Navigate group works. Pre-filtering with
+              `filterByQuery` would double-filter, since cmdk applies its
+              `commandScore` on top of whatever is rendered. */}
+          <Command.Group heading="Settings" className="px-2 py-2 text-xs text-muted-foreground">
+            {SETTINGS_ENTRIES.map((entry) => {
+              const section = SETTINGS_SECTIONS_BY_ID[entry.sectionId];
+              return (
+                <Command.Item
+                  key={entry.anchorId}
+                  value={entry.label}
+                  keywords={[section.title, ...(entry.keywords ?? [])]}
+                  onSelect={() => {
+                    onOpenChange(false);
+                    router.push(settingHref(entry));
+                  }}
+                  className="flex items-baseline gap-2 rounded-2xl px-3 py-2 text-sm aria-selected:bg-muted"
+                >
+                  <span>{entry.label}</span>
+                  <span className="text-xs text-muted-foreground">{section.title}</span>
+                </Command.Item>
+              );
+            })}
           </Command.Group>
 
           <Command.Group heading="Notes" className="px-2 py-2 text-xs text-muted-foreground">

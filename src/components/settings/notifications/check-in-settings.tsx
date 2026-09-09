@@ -108,9 +108,7 @@ export function CheckInSettings() {
             </div>
           ) : (
             <ToggleRow
-              id="notifications-enabled"
-              label="Check-in reminders"
-              description="The master switch. With this off, koku schedules nothing at all."
+              settingId="notifications-enabled"
               checked={master}
               onCheckedChange={(checked) => void patch({ enabled: checked })}
             />
@@ -137,15 +135,13 @@ export function CheckInSettings() {
         </CardHeader>
         <CardContent className="space-y-4">
           <ToggleRow
-            id="checkin-enabled"
-            label="Send check-ins"
-            description="Turn off to keep breaks and do-not-disturb without the recurring nudge."
+            settingId="checkin-enabled"
             checked={prefs.checkIn.enabled}
             disabled={off}
             onCheckedChange={(checked) => void patch({ checkIn: { enabled: checked } })}
           />
 
-          <div className={cn("space-y-2", off && "opacity-50")}>
+          <div data-setting-row className={cn("space-y-2", off && "opacity-50")}>
             <Label htmlFor="checkin-interval">Interval</Label>
             <Select
               value={usingPreset ? String(prefs.checkIn.intervalMinutes) : "custom"}
@@ -191,15 +187,16 @@ export function CheckInSettings() {
           </div>
 
           <ToggleRow
-            id="checkin-require-interaction"
-            label="Keep in the notification centre"
-            description="Overrides auto-hide and stays until you act on it. Chrome and Edge on desktop only."
+            settingId="checkin-require-interaction"
             checked={prefs.checkIn.requireInteraction}
             disabled={off}
             onCheckedChange={(checked) => void patch({ checkIn: { requireInteraction: checked } })}
           />
 
-          <div className={cn("space-y-2", (off || prefs.checkIn.requireInteraction) && "opacity-50")}>
+          <div
+            data-setting-row
+            className={cn("space-y-2", (off || prefs.checkIn.requireInteraction) && "opacity-50")}
+          >
             <Label htmlFor="checkin-auto-hide">Auto-hide after</Label>
             <Select
               value={String(prefs.checkIn.autoHideMinutes)}
@@ -223,9 +220,7 @@ export function CheckInSettings() {
           </div>
 
           <ToggleRow
-            id="checkin-idle"
-            label="Remind me when nothing is tracked"
-            description="Nudges you to start a timer when none is running."
+            settingId="checkin-idle"
             checked={prefs.checkIn.notifyWhenIdle}
             disabled={off}
             onCheckedChange={(checked) => void patch({ checkIn: { notifyWhenIdle: checked } })}
@@ -245,25 +240,19 @@ export function CheckInSettings() {
         </CardHeader>
         <CardContent className="space-y-4">
           <ToggleRow
-            id="action-quick-note"
-            label="Quick note"
-            description="Opens a single-field composer that appends a timestamped note to what’s running."
+            settingId="action-quick-note"
             checked={prefs.checkIn.actions.quickNote}
             disabled={off}
             onCheckedChange={(checked) => void patch({ checkIn: { actions: { quickNote: checked } } })}
           />
           <ToggleRow
-            id="action-open-log"
-            label="Open log"
-            description="Jumps to your time log."
+            settingId="action-open-log"
             checked={prefs.checkIn.actions.openLog}
             disabled={off}
             onCheckedChange={(checked) => void patch({ checkIn: { actions: { openLog: checked } } })}
           />
           <ToggleRow
-            id="action-dismiss"
-            label="Dismiss"
-            description="An explicit way to clear the check-in."
+            settingId="action-dismiss"
             checked={prefs.checkIn.actions.dismiss}
             disabled={off}
             onCheckedChange={(checked) => void patch({ checkIn: { actions: { dismiss: checked } } })}

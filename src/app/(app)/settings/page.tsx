@@ -1,64 +1,6 @@
-import Link from "next/link";
-
-import { BetaBadge } from "@/components/ui/beta-badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-
-interface SettingsSection {
-  title: string;
-  description: string;
-  href: string;
-  /** Renders a beta badge on the section card. */
-  beta?: boolean;
-}
-
-const settingsSections: SettingsSection[] = [
-  {
-    title: "Appearance",
-    description: "Choose your theme (light, dark, system) and accent colour.",
-    href: "/settings/appearance",
-  },
-  {
-    title: "Notifications",
-    description: "Check-ins, quiet hours & schedule, breaks, and end of day, in four focused sections.",
-    href: "/settings/notifications",
-  },
-  {
-    title: "Quick actions",
-    description: "Custom one-click buttons for calls, standups, and anything else you track live.",
-    href: "/settings/quick-actions",
-  },
-  {
-    title: "Mini player",
-    description: "A floating always-on-top timer that stays visible across tabs.",
-    href: "/settings/mini-player",
-  },
-  {
-    title: "Account & Profile",
-    description: "Personalize your display name and manage your Zoho account.",
-    href: "/settings/account",
-  },
-  {
-    title: "Projects",
-    description: "Manage project colors, rates, and categories for local tracking.",
-    href: "/settings/projects",
-  },
-  {
-    title: "AI Keys",
-    description: "Store provider credentials locally for AI workflows.",
-    href: "/settings/ai-keys",
-    beta: true,
-  },
-  {
-    title: "Storage",
-    description: "Export, import, and prepare for optional cloud drive sync.",
-    href: "/settings/storage",
-  },
-  {
-    title: "Keyboard shortcuts",
-    description: "Jump around and act on timers and breaks without leaving the keyboard.",
-    href: "/settings/shortcuts",
-  },
-];
+import { SettingsSearch } from "@/components/settings/settings-search";
+import { SettingsSectionGrid } from "@/components/settings/settings-section-grid";
+import { sectionsForHub } from "@/lib/settings/registry";
 
 export default function SettingsPage() {
   return (
@@ -70,24 +12,11 @@ export default function SettingsPage() {
           Tune the device-first foundation behind your time intelligence system.
         </p>
       </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        {settingsSections.map((section) => (
-          <Link key={section.href} href={section.href}>
-            <Card className="h-full transition-transform hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  {section.title}
-                  {section.beta ? <BetaBadge /> : null}
-                </CardTitle>
-                <CardDescription>{section.description}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm font-medium text-primary">Open section →</p>
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
-      </div>
+      {/* The grid is passed as children so it stays a server component: an empty
+          query renders it untouched, with no extra client JS. */}
+      <SettingsSearch scope="all">
+        <SettingsSectionGrid sections={sectionsForHub("root")} />
+      </SettingsSearch>
     </div>
   );
 }
