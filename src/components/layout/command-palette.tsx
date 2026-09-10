@@ -11,7 +11,8 @@ import {
   settingHref,
 } from "@/lib/settings/registry";
 import { startQuickTimer } from "@/lib/time-tracking/quick-timer";
-import { useNotes } from "@/lib/storage/hooks/use-notes";
+import { useNoteMetadata } from "@/lib/storage/hooks/use-note-metadata";
+import { noteActions } from "@/lib/storage/note-actions";
 import { useNotificationPreferences } from "@/lib/notifications/use-notification-preferences";
 import { useTimerStore } from "@/lib/stores/timer-store";
 import { toast } from "@/components/ui/toast";
@@ -34,10 +35,13 @@ interface CommandPaletteProps {
  */
 export function CommandPalette({ open, onOpenChange, onRequestTimedTimer }: CommandPaletteProps) {
   const router = useRouter();
-  const { timers, activeBreak, startTimer } = useTimerStore();
+  const timers = useTimerStore((state) => state.timers);
+  const activeBreak = useTimerStore((state) => state.activeBreak);
+  const startTimer = useTimerStore((state) => state.startTimer);
   const { prefs } = useNotificationPreferences();
   const [query, setQuery] = useState("");
-  const { notes, createNote } = useNotes(query);
+  const { notes } = useNoteMetadata(query);
+  const { createNote } = noteActions("shared");
 
   const navigationItems = useMemo(
     () => appNavigation.map((item) => ({ value: item.title, href: item.href })),

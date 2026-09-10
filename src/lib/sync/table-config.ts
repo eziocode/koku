@@ -95,25 +95,25 @@ export const TABLE_CONFIG = {
   projects: {
     table: "projects_koku",
     toFields: (r: Record<string, unknown>) => ({ name: r.name ?? "", color: r.color ?? "#888888", hourly_rate: r.hourlyRate ?? null, created_at: toCatalystDateTime(r.createdAt) }),
-    fromRow: (r: Record<string, unknown>) => { const d = (r.projects_koku ?? r) as Record<string, unknown>; return { id: d.id, name: d.name, color: d.color, hourlyRate: d.hourly_rate === null || d.hourly_rate === undefined || d.hourly_rate === "" ? null : parseFloat(d.hourly_rate as string), createdAt: d.created_at }; },
+    fromRow: (r: Record<string, unknown>) => { const d = (r.projects_koku ?? r) as Record<string, unknown>; return { id: d.id, name: d.name, color: d.color, hourlyRate: d.hourly_rate === null || d.hourly_rate === undefined || d.hourly_rate === "" ? null : parseFloat(d.hourly_rate as string), createdAt: fromCatalystDateTime(d.created_at) ?? d.created_at }; },
     sinceField: "created_at",
   },
   categories: {
     table: "categories_koku",
     toFields: (r: Record<string, unknown>) => ({ name: r.name ?? "", color: r.color ?? "#888888", created_at: toCatalystDateTime(r.createdAt) }),
-    fromRow: (r: Record<string, unknown>) => { const d = (r.categories_koku ?? r) as Record<string, unknown>; return { id: d.id, name: d.name, color: d.color, createdAt: d.created_at }; },
+    fromRow: (r: Record<string, unknown>) => { const d = (r.categories_koku ?? r) as Record<string, unknown>; return { id: d.id, name: d.name, color: d.color, createdAt: fromCatalystDateTime(d.created_at) ?? d.created_at }; },
     sinceField: "created_at",
   },
   notes: {
     table: "notes_koku",
     toFields: (r: Record<string, unknown>) => ({ title: r.title ?? "", slug: r.slug ?? "", content: JSON.stringify(r.content ?? null), tags: JSON.stringify(r.tags ?? []), created_at: toCatalystDateTime(r.createdAt), updated_at: toCatalystDateTime(r.updatedAt) }),
-    fromRow: (r: Record<string, unknown>) => { const d = (r.notes_koku ?? r) as Record<string, unknown>; return { id: d.id, title: d.title, slug: d.slug, content: tryParse(d.content as string, null), tags: tryParse(d.tags as string, []), createdAt: d.created_at, updatedAt: d.updated_at }; },
+    fromRow: (r: Record<string, unknown>) => { const d = (r.notes_koku ?? r) as Record<string, unknown>; return { id: d.id, title: d.title, slug: d.slug, content: tryParse(d.content as string, null), tags: tryParse(d.tags as string, []), createdAt: fromCatalystDateTime(d.created_at) ?? d.created_at, updatedAt: fromCatalystDateTime(d.updated_at) ?? d.updated_at }; },
     sinceField: "updated_at",
   },
   personalNotes: {
     table: "personal_notes_koku",
     toFields: (r: Record<string, unknown>) => ({ title: r.title ?? "", slug: r.slug ?? "", content: JSON.stringify(r.content ?? null), tags: JSON.stringify(r.tags ?? []), created_at: toCatalystDateTime(r.createdAt), updated_at: toCatalystDateTime(r.updatedAt) }),
-    fromRow: (r: Record<string, unknown>) => { const d = (r.personal_notes_koku ?? r) as Record<string, unknown>; return { id: d.id, title: d.title, slug: d.slug, content: tryParse(d.content as string, null), tags: tryParse(d.tags as string, []), createdAt: d.created_at, updatedAt: d.updated_at }; },
+    fromRow: (r: Record<string, unknown>) => { const d = (r.personal_notes_koku ?? r) as Record<string, unknown>; return { id: d.id, title: d.title, slug: d.slug, content: tryParse(d.content as string, null), tags: tryParse(d.tags as string, []), createdAt: fromCatalystDateTime(d.created_at) ?? d.created_at, updatedAt: fromCatalystDateTime(d.updated_at) ?? d.updated_at }; },
     sinceField: "updated_at",
   },
   noteLinks: {

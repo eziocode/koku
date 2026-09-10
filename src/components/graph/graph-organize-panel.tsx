@@ -23,7 +23,7 @@ interface LinkSuggestion {
  * applies only what the user confirms. api-key connections only, and only
  * rendered when one has actually tested green — same gating as Koku AI.
  */
-export function GraphOrganizePanel({ notes }: { notes: Note[] }) {
+export function GraphOrganizePanel({ notes }: { notes: Pick<Note, "id" | "title" | "tags">[] }) {
   const { verifiedConnections } = useAiKeys();
   const connection = verifiedConnections.find((key) => key.authMode === "api-key") ?? null;
   const [loading, setLoading] = useState(false);

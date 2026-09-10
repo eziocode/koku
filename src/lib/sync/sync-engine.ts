@@ -7,7 +7,7 @@ import {
 } from "@/lib/storage/db";
 import { toast } from "@/components/ui/toast";
 import { captureRecovery } from "@/lib/storage/backup";
-import { LOCAL_ONLY_FIELDS } from "@/lib/sync/table-config";
+import { LOCAL_ONLY_FIELDS, TABLE_CONFIG } from "@/lib/sync/table-config";
 
 // "tasks" comes before "timeEntries" so a pushed entry's taskId never points
 // at a task the cloud mirror doesn't have yet.
@@ -224,6 +224,28 @@ function stable(value: unknown): string {
   return `{${Object.entries(value as Record<string, unknown>).filter(([key]) => key !== "userId").sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => `${JSON.stringify(key)}:${stable(item)}`).join(",")}}`;
 }
 
+function mergeMissingLocalOnlyFields(table: SyncTable, localRow: unknown, remoteRow: unknown): unknown {
+  const fields = LOCAL_ONLY_FIELDS[table];
+  if (!fields?.length) return remoteRow;
+
+  const local = localRow as Record<string, unknown>;
+  const merged = { ...(remoteRow as Record<string, unknown>) };
+  let changed = false;
+  for (const field of fields) {
+    if (merged[field] === undefined && local[field] !== undefined) {
+      merged[field] = local[field];
+      changed = true;
+    }
+  }
+  return changed ? merged : remoteRow;
+}
+
+function canonicalSyncRow(table: SyncTable, row: unknown): unknown {
+  const config = TABLE_CONFIG[table];
+  const fields = config.toFields(row as Record<string, unknown>);
+  return config.fromRow({ id: rowId(row), ...fields });
+}
+
 /** Compare local and cloud snapshots. AI keys intentionally never included. */
 export async function compareSyncData(): Promise<SyncConflict | null> {
   const byTable: Partial<Record<SyncTable, number>> = {};
@@ -234,12 +256,18 @@ export async function compareSyncData(): Promise<SyncConflict | null> {
     const response = await fetch(`/api/sync/${table}`);
     if (!response.ok) throw new Error(`Compare ${table} failed: ${response.status}`);
     const remote = ((await response.json() as { rows?: unknown[] }).rows ?? []).filter((row) => !isInternalSetting(table, row));
-    const localMap = new Map(local.map((row) => [rowId(row), stable(row)]));
-    const remoteMap = new Map(remote.map((row) => [rowId(row), stable(row)]));
+    const localMap = new Map(local.map((row) => [rowId(row), row]));
+    const remoteMap = new Map(remote.map((row) => [rowId(row), row]));
     let tableDiff = 0;
-    for (const [id, value] of localMap) {
+    for (const [id, localRow] of localMap) {
       if (!remoteMap.has(id)) { addedLocal++; tableDiff++; }
-      else if (remoteMap.get(id) !== value) { changed++; tableDiff++; }
+      else {
+        const remoteRow = mergeMissingLocalOnlyFields(table, localRow, remoteMap.get(id));
+        if (stable(canonicalSyncRow(table, localRow)) !== stable(canonicalSyncRow(table, remoteRow))) {
+          changed++;
+          tableDiff++;
+        }
+      }
     }
     for (const id of remoteMap.keys()) if (!localMap.has(id)) { addedCloud++; tableDiff++; }
     if (tableDiff) byTable[table] = tableDiff;
@@ -333,6 +361,57 @@ export interface SyncResult {
   pushed: number;
   error?: string;
   conflict?: SyncConflict;
+}
+
+/** Check whether local and cloud snapshots differ without transferring rows. */
+export async function checkSyncStatus(): Promise<SyncResult> {
+  if (!navigator.onLine) {
+    return { pulled: 0, pushed: 0, error: "Offline" };
+  }
+
+  invalidateAuthCache();
+  const user = await getAuthUser();
+  if (!user) {
+    return { pulled: 0, pushed: 0, error: "Not signed in" };
+  }
+
+  let keepConflictPause = false;
+  try {
+    conflictDecisionPending = true;
+    if (pendingFlush) await pendingFlush;
+    await waitForMutationLocks();
+    const [capturedUpserts, capturedDeletes] = await Promise.all([
+      kokuDb.pendingUpserts.toArray(),
+      kokuDb.pendingDeletes.toArray(),
+    ]);
+    const conflict = await compareSyncData();
+    if (conflict) {
+      keepConflictPause = true;
+      return { pulled: 0, pushed: 0, conflict };
+    }
+
+    let remaining = 0;
+    await kokuDb.transaction(
+      "rw",
+      [kokuDb.pendingUpserts, kokuDb.pendingDeletes, kokuDb.storageMeta],
+      async () => {
+        await discardCapturedMutations(capturedUpserts, capturedDeletes);
+        remaining = await kokuDb.pendingUpserts.count() + await kokuDb.pendingDeletes.count();
+        if (remaining === 0) await kokuDb.storageMeta.delete("syncPaused");
+      },
+    );
+    if (remaining > 0) {
+      return {
+        pulled: 0,
+        pushed: 0,
+        error: "Workspace changed during sync check. Try again.",
+      };
+    }
+    pendingSyncWarningShown = false;
+    return { pulled: 0, pushed: 0 };
+  } finally {
+    if (!keepConflictPause) conflictDecisionPending = false;
+  }
 }
 
 export async function syncNow(choice?: SyncChoice): Promise<SyncResult> {

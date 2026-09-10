@@ -7,6 +7,8 @@ import { RETRY_INTERVAL_MS } from "@/components/providers/cloud-sync-bootstrap";
 import { kokuDb } from "@/lib/storage/db";
 import {
   cancelSyncConflict,
+  checkSyncStatus,
+  compareSyncData,
   deleteRow,
   flushPendingChanges,
   invalidateAuthCache,
@@ -39,12 +41,15 @@ beforeEach(async () => {
     kokuDb.projects.clear(),
     kokuDb.categories.clear(),
     kokuDb.timeEntries.clear(),
+    kokuDb.tasks.clear(),
     kokuDb.notes.clear(),
     kokuDb.personalNotes.clear(),
     kokuDb.noteLinks.clear(),
     kokuDb.settings.clear(),
+    kokuDb.reminders.clear(),
     kokuDb.pendingUpserts.clear(),
     kokuDb.pendingDeletes.clear(),
+    kokuDb.storageMeta.clear(),
   ]);
 });
 
@@ -53,6 +58,174 @@ afterEach(() => {
   if (originalNavigator) {
     Object.defineProperty(globalThis, "navigator", originalNavigator);
   }
+});
+
+describe("sync comparison", () => {
+  it("treats equivalent Catalyst and ISO timestamps as already synced", async () => {
+    const localProject = {
+      id: "project-1",
+      name: "Koku",
+      color: "#123456",
+      hourlyRate: null,
+      createdAt: "2026-08-24T10:00:00.000Z",
+    };
+    await kokuDb.projects.put(localProject);
+
+    globalThis.fetch = async (input) => {
+      if (String(input) === "/api/sync/projects") {
+        return jsonResponse({
+          rows: [{ ...localProject, createdAt: "2026-08-24 10:00:00" }],
+        });
+      }
+      return jsonResponse({ rows: [] });
+    };
+
+    assert.equal(await compareSyncData(), null);
+  });
+
+  it("ignores a local-only field when the cloud row does not carry it", async () => {
+    const localEntry = {
+      id: "entry-1",
+      title: "Focused work",
+      projectId: null,
+      categoryId: null,
+      taskId: null,
+      startAt: "2026-08-24T10:00:00.000Z",
+      endAt: "2026-08-24T11:00:00.000Z",
+      durationSec: 3_600,
+      segments: [
+        {
+          startAt: "2026-08-24T10:00:00.000Z",
+          endAt: "2026-08-24T11:00:00.000Z",
+        },
+      ],
+      tags: [],
+      notes: null,
+      createdAt: "2026-08-24T10:00:00.000Z",
+    };
+    await kokuDb.timeEntries.put(localEntry);
+
+    const cloudEntry: Partial<typeof localEntry> = { ...localEntry };
+    delete cloudEntry.segments;
+    globalThis.fetch = async (input) => {
+      if (String(input) === "/api/sync/timeEntries") {
+        return jsonResponse({ rows: [cloudEntry] });
+      }
+      return jsonResponse({ rows: [] });
+    };
+
+    assert.equal(await compareSyncData(), null);
+  });
+
+  it("still reports genuine field changes", async () => {
+    const localProject = {
+      id: "project-1",
+      name: "Local name",
+      color: "#123456",
+      hourlyRate: null,
+      createdAt: "2026-08-24T10:00:00.000Z",
+    };
+    await kokuDb.projects.put(localProject);
+
+    globalThis.fetch = async (input) => {
+      if (String(input) === "/api/sync/projects") {
+        return jsonResponse({
+          rows: [{ ...localProject, name: "Cloud name", createdAt: "2026-08-24 10:00:00" }],
+        });
+      }
+      return jsonResponse({ rows: [] });
+    };
+
+    assert.deepEqual(await compareSyncData(), {
+      total: 1,
+      addedLocal: 0,
+      addedCloud: 0,
+      changed: 1,
+      byTable: { projects: 1 },
+    });
+  });
+
+  it("treats a recheck after directional sync as already synced", async () => {
+    const cloudProject = {
+      id: "project-1",
+      name: "Cloud project",
+      color: "#123456",
+      hourlyRate: null,
+      createdAt: "2026-08-24T10:00:00.000Z",
+    };
+    let projectPulls = 0;
+
+    globalThis.fetch = async (input, init) => {
+      const url = String(input);
+      if (url === "/api/auth/me") {
+        return jsonResponse({ user: { id: "user-1" } });
+      }
+      if (init?.method === "POST") {
+        const body = JSON.parse(String(init.body)) as { rows: { id?: string; key?: string }[] };
+        return jsonResponse({
+          synced: body.rows.length,
+          syncedIds: body.rows.map((row) => row.id ?? row.key),
+          errors: [],
+        });
+      }
+      if (url.startsWith("/api/sync/projects")) {
+        projectPulls += 1;
+        return jsonResponse({
+          rows: [{
+            ...cloudProject,
+            createdAt: projectPulls === 1 ? cloudProject.createdAt : "2026-08-24 10:00:00",
+          }],
+        });
+      }
+      return jsonResponse({ rows: [] });
+    };
+
+    await syncNow("cloud");
+    const recheck = await checkSyncStatus();
+
+    assert.equal(recheck.conflict, undefined);
+  });
+
+  it("checks an already-synced workspace without pushing or applying rows", async () => {
+    const localProject = {
+      id: "project-1",
+      name: "Koku",
+      color: "#123456",
+      hourlyRate: null,
+      createdAt: "2026-08-24T10:00:00.000Z",
+    };
+    await kokuDb.projects.put(localProject);
+    await kokuDb.pendingUpserts.put({
+      id: "projects:project-1",
+      table: "projects",
+      rowId: "project-1",
+      row: localProject,
+      revision: "stale-revision",
+      updatedAt: "2026-08-24T10:01:00.000Z",
+    });
+    await kokuDb.storageMeta.put({ key: "syncPaused", value: true });
+    const methods: string[] = [];
+
+    globalThis.fetch = async (input, init) => {
+      const url = String(input);
+      if (url === "/api/auth/me") {
+        return jsonResponse({ user: { id: "user-1" } });
+      }
+      methods.push(init?.method ?? "GET");
+      if (url === "/api/sync/projects") {
+        return jsonResponse({
+          rows: [{ ...localProject, createdAt: "2026-08-24 10:00:00" }],
+        });
+      }
+      return jsonResponse({ rows: [] });
+    };
+
+    assert.deepEqual(await checkSyncStatus(), { pulled: 0, pushed: 0 });
+    assert.equal(methods.includes("POST"), false);
+    assert.equal(await kokuDb.storageMeta.get("lastSyncAt:user-1"), undefined);
+    assert.equal(await kokuDb.storageMeta.get("syncPaused"), undefined);
+    assert.equal(await kokuDb.pendingUpserts.count(), 0);
+  });
 });
 
 describe("background sync recovery", () => {
@@ -273,7 +446,7 @@ describe("background sync recovery", () => {
       return jsonResponse({ rows: [] });
     };
 
-    const result = await syncNow();
+    const result = await checkSyncStatus();
     assert.ok(result.conflict);
 
     await syncRow("projects", { ...local, name: "Edited during prompt" });

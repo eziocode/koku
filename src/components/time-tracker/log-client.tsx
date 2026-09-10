@@ -221,7 +221,7 @@ export function LogClient() {
       ) : (
         <>
           {/* Timer + manual entry */}
-          <div className="grid items-stretch gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+          <div className="grid items-stretch gap-6 [&>*]:min-w-0 xl:grid-cols-[1.1fr_0.9fr]">
             {isSelectedDateToday ? (
               <Timer />
             ) : (

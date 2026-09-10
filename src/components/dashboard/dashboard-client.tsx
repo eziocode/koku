@@ -1,6 +1,7 @@
 "use client";
 
 import { endOfDay, endOfWeek, format, startOfDay, startOfWeek, subDays } from "date-fns";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -10,7 +11,7 @@ import { QuickCaptureCard } from "@/components/dashboard/quick-capture-card";
 import { RoutinesCard } from "@/components/time-tracker/routines-card";
 import { WorkWindowCard } from "@/components/dashboard/work-window-card";
 import { ChartLegend } from "@/components/charts/chart-legend";
-import { SegmentedBarChart } from "@/components/charts/segmented-bar-chart";
+import { ChartLoading } from "@/components/charts/chart-states";
 import { EntryNotes } from "@/components/time-tracker/entry-notes";
 import { Timer } from "@/components/time-tracker/timer";
 import { PageHeader } from "@/components/layout/page-header";
@@ -44,6 +45,12 @@ import {
 } from "@/lib/time-tracking/day-slices";
 import { formatDuration } from "@/lib/utils";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
+
+// Recharts is heavy; keep it out of the dashboard route's eager bundle.
+const SegmentedBarChart = dynamic(
+  () => import("@/components/charts/segmented-bar-chart").then((mod) => mod.SegmentedBarChart),
+  { loading: () => <ChartLoading /> },
+);
 
 /** Tags whose entries are records, not work: excluded from every work total. */
 const WORK_EXCLUDED_TAGS = [BREAK_TAG];
@@ -93,7 +100,7 @@ export function DashboardClient() {
     from: getLookbackStart(startOfDay(subDays(new Date(), 6))).toISOString(),
     to: todayEnd.toISOString(),
   });
-  const { timers } = useTimerStore();
+  const timers = useTimerStore((state) => state.timers);
   const { value: recentEntriesPageSize, setValue: setRecentEntriesPageSize } = useTypedSetting("recentEntriesPageSize");
 
   // Represent any live timers as open-ended segments so the chart shows in-flight

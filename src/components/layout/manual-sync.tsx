@@ -1,24 +1,28 @@
 "use client";
 
 import { Cloud, Database, RefreshCw } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { checkForAppUpdate } from "@/components/layout/app-update-indicator";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   cancelSyncConflict,
+  checkSyncStatus,
   syncNow,
   type SyncConflict,
 } from "@/lib/sync/sync-engine";
 import { toast } from "@/components/ui/toast";
 
 const isLocalMode = process.env.NEXT_PUBLIC_LOCAL_MODE === "true";
+type SyncActivity = "idle" | "checking" | "syncing";
 
 export function ManualSync() {
   const [cloudConnected, setCloudConnected] = useState<boolean | null>(isLocalMode ? false : null);
   const [open, setOpen] = useState(false);
   const [conflict, setConflict] = useState<SyncConflict | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [activity, setActivity] = useState<SyncActivity>("idle");
+  const resolvingConflictRef = useRef(false);
+  const busy = activity !== "idle";
 
   useEffect(() => {
     if (isLocalMode) return;
@@ -29,20 +33,30 @@ export function ManualSync() {
   }, []);
 
   async function choose(choice: "local" | "cloud") {
-    setBusy(true);
+    if (busy) return;
+    resolvingConflictRef.current = true;
+    setActivity("syncing");
+    setOpen(false);
+    setConflict(null);
     try {
       const result = await syncNow(choice);
       checkForAppUpdate();
       if (result.error) toast.error(result.error);
-      else { toast.success(`Sync complete: ${result.pushed} sent, ${result.pulled} received.`); setOpen(false); setConflict(null); }
+      else if (result.pushed === 0 && result.pulled === 0) toast.success("Already in sync.");
+      else toast.success(`Sync complete: ${result.pushed} sent, ${result.pulled} received.`);
     } catch (error) { toast.error(error instanceof Error ? error.message : "Sync failed."); }
-    finally { setBusy(false); }
+    finally {
+      cancelSyncConflict();
+      resolvingConflictRef.current = false;
+      setActivity("idle");
+    }
   }
 
   async function openSync() {
-    setBusy(true);
+    if (busy) return;
+    setActivity("checking");
     try {
-      const result = await syncNow();
+      const result = await checkSyncStatus();
       checkForAppUpdate();
       if (result.conflict) {
         setConflict(result.conflict);
@@ -54,20 +68,27 @@ export function ManualSync() {
         toast.success("Already in sync.");
       }
     } catch (error) { toast.error(error instanceof Error ? error.message : "Sync check failed."); }
-    finally { setBusy(false); }
+    finally { setActivity("idle"); }
   }
 
   if (!cloudConnected) return null;
 
   return <>
-    <Button variant="ghost" size="icon" aria-label="Sync cloud and local data" onClick={() => void openSync()} disabled={busy}>
-      <RefreshCw className={busy ? "animate-spin" : ""} />
+    <Button
+      variant="ghost"
+      size="icon"
+      aria-label={activity === "checking" ? "Checking cloud and local data" : activity === "syncing" ? "Syncing cloud and local data" : "Sync cloud and local data"}
+      aria-busy={busy}
+      onClick={() => void openSync()}
+      disabled={busy}
+    >
+      <RefreshCw className={busy ? "animate-spin motion-reduce:animate-none" : ""} />
     </Button>
     <Dialog
       open={open}
       onOpenChange={(nextOpen) => {
         setOpen(nextOpen);
-        if (!nextOpen) {
+        if (!nextOpen && !resolvingConflictRef.current) {
           cancelSyncConflict();
           setConflict(null);
         }

@@ -39,7 +39,9 @@ interface QuickTimerDialogProps {
  */
 export function QuickTimerDialog({ open, onOpenChange }: QuickTimerDialogProps) {
   const router = useRouter();
-  const { timers, activeBreak, startTimer } = useTimerStore();
+  const timers = useTimerStore((state) => state.timers);
+  const activeBreak = useTimerStore((state) => state.activeBreak);
+  const startTimer = useTimerStore((state) => state.startTimer);
   const { prefs } = useNotificationPreferences();
   const { value: timeFormat } = useTypedSetting("timeFormat");
   const [title, setTitle] = useState("");

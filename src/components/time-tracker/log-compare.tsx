@@ -1,9 +1,10 @@
 "use client";
 
 import { endOfDay, format, parseISO, startOfDay } from "date-fns";
+import dynamic from "next/dynamic";
 import { useMemo } from "react";
 
-import { ProjectPieChart } from "@/components/charts/project-pie-chart";
+import { ChartLoading } from "@/components/charts/chart-states";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -15,6 +16,12 @@ import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 import { formatTime } from "@/lib/time-format";
 import { formatDuration } from "@/lib/utils";
+
+// Recharts loads only when a comparison panel actually renders its chart.
+const ProjectPieChart = dynamic(
+  () => import("@/components/charts/project-pie-chart").then((mod) => mod.ProjectPieChart),
+  { loading: () => <ChartLoading /> },
+);
 
 interface ComparePanelProps { date: string; label: "A" | "B"; }
 

@@ -18,11 +18,12 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LazyScrollList } from "@/components/ui/lazy-scroll-list";
+import { VirtualNotes } from "./virtual-notes";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "@/components/ui/toast";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
-import { type NoteScope, useNotes } from "@/lib/storage/hooks/use-notes";
+import { type NoteScope, noteActions } from "@/lib/storage/note-actions";
+import { useNoteMetadata } from "@/lib/storage/hooks/use-note-metadata";
 import { formatTime } from "@/lib/time-format";
 
 type CreatedDateFilter = "all" | "today" | "yesterday" | "week" | "month" | "exact";
@@ -56,8 +57,14 @@ export function NotesBrowser({ scope = "shared" }: { scope?: NoteScope }) {
   const [createdDateFilter, setCreatedDateFilter] = useState<CreatedDateFilter>("all");
   const [createdDate, setCreatedDate] = useState("");
   const [view, setView] = useState<NoteView>("grid");
-  const { notes, createNote, deleteNote } = useNotes(undefined, scope);
-  const tags = useMemo(() => Array.from(new Set(notes.flatMap((note) => note.tags))).sort(), [notes]);
+  const { notes } = useNoteMetadata(undefined, scope);
+  const { createNote, deleteNote } = noteActions(scope);
+  const tagCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const note of notes) for (const tag of new Set(note.tags)) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    return counts;
+  }, [notes]);
+  const tags = useMemo(() => [...tagCounts.keys()].sort(), [tagCounts]);
 
   useEffect(() => {
     let active = true;
@@ -130,7 +137,9 @@ export function NotesBrowser({ scope = "shared" }: { scope?: NoteScope }) {
       })
       .forEach((note) => {
         const day = noteDateKey(createdDateFilter === "all" ? note.updatedAt : note.createdAt);
-        groups.set(day, [...(groups.get(day) ?? []), note]);
+        const group = groups.get(day);
+        if (group) group.push(note);
+        else groups.set(day, [note]);
       });
     return [...groups.entries()];
   }, [createdDateFilter, filteredNotes]);
@@ -247,7 +256,7 @@ export function NotesBrowser({ scope = "shared" }: { scope?: NoteScope }) {
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search notes by title or tag" className="pl-9" />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" className="gap-2" aria-label="Smart filters">
@@ -286,7 +295,7 @@ export function NotesBrowser({ scope = "shared" }: { scope?: NoteScope }) {
                   <p className="px-1 text-sm font-semibold">Tags</p>
                   <div className="mt-2 flex max-h-36 flex-wrap gap-1 overflow-y-auto pr-1">
                     <Button type="button" variant={activeTag === "all" ? "secondary" : "ghost"} size="sm" onClick={() => setActiveTag("all")}>All notes <span className="opacity-70">{notes.length}</span></Button>
-                    {tags.map((tag) => <Button key={tag} type="button" variant={activeTag === tag ? "secondary" : "ghost"} size="sm" onClick={() => setActiveTag(tag)}>{tag} <span className="opacity-70">{notes.filter((note) => note.tags.includes(tag)).length}</span></Button>)}
+                    {tags.map((tag) => <Button key={tag} type="button" variant={activeTag === tag ? "secondary" : "ghost"} size="sm" onClick={() => setActiveTag(tag)}>{tag} <span className="opacity-70">{tagCounts.get(tag)}</span></Button>)}
                   </div>
                 </div>
               </PopoverContent>
@@ -299,33 +308,25 @@ export function NotesBrowser({ scope = "shared" }: { scope?: NoteScope }) {
           </div>
         </div>
 
-        <LazyScrollList
-          key={`${view}-${activeTag}-${createdDateFilter}-${createdDate}-${search}`}
-          items={notesByDate}
-          getKey={([day]) => day}
-          pageSize={6}
-          className="h-[44rem]"
-          listClassName="space-y-6"
-          moreLabel="Load more dates"
-          empty={<p className="text-sm text-muted-foreground">No notes found.</p>}
-          renderItem={([day, dayNotes]) => (
-            <section className="space-y-3">
-              <h2 className="text-sm font-semibold text-muted-foreground">{createdDateFilter === "all" ? "Updated " : "Created "}{new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { dateStyle: "full" })}</h2>
-              <div className={view === "grid" ? "grid gap-4 md:grid-cols-2 xl:grid-cols-3" : "space-y-2"}>
-                {dayNotes.map((note) => (
-                  <div key={note.id} className="group relative">
-                    <button type="button" className="w-full text-left" onClick={() => router.push(`/notes?tab=${scope}&id=${note.id}`)}>
+        <VirtualNotes
+          key={`${scope}-${view}-${activeTag}-${createdDateFilter}-${createdDate}-${search}`}
+          groups={notesByDate}
+          view={view}
+          dateLabel={createdDateFilter === "all" ? "Updated " : "Created "}
+          renderNote={(note) => (
+                  <div key={note.id} className="group relative min-w-0">
+                    <button type="button" className="h-full w-full text-left" onClick={() => router.push(`/notes?tab=${scope}&id=${note.id}`)}>
                       {view === "grid" ? (
                         <Card className="h-full transition-transform hover:-translate-y-1 hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5">
                           <CardHeader>
-                            <CardTitle>{note.title}</CardTitle>
+                            <CardTitle className="break-words pr-6">{note.title}</CardTitle>
                             <CardDescription>Updated {formatTime(note.updatedAt, timeFormat)}</CardDescription>
                           </CardHeader>
                           <CardContent className="space-y-3">
                             <div className="flex flex-wrap gap-2">
                               {note.tags.length ? note.tags.map((tag) => <Badge key={tag}>{tag}</Badge>) : <Badge variant="outline">No tags</Badge>}
                             </div>
-                            <p className="text-sm text-muted-foreground">/{note.slug}</p>
+                            <p className="break-all text-sm text-muted-foreground">/{note.slug}</p>
                           </CardContent>
                         </Card>
                       ) : (
@@ -340,13 +341,10 @@ export function NotesBrowser({ scope = "shared" }: { scope?: NoteScope }) {
                         </Card>
                       )}
                     </button>
-                    <button type="button" aria-label="Delete note" onClick={(e) => { e.stopPropagation(); setDeleteTarget({ id: note.id, title: note.title }); }} className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-lg border border-border bg-card opacity-0 shadow-sm transition-opacity group-hover:opacity-100 hover:border-destructive hover:text-destructive">
+                    <button type="button" aria-label="Delete note" onClick={(e) => { e.stopPropagation(); setDeleteTarget({ id: note.id, title: note.title }); }} className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card opacity-100 shadow-sm transition-opacity md:opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:border-destructive hover:text-destructive">
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </div>
-                ))}
-              </div>
-            </section>
           )}
         />
       </div>

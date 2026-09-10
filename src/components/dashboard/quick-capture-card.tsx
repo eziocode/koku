@@ -46,7 +46,8 @@ export function QuickCaptureCard() {
   const [manualEntryDefaults, setManualEntryDefaults] = useState(getManualEntryDefaults);
   const [noteOpen, setNoteOpen] = useState(false);
   const { prefs, patch } = useNotificationPreferences();
-  const { timers, activeBreak } = useTimerStore();
+  const timers = useTimerStore((state) => state.timers);
+  const activeBreak = useTimerStore((state) => state.activeBreak);
   const tickNow = useSecondTick();
 
   const todayKey = toHolidayDateKey(new Date(tickNow));

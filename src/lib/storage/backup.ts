@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { kokuDb, type RecoverySnapshot } from "./db";
 import { normalizeAiKey } from "./hooks/use-ai-keys";
+import { recoveredTimerSchema } from "./recovered-timer";
 
 const id = z.string().min(1);
 const date = z.string().refine((value) => Number.isFinite(Date.parse(value)), "Invalid date");
@@ -47,7 +48,7 @@ function sanitizeContent(value: unknown): unknown {
 
 export function parseBackup(input: unknown): BackupPayload {
   const outer = z.object({ version: z.union([z.literal(1), z.literal(2), z.literal(3)]), exportedAt: date,
-    data: z.record(z.string(), z.unknown()), timerState: z.unknown().optional() }).parse(input);
+    data: z.record(z.string(), z.unknown()), timerState: recoveredTimerSchema.optional() }).parse(input);
   if (!Object.keys(outer.data).some((key) => BACKUP_TABLES.includes(key as BackupTable))) throw new Error("Backup contains no supported collections.");
   const data: BackupPayload["data"] = {};
   for (const table of BACKUP_TABLES) {

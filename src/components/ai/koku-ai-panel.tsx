@@ -15,7 +15,7 @@ import { parseKokuActions, type KokuAction } from "@/lib/ai/agent/actions";
 import { cliRun } from "@/lib/ai/cli/transport";
 import { AI_PROVIDER_DETAILS } from "@/lib/ai/providers";
 import { useAiKeys } from "@/lib/storage/hooks/use-ai-keys";
-import { useNotes } from "@/lib/storage/hooks/use-notes";
+import { noteActions } from "@/lib/storage/note-actions";
 
 type ChatMessage = {
   id: string;
@@ -33,7 +33,7 @@ function actionLabel(action: KokuAction) {
 
 export function KokuAiPanel({ onClose }: { onClose: () => void }) {
   const { verifiedConnections } = useAiKeys();
-  const { createNote } = useNotes();
+  const { createNote } = noteActions("shared");
   const [connectionId, setConnectionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [status, setStatus] = useState<"idle" | "streaming">("idle");

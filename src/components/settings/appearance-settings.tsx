@@ -109,7 +109,7 @@ export function AppearanceSettings() {
           <div
             id="appearance-theme"
             data-setting-row
-            className="flex gap-2"
+            className="flex flex-wrap gap-2"
             role="radiogroup"
             aria-label="Theme selection"
           >
@@ -121,7 +121,7 @@ export function AppearanceSettings() {
                 aria-checked={theme === key}
                 onClick={() => setTheme(key)}
                 className={cn(
-                  "flex min-h-11 flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium transition-colors",
+                  "flex min-h-11 flex-1 basis-24 cursor-pointer items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium transition-colors",
                   theme === key
                     ? "border-primary/40 bg-primary/10 text-primary"
                     : "border-border/70 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
@@ -144,7 +144,7 @@ export function AppearanceSettings() {
           <div
             id="appearance-time-format"
             data-setting-row
-            className="flex gap-2"
+            className="flex flex-wrap gap-2"
             role="radiogroup"
             aria-label="Time format selection"
           >
@@ -156,7 +156,7 @@ export function AppearanceSettings() {
                 aria-checked={timeFormat === format}
                 onClick={() => void setTimeFormat(format)}
                 className={cn(
-                  "min-h-11 flex-1 rounded-xl border px-4 py-3 text-sm font-medium transition-colors",
+                  "min-h-11 flex-1 basis-24 rounded-xl border px-4 py-3 text-sm font-medium transition-colors",
                   timeFormat === format
                     ? "border-primary/40 bg-primary/10 text-primary"
                     : "border-border/70 text-muted-foreground hover:bg-muted/60 hover:text-foreground",

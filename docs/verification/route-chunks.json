@@ -1,0 +1,46 @@
+{
+  "/dashboard": {
+    "transferKB": 284,
+    "rawKB": 1879,
+    "libs": []
+  },
+  "/log": {
+    "transferKB": 283,
+    "rawKB": 1862,
+    "libs": []
+  },
+  "/tasks": {
+    "transferKB": 188,
+    "rawKB": 1862,
+    "libs": []
+  },
+  "/notes": {
+    "transferKB": 188,
+    "rawKB": 1862,
+    "libs": []
+  },
+  "/graph": {
+    "transferKB": 359,
+    "rawKB": 1977,
+    "libs": [
+      "graphology"
+    ]
+  },
+  "/reports": {
+    "transferKB": 617,
+    "rawKB": 2643,
+    "libs": [
+      "recharts"
+    ]
+  },
+  "/ai": {
+    "transferKB": 188,
+    "rawKB": 1862,
+    "libs": []
+  },
+  "/settings/storage": {
+    "transferKB": 280,
+    "rawKB": 1877,
+    "libs": []
+  }
+}

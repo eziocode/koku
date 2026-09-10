@@ -11,7 +11,7 @@ import { useHotkeys, type ShortcutHandlers } from "@/lib/hooks/use-hotkeys";
 import { closeKokuNotifications } from "@/lib/notifications/client";
 import { NOTIFICATION_TAGS } from "@/lib/notifications/payload";
 import { useNotificationPreferences } from "@/lib/notifications/use-notification-preferences";
-import { useNotes } from "@/lib/storage/hooks/use-notes";
+import { noteActions } from "@/lib/storage/note-actions";
 import { useTimerStore } from "@/lib/stores/timer-store";
 import { startQuickTimer } from "@/lib/time-tracking/quick-timer";
 
@@ -37,9 +37,13 @@ export function ShortcutsProvider() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [quickTimerOpen, setQuickTimerOpen] = useState(false);
 
-  const { timers, activeBreak, startTimer, stopTimer, startBreak } = useTimerStore();
+  const timers = useTimerStore((state) => state.timers);
+  const activeBreak = useTimerStore((state) => state.activeBreak);
+  const startTimer = useTimerStore((state) => state.startTimer);
+  const stopTimer = useTimerStore((state) => state.stopTimer);
+  const startBreak = useTimerStore((state) => state.startBreak);
   const { prefs, setDnd } = useNotificationPreferences();
-  const { createNote } = useNotes();
+  const { createNote } = noteActions("shared");
 
   function toggleTimer() {
     if (timers.length > 0) {

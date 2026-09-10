@@ -19,7 +19,7 @@ import { useTimerStore, type ActiveTimer } from "@/lib/stores/timer-store";
  * whole point of this list is switching straight into the duplicate.
  */
 export function MostUsedRoutinesCard() {
-  const { timers } = useTimerStore();
+  const timers = useTimerStore((state) => state.timers);
   const { projects } = useProjects();
   const { categories } = useCategories();
   const cloneToTimer = useCloneToTimer();

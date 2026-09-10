@@ -31,7 +31,9 @@ function centreMinuteToDate(centreMinute: number): Date {
  * never sits on the page as an empty card.
  */
 export function RoutinesCard() {
-  const { timers, activeBreak, startTimer } = useTimerStore();
+  const timers = useTimerStore((state) => state.timers);
+  const activeBreak = useTimerStore((state) => state.activeBreak);
+  const startTimer = useTimerStore((state) => state.startTimer);
   const { prefs } = useNotificationPreferences();
   const { value: timeFormat } = useTypedSetting("timeFormat");
   const { projects } = useProjects();

@@ -37,6 +37,11 @@ const sourceFiles = walk(srcDir);
 for (const file of sourceFiles) {
   const text = readFileSync(file, "utf8");
   for (const pattern of unsafePatterns) {
+    // This localStorage value contains completed break IDs and timestamps,
+    // not credentials. Keep the exception tied to its exact constant value.
+    if (pattern.name === "raw localStorage secret"
+      && relative(root, file) === "src/lib/stores/finished-breaks.ts"
+      && text.includes('const STORAGE_KEY = "koku:finished-breaks";')) continue;
     if (pattern.regex.test(text)) {
       fail(`${pattern.name} found in ${relative(root, file)}`);
     }

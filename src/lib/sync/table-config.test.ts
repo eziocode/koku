@@ -176,6 +176,55 @@ describe("Catalyst field transforms", () => {
     assert.equal(pulled.createdAt, "2026-09-01T03:30:00.000Z");
   });
 
+  it("round-trips project, category, and note timestamps through Catalyst unchanged", () => {
+    const createdAt = "2026-09-01T03:30:00.000Z";
+    const updatedAt = "2026-09-01T13:30:00.000Z";
+
+    const projectFields = TABLE_CONFIG.projects.toFields({
+      name: "Koku",
+      color: "#123456",
+      hourlyRate: null,
+      createdAt,
+    });
+    const project = TABLE_CONFIG.projects.fromRow({ id: "project-1", ...projectFields });
+    assert.equal(project.createdAt, createdAt);
+
+    const categoryFields = TABLE_CONFIG.categories.toFields({
+      name: "Development",
+      color: "#abcdef",
+      createdAt,
+    });
+    const category = TABLE_CONFIG.categories.fromRow({ id: "category-1", ...categoryFields });
+    assert.equal(category.createdAt, createdAt);
+
+    const noteFields = TABLE_CONFIG.notes.toFields({
+      title: "Shared note",
+      slug: "shared-note",
+      content: { type: "doc" },
+      tags: ["shared"],
+      createdAt,
+      updatedAt,
+    });
+    const note = TABLE_CONFIG.notes.fromRow({ id: "note-1", ...noteFields });
+    assert.equal(note.createdAt, createdAt);
+    assert.equal(note.updatedAt, updatedAt);
+
+    const personalNoteFields = TABLE_CONFIG.personalNotes.toFields({
+      title: "Private note",
+      slug: "private-note",
+      content: { type: "doc" },
+      tags: ["private"],
+      createdAt,
+      updatedAt,
+    });
+    const personalNote = TABLE_CONFIG.personalNotes.fromRow({
+      id: "personal-note-1",
+      ...personalNoteFields,
+    });
+    assert.equal(personalNote.createdAt, createdAt);
+    assert.equal(personalNote.updatedAt, updatedAt);
+  });
+
   it("rejects invalid datetimes before sending rows to Catalyst", () => {
     assert.deepEqual(
       validateSyncRow("notes", {

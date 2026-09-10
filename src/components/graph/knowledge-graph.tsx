@@ -29,7 +29,7 @@ import {
   getGraphColorByKey,
 } from "@/lib/graph/palette";
 import { kokuDb } from "@/lib/storage/db";
-import { useNotes } from "@/lib/storage/hooks/use-notes";
+import { useNoteMetadata } from "@/lib/storage/hooks/use-note-metadata";
 import { useLiveQuery } from "@/lib/storage/use-live-query";
 
 type ColorMode = "cluster" | "tag";
@@ -71,7 +71,7 @@ function kindForDegree(degree: number): CanvasNodeKind {
 export function KnowledgeGraph() {
   const router = useRouter();
   const { resolvedTheme } = useTheme();
-  const { notes } = useNotes();
+  const { notes } = useNoteMetadata();
   const noteLinks = useLiveQuery(() => kokuDb.noteLinks.toArray(), [], []);
 
   const [colorMode, setColorMode] = useState<ColorMode>("cluster");

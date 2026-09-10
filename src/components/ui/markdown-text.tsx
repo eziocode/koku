@@ -2,70 +2,57 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-/**
- * Renders the lightweight markdown produced by `RichTextarea` — bold, italic,
- * strikethrough, links, bulleted/numbered lists — as HTML.
- *
- * Deliberately not a full markdown parser: notes/description fields stay
- * plain strings in storage (see `RichTextarea`'s docstring), so this only
- * needs to understand the handful of markers that toolbar can produce.
- * Escapes the source text first, so nothing typed by a user is ever
- * interpreted as HTML.
- */
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function renderInline(text: string): string {
-  return escapeHtml(text)
-    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-    .replace(/~~([^~]+)~~/g, "<del>$1</del>")
-    .replace(/(?<!\w)_([^_]+)_(?!\w)/g, "<em>$1</em>")
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
-}
-
-function renderBlock(lines: string[]): string {
-  const html: string[] = [];
-  let list: { tag: "ul" | "ol"; items: string[] } | null = null;
-
-  function flushList() {
-    if (!list) return;
-    const items = list.items.map((item) => `<li>${item}</li>`).join("");
-    html.push(`<${list.tag} class="${list.tag === "ul" ? "list-disc" : "list-decimal"} pl-5">${items}</${list.tag}>`);
-    list = null;
+/** Render the toolbar's markdown subset as React nodes, never HTML strings. */
+function renderInline(text: string): React.ReactNode[] {
+  const pattern = /\*\*([^*]+)\*\*|~~([^~]+)~~|(?<!\w)_([^_]+)_(?!\w)|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
+  const nodes: React.ReactNode[] = [];
+  let offset = 0;
+  for (const match of text.matchAll(pattern)) {
+    const index = match.index;
+    nodes.push(text.slice(offset, index));
+    if (match[1]) nodes.push(<strong key={index}>{renderInline(match[1])}</strong>);
+    else if (match[2]) nodes.push(<del key={index}>{renderInline(match[2])}</del>);
+    else if (match[3]) nodes.push(<em key={index}>{renderInline(match[3])}</em>);
+    else nodes.push(<a key={index} href={match[5]} target="_blank" rel="noopener noreferrer">{renderInline(match[4])}</a>);
+    offset = index + match[0].length;
   }
+  nodes.push(text.slice(offset));
+  return nodes;
+}
 
+type Block = { kind: "list"; tag: "ul" | "ol"; items: string[] } | { kind: "line"; text: string };
+
+/** Group lines into blocks first so consecutive bullets share one list element. */
+function groupBlocks(lines: string[]): Block[] {
+  const blocks: Block[] = [];
   for (const line of lines) {
     const bullet = /^\s*[-*]\s+(.*)$/.exec(line);
     const numbered = /^\s*\d+\.\s+(.*)$/.exec(line);
-
-    if (bullet) {
-      if (list?.tag !== "ul") {
-        flushList();
-        list = { tag: "ul", items: [] };
-      }
-      list.items.push(renderInline(bullet[1]));
+    const item = bullet ?? numbered;
+    if (!item) {
+      blocks.push({ kind: "line", text: line });
       continue;
     }
-
-    if (numbered) {
-      if (list?.tag !== "ol") {
-        flushList();
-        list = { tag: "ol", items: [] };
-      }
-      list.items.push(renderInline(numbered[1]));
-      continue;
-    }
-
-    flushList();
-    html.push(line.trim() === "" ? "<br />" : `<p>${renderInline(line)}</p>`);
+    const tag = bullet ? "ul" : "ol";
+    const last = blocks.at(-1);
+    if (last?.kind === "list" && last.tag === tag) last.items.push(item[1]);
+    else blocks.push({ kind: "list", tag, items: [item[1]] });
   }
+  return blocks;
+}
 
-  flushList();
-  return html.join("");
+function renderBlock(lines: string[]): React.ReactNode[] {
+  return groupBlocks(lines).map((block, index) => {
+    if (block.kind === "line") {
+      return block.text.trim() === "" ? <br key={index} /> : <p key={index}>{renderInline(block.text)}</p>;
+    }
+    const Tag = block.tag;
+    return (
+      <Tag key={index} className={`${Tag === "ul" ? "list-disc" : "list-decimal"} pl-5`}>
+        {block.items.map((item, itemIndex) => <li key={itemIndex}>{renderInline(item)}</li>)}
+      </Tag>
+    );
+  });
 }
 
 export function MarkdownText({
@@ -78,13 +65,11 @@ export function MarkdownText({
   /** Exposes the rendered container so callers can measure clamp overflow (see `useClampOverflow`). */
   containerRef?: React.Ref<HTMLDivElement>;
 }) {
-  const html = React.useMemo(() => renderBlock(text.split("\n")), [text]);
+  const content = React.useMemo(() => renderBlock(text.split("\n")), [text]);
   return (
     <div
       ref={containerRef}
       className={cn("space-y-1 text-sm [&_p]:leading-relaxed", className)}
-      /* `html` is built entirely from `escapeHtml`-passed, regex-matched fragments above. */
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
+    >{content}</div>
   );
 }

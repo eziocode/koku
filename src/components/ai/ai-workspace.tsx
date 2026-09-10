@@ -18,7 +18,8 @@ import { AI_PROVIDER_DETAILS } from "@/lib/ai/providers";
 import { useAiKeys } from "@/lib/storage/hooks/use-ai-keys";
 import type { AiKey } from "@/lib/storage/db";
 import { useCategories } from "@/lib/storage/hooks/use-categories";
-import { useNotes } from "@/lib/storage/hooks/use-notes";
+import { useLiveQuery } from "@/lib/storage/use-live-query";
+import { kokuDb } from "@/lib/storage/db";
 import { useProjects } from "@/lib/storage/hooks/use-projects";
 import { useTimeEntries } from "@/lib/storage/hooks/use-time-entries";
 
@@ -41,7 +42,7 @@ export function AiWorkspace() {
   const { aiKeys, markVerified } = useAiKeys();
   const { projects } = useProjects();
   const { categories } = useCategories();
-  const { notes } = useNotes();
+  const notes = useLiveQuery(() => kokuDb.notes.orderBy("updatedAt").reverse().limit(8).toArray(), [], []);
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
   const [standup, setStandup] = useState("");
   const [monthlyNarrative, setMonthlyNarrative] = useState("");

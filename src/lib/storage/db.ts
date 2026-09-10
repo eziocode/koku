@@ -1,4 +1,5 @@
 import Dexie, { type EntityTable } from "dexie";
+import { installNoteMetadata, toNoteMetadata, type NoteMetadata } from "./note-metadata";
 
 export interface Project {
   id: string;
@@ -196,7 +197,9 @@ export interface RecoverySnapshot {
   data: Record<string, unknown[]>;
 }
 
-class KokuDB extends Dexie {
+export class KokuDB extends Dexie {
+  noteMetadata!: EntityTable<NoteMetadata, "id">;
+  personalNoteMetadata!: EntityTable<NoteMetadata, "id">;
   storageMeta!: EntityTable<AppSetting, "key">;
   noteDrafts!: EntityTable<NoteDraft, "id">;
   recoverySnapshots!: EntityTable<RecoverySnapshot, "id">;
@@ -216,8 +219,8 @@ class KokuDB extends Dexie {
   notificationLog!: EntityTable<NotificationLogEntry, "id">;
   reminders!: EntityTable<Reminder, "id">;
 
-  constructor() {
-    super("koku-local");
+  constructor(name = "koku-local") {
+    super(name);
     this.version(1).stores({
       projects: "id, createdAt",
       categories: "id, name, createdAt",
@@ -428,6 +431,18 @@ class KokuDB extends Dexie {
       notificationLog: "id, createdAt, tag, readAt",
       reminders: "id, triggerAt, active",
     });
+
+    this.version(12).stores({
+      noteMetadata: "id, slug, updatedAt, createdAt",
+      personalNoteMetadata: "id, slug, updatedAt, createdAt",
+    }).upgrade(async (tx) => {
+      for (const [source, target] of [["notes", "noteMetadata"], ["personalNotes", "personalNoteMetadata"]]) {
+        const rows: NoteMetadata[] = [];
+        await tx.table(source).toCollection().each((note: Note) => { rows.push(toNoteMetadata(note)); });
+        await tx.table(target).bulkPut(rows);
+      }
+    });
+    installNoteMetadata(this);
   }
 }
 

@@ -88,10 +88,6 @@ interface TimerFieldsProps {
 
 interface TimerSessionCardProps {
   timer: ActiveTimer;
-  elapsedSec: number;
-  /** Seconds left of the planned length, or `null` for an open-ended timer. */
-  remainingSec: number | null;
-  overdue: boolean;
   isPrimary: boolean;
   projectName: string;
   categoryName: string;
@@ -350,9 +346,6 @@ function TimerNotesReveal({ notes, className }: { notes: string | null | undefin
 
 function TimerSessionCard({
   timer,
-  elapsedSec,
-  remainingSec,
-  overdue,
   isPrimary,
   projectName,
   categoryName,
@@ -364,6 +357,10 @@ function TimerSessionCard({
   startParallelLabel = "Start parallel task",
   onAppendNote,
 }: TimerSessionCardProps) {
+  const tickNow = useSecondTick();
+  const elapsedSec = getActiveTimerElapsedSec(timer, tickNow);
+  const remainingSec = getTimerRemainingSec(timer, tickNow);
+  const overdue = isTimerOverdue(timer, tickNow);
   const isPaused = Boolean(timer.pausedAt);
   const [quickNote, setQuickNote] = useState("");
 
@@ -485,15 +482,25 @@ function resetForm(
   setTaskId?.(NONE_VALUE);
 }
 
+function TimerTotal({ timers }: { timers: ActiveTimer[] }) {
+  const now = useSecondTick();
+  return formatDuration(timers.reduce((total, timer) => total + getActiveTimerElapsedSec(timer, now), 0));
+}
+
 export function Timer() {
   const { projects } = useProjects();
   const { categories } = useCategories();
   const { pickerTasks } = useTasks();
   const { createEntry } = useTimeEntries();
   const { value: timeFormat } = useTypedSetting("timeFormat");
-  const { timers, activeBreak, startTimer, startSecondaryTimer, pauseTimer, resumeTimer, stopTimer, appendNote } =
-    useTimerStore();
-  const tickNow = useSecondTick();
+  const timers = useTimerStore((state) => state.timers);
+  const activeBreak = useTimerStore((state) => state.activeBreak);
+  const startTimer = useTimerStore((state) => state.startTimer);
+  const startSecondaryTimer = useTimerStore((state) => state.startSecondaryTimer);
+  const pauseTimer = useTimerStore((state) => state.pauseTimer);
+  const resumeTimer = useTimerStore((state) => state.resumeTimer);
+  const stopTimer = useTimerStore((state) => state.stopTimer);
+  const appendNote = useTimerStore((state) => state.appendNote);
   const { prefs } = useNotificationPreferences();
   const [title, setTitle] = useState("");
   const [projectId, setProjectId] = useState<string>(NONE_VALUE);
@@ -643,20 +650,6 @@ export function Timer() {
     ? timers.filter((timer) => timer.parentTimerId === pendingResumeTimer.id)
     : [];
 
-  // Elapsed values come from one shared clock (`useSecondTick`) rather than an
-  // interval per component: `/log` and `/dashboard` both mount this component,
-  // and separate intervals meant duplicated work and clocks that could disagree
-  // by a second. Values are derived from timestamps, so a throttled or slept
-  // tab is still correct on its next paint.
-  //
-  // The hero reads the *session* total rather than mirroring the primary timer's
-  // card below it, which made the same number appear twice. Paused timers
-  // contribute their frozen elapsed and running ones keep ticking, so the hero
-  // keeps counting whenever any task — primary or parallel — is running.
-  const heroElapsedSeconds = useMemo(
-    () => timers.reduce((total, timer) => total + getActiveTimerElapsedSec(timer, tickNow), 0),
-    [timers, tickNow],
-  );
   const heroCaption = useMemo(() => {
     if (activeBreak) {
       return resolvePeriodCopy(activeBreak).heroCaption;
@@ -860,8 +853,8 @@ export function Timer() {
           <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
             {timers.length > 1 ? "Session total" : "Elapsed"}
           </p>
-          <p className="tabular-digits mt-2 text-5xl font-semibold tracking-tight text-foreground">
-            {formatDuration(heroElapsedSeconds)}
+          <p className="tabular-digits mt-2 text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
+            <TimerTotal timers={timers} />
           </p>
           <p className="mt-2 text-sm text-muted-foreground">{heroCaption}</p>
         </div>
@@ -928,9 +921,6 @@ export function Timer() {
                       <TimerSessionCard
                         key={timer.id}
                         timer={timer}
-                        elapsedSec={getActiveTimerElapsedSec(timer, tickNow)}
-                        remainingSec={getTimerRemainingSec(timer, tickNow)}
-                        overdue={isTimerOverdue(timer, tickNow)}
                         isPrimary={!timer.parentTimerId}
                         projectName={getProjectName(timer)}
                         categoryName={getCategoryName(timer)}

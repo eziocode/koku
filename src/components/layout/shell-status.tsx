@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { CloudOff, Loader2, Pause, ShieldCheck } from "lucide-react";
+import { CloudOff, Loader2, Pause } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { kokuDb } from "@/lib/storage/db";
 import { useLiveQuery } from "@/lib/storage/use-live-query";
 import { getActiveTimerElapsedSec, useTimerStore } from "@/lib/stores/timer-store";
@@ -72,58 +74,64 @@ export function ShellSaveStatus() {
 
   if (!pending) return null;
 
-  if (pending.paused) {
-    return (
-      <StatusPill tone="warn" icon={<CloudOff className="size-3.5" aria-hidden />}>
-        Sync paused
-      </StatusPill>
-    );
-  }
-
-  if (pending.drafts) {
-    return (
-      <StatusPill tone="warn" icon={<Loader2 className="size-3.5 animate-spin" aria-hidden />}>
-        {pending.drafts === 1 ? "1 draft saving" : `${pending.drafts} drafts saving`}
-      </StatusPill>
-    );
-  }
-
-  if (pending.queued) {
-    return (
-      <StatusPill tone="warn" icon={<CloudOff className="size-3.5" aria-hidden />}>
-        Saved locally, {pending.queued} to send
-      </StatusPill>
-    );
-  }
+  const warnings: string[] = [];
+  if (pending.paused) warnings.push("cloud sync paused");
+  if (pending.drafts) warnings.push(`${pending.drafts} ${pending.drafts === 1 ? "draft" : "drafts"} saving`);
+  if (pending.queued) warnings.push(`${pending.queued} ${pending.queued === 1 ? "change" : "changes"} waiting to sync`);
+  if (!warnings.length) return null;
 
   return (
-    <StatusPill tone="calm" icon={<ShieldCheck className="size-3.5" aria-hidden />}>
-      Saved locally
-    </StatusPill>
-  );
-}
-
-function StatusPill({
-  tone,
-  icon,
-  children,
-}: {
-  tone: "calm" | "warn";
-  icon: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <p
-      role="status"
-      className={cn(
-        "hidden min-h-9 items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs md:flex",
-        tone === "warn"
-          ? "border-primary/25 bg-primary/10 text-primary-accessible"
-          : "border-border bg-muted/50 text-muted-foreground",
-      )}
-    >
-      {icon}
-      {children}
-    </p>
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="text-primary-accessible"
+          aria-label={`Storage and sync warning: ${warnings.join(", ")}`}
+        >
+          {pending.paused || pending.queued ? (
+            <CloudOff />
+          ) : (
+            <Loader2 className="animate-spin motion-reduce:animate-none" />
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-80 p-0">
+        <div className="border-b border-border px-4 py-3">
+          <p className="text-sm font-semibold">Storage and sync</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">Action may be needed before cloud data is current.</p>
+        </div>
+        <ul className="divide-y divide-border">
+          {pending.paused ? (
+            <li className="px-4 py-3">
+              <p className="text-sm font-medium">Cloud sync paused</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Run manual sync and choose which copy to keep.
+              </p>
+            </li>
+          ) : null}
+          {pending.drafts ? (
+            <li className="px-4 py-3">
+              <p className="text-sm font-medium">
+                {pending.drafts === 1 ? "1 note draft is saving" : `${pending.drafts} note drafts are saving`}
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                The draft content is still being committed to browser storage.
+              </p>
+            </li>
+          ) : null}
+          {pending.queued ? (
+            <li className="px-4 py-3">
+              <p className="text-sm font-medium">
+                {pending.queued === 1 ? "1 local change is waiting" : `${pending.queued} local changes are waiting`}
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                These changes are saved on this device and still need to reach the cloud.
+              </p>
+            </li>
+          ) : null}
+        </ul>
+      </PopoverContent>
+    </Popover>
   );
 }

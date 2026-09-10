@@ -3,7 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 
-import { KokuAiPanel } from "@/components/ai/koku-ai-panel";
+import dynamic from "next/dynamic";
+
+const KokuAiPanel = dynamic(() => import("@/components/ai/koku-ai-panel").then((module) => module.KokuAiPanel), {
+  loading: () => <p role="status" className="p-4 text-sm text-muted-foreground">Loading assistant…</p>,
+});
 import { useAiKeys } from "@/lib/storage/hooks/use-ai-keys";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 import { cn } from "@/lib/utils";

@@ -593,7 +593,10 @@ export function GraphCanvas({
     const observer = new ResizeObserver(resize);
     observer.observe(container);
 
+    let intersecting = false;
     const tick = (time: number) => {
+      frameRef.current = null;
+      if (document.hidden || !intersecting) return;
       const graph = graphRef.current;
       if (runningRef.current && graph.order > 0 && graph.size > 0) {
         const perFrame = graph.order > 300 ? 1 : graph.order > 80 ? 2 : 3;
@@ -607,9 +610,24 @@ export function GraphCanvas({
       frameRef.current = requestAnimationFrame(tick);
     };
 
-    frameRef.current = requestAnimationFrame(tick);
+    const reconcileVisibility = () => {
+      if (document.hidden || !intersecting) {
+        if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      } else if (frameRef.current === null) {
+        frameRef.current = requestAnimationFrame(tick);
+      }
+    };
+    const visibilityObserver = new IntersectionObserver(([entry]) => {
+      intersecting = entry.isIntersecting;
+      reconcileVisibility();
+    });
+    visibilityObserver.observe(canvas);
+    document.addEventListener("visibilitychange", reconcileVisibility);
 
     return () => {
+      document.removeEventListener("visibilitychange", reconcileVisibility);
+      visibilityObserver.disconnect();
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
       frameRef.current = null;
       observer.disconnect();

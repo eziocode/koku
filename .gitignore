@@ -53,3 +53,10 @@ koku-appsail.zip
 
 # IDE
 .idea/
+
+/test-results/
+/playwright-report/
+
+# Required build input (overrides old local exclude rules).
+!scripts/prepare-appsail.mjs
+!appsail-server.cjs
