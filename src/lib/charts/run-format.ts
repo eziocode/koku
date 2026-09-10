@@ -20,6 +20,26 @@ export interface FormattableRun {
   endAt?: string | null;
 }
 
+/** Session bounds are elapsed time; tracked duration remains separate. */
+export function summarizeRuns(runs: readonly FormattableRun[], timeFormat: TimeFormat) {
+  if (!runs.length) return null;
+  let pauseCount = 0;
+  let pausedMs = 0;
+  let complete = true;
+  for (let index = 1; index < runs.length; index++) {
+    const end = runs[index - 1].endAt;
+    if (end) pauseCount++;
+    const gap = end ? Date.parse(runs[index].startAt) - Date.parse(end) : NaN;
+    if (!Number.isFinite(gap) || gap < 0) complete = false;
+    else pausedMs += gap;
+  }
+  return {
+    range: formatRunRange({ startAt: runs[0].startAt, endAt: runs[runs.length - 1].endAt }, timeFormat, "Running"),
+    pauseCount,
+    pausedSec: complete ? Math.round(pausedMs / 1000) : null,
+  };
+}
+
 /** Placeholder for a time that cannot be read. */
 const UNKNOWN = "?";
 

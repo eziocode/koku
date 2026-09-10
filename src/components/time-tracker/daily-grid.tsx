@@ -70,47 +70,17 @@ export function DailyGrid({ entries }: DailyGridProps) {
       getKey={(entry) => entry.id}
       pageSize={12}
       className="h-[42rem]"
-      listClassName="space-y-4"
+      listClassName="space-y-3"
       moreLabel="Load more entries"
       empty={<p className="text-sm text-muted-foreground">No time entries yet for this day.</p>}
       renderItem={(entry) => (
-        <div className="rounded-3xl border border-border bg-card p-5 shadow-sm">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center gap-3">
-                <div>
-                  <p className="font-semibold text-foreground">{entry.title}</p>
-                  <RunEventLog
-                    className="mt-1.5"
-                    runs={
-                      entry.segments?.length
-                        ? entry.segments
-                        : [{ startAt: entry.startAt, endAt: entry.endAt }]
-                    }
-                    timeFormat={timeFormat}
-                  />
-                </div>
-                {entry.project ? (
-                  <Badge variant="outline" style={{ borderColor: entry.project.color, color: entry.project.color }}>
-                    {entry.project.name}
-                  </Badge>
-                ) : null}
-                {entry.category ? <Badge variant="secondary">{entry.category.name}</Badge> : null}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {entry.tags.map((tag) => (
-                  <Link key={tag} href={`/tags/${encodeURIComponent(tag)}`} onClick={(e) => e.stopPropagation()}>
-                    <Badge className="cursor-pointer transition-colors hover:bg-primary hover:text-primary-foreground">
-                      {tag}
-                    </Badge>
-                  </Link>
-                ))}
-              </div>
-              <EntryNotes notes={entry.notes} />
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="min-w-24 text-right text-lg font-semibold text-foreground">
-                {formatDuration(entry.durationSec ?? 0)}
+        <div className="min-w-0 rounded-2xl border border-border bg-card p-4">
+          <div className="mb-1 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+            <p className="min-w-0 break-words pt-1 font-semibold leading-snug text-foreground">{entry.title}</p>
+            <div className="flex shrink-0 items-center gap-1 self-end sm:self-start">
+              <div className="mr-3 text-right">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Tracked</p>
+                <p className="text-base font-semibold tabular-nums text-foreground">{formatDuration(entry.durationSec ?? 0)}</p>
               </div>
               <TooltipProvider>
                 <Tooltip>
@@ -118,6 +88,7 @@ export function DailyGrid({ entries }: DailyGridProps) {
                     <Button
                       variant="ghost"
                       size="icon"
+                      className="size-9"
                       aria-label="Duplicate and start timer"
                       onClick={() =>
                         cloneToTimer({
@@ -137,7 +108,7 @@ export function DailyGrid({ entries }: DailyGridProps) {
               </TooltipProvider>
               <Dialog open={editingId === entry.id} onOpenChange={(open) => setEditingId(open ? entry.id : null)}>
                 <DialogTrigger asChild>
-                  <Button variant="outline" size="icon" onClick={() => setEditingId(entry.id)}>
+                  <Button variant="ghost" size="icon" className="size-9" aria-label="Edit entry" onClick={() => setEditingId(entry.id)}>
                     <Pencil />
                   </Button>
                 </DialogTrigger>
@@ -156,11 +127,32 @@ export function DailyGrid({ entries }: DailyGridProps) {
                   ) : null}
                 </DialogContent>
               </Dialog>
-              <Button variant="ghost" size="icon" onClick={() => handleDelete(entry.id)}>
+              <Button variant="ghost" size="icon" className="size-9" aria-label="Delete entry" onClick={() => handleDelete(entry.id)}>
                 <Trash2 className="text-destructive" />
               </Button>
             </div>
           </div>
+          <RunEventLog
+            runs={entry.segments?.length ? entry.segments : [{ startAt: entry.startAt, endAt: entry.endAt }]}
+            timeFormat={timeFormat}
+          >
+            {entry.project || entry.category || entry.tags.length ? (
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                {entry.project ? (
+                  <Badge variant="outline" className="min-h-6 max-w-full break-words" style={{ borderColor: entry.project.color, color: entry.project.color }}>
+                    {entry.project.name}
+                  </Badge>
+                ) : null}
+                {entry.category ? <Badge variant="secondary" className="min-h-6 max-w-full break-words">{entry.category.name}</Badge> : null}
+                {entry.tags.map((tag) => (
+                  <Link key={tag} href={`/tags/${encodeURIComponent(tag)}`} className="max-w-full rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={(e) => e.stopPropagation()}>
+                    <Badge className="min-h-6 max-w-full cursor-pointer break-words hover:bg-primary hover:text-primary-foreground">{tag}</Badge>
+                  </Link>
+                ))}
+              </div>
+            ) : null}
+            <EntryNotes notes={entry.notes} className="text-sm" />
+          </RunEventLog>
         </div>
       )}
     />

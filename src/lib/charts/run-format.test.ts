@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { formatRunLog, formatRunRange, formatRunRanges } from "./run-format";
+import { summarizeRuns, formatRunLog, formatRunRange, formatRunRanges } from "./run-format";
 
 // Local-time literals (no `Z`) so the hour digits are timezone-independent.
 const first = { startAt: "2024-06-03T11:00:00", endAt: "2024-06-03T11:30:00" };
@@ -80,4 +80,39 @@ test("the stopped and running labels are overridable", () => {
 test("no runs logs nothing, so callers can fall back to the outer span", () => {
   assert.deepEqual(formatRunLog([], "24h"), []);
   assert.deepEqual(formatRunLog(null, "24h"), []);
+});
+
+
+test("session summary separates elapsed range from paused duration", () => {
+  assert.deepEqual(summarizeRuns([first, second], "24h"), {
+    range: "11:00 → 13:30", pauseCount: 1, pausedSec: 3000,
+  });
+  assert.deepEqual(summarizeRuns([first], "12h"), {
+    range: "11:00 AM → 11:30 AM", pauseCount: 0, pausedSec: 0,
+  });
+  assert.equal(summarizeRuns([], "24h"), null);
+});
+
+test("summary preserves seconds and sums many gaps", () => {
+  const runs = Array.from({ length: 101 }, (_, index) => ({
+    startAt: new Date(Date.UTC(2024, 5, 3, 10, 0, index * 11)).toISOString(),
+    endAt: new Date(Date.UTC(2024, 5, 3, 10, 0, index * 11 + 10)).toISOString(),
+  }));
+  const summary = summarizeRuns(runs, "24h");
+  assert.equal(summary?.pauseCount, 100);
+  assert.equal(summary?.pausedSec, 100);
+});
+
+test("summary supports open sessions and zero-length gaps", () => {
+  const summary = summarizeRuns([first, { startAt: first.endAt }], "24h");
+  assert.equal(summary?.range, "11:00 → Running");
+  assert.equal(summary?.pausedSec, 0);
+});
+
+test("summary never reports a partial pause total as complete", () => {
+  for (const startAt of ["invalid", "2024-06-03T11:00:00"]) {
+    assert.equal(summarizeRuns([first, { startAt }], "24h")?.pausedSec, null);
+  }
+  assert.equal(summarizeRuns([{ startAt: first.startAt }, second], "24h")?.pausedSec, null);
+  assert.equal(summarizeRuns([{ startAt: "invalid", endAt: "invalid" }], "24h")?.range, "? → ?");
 });

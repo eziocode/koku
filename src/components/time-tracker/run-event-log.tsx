@@ -1,9 +1,12 @@
 "use client";
 
-import { Pause, Play, RotateCcw, Square } from "lucide-react";
+import { ChevronDown, Clock3, Pause, Play, RotateCcw, Square } from "lucide-react";
+
+import { useId, useMemo, useState, type ReactNode } from "react";
 
 import {
   formatRunLog,
+  summarizeRuns,
   type FormattableRun,
   type RunLogEvent,
   type RunLogEventKind,
@@ -11,16 +14,7 @@ import {
 import type { TimeFormat } from "@/lib/settings/schema";
 import { cn } from "@/lib/utils";
 
-/**
- * An entry's Started/Paused/Resumed/Stopped events as a timeline.
- *
- * A session paused three times is seven events long, so a flat list of
- * `[time] Label` lines stops being readable: the rail plus per-kind icons make
- * the pause/resume pairs scannable, and each line carries how long the stretch
- * it closes lasted, which is what makes a multi-pause session understandable
- * at a glance.
- */
-
+/** Compact session summary with on-demand event history. */
 const EVENT_STYLES: Record<RunLogEventKind, { Icon: typeof Play; dot: string; note: (span: string) => string }> = {
   start: { Icon: Play, dot: "bg-primary/15 text-primary", note: () => "" },
   pause: { Icon: Pause, dot: "bg-amber-500/15 text-amber-600 dark:text-amber-400", note: (span) => `ran ${span}` },
@@ -52,53 +46,67 @@ interface RunEventLogProps {
   runs: readonly FormattableRun[];
   timeFormat: TimeFormat;
   className?: string;
+  children?: ReactNode;
 }
 
-export function RunEventLog({ runs, timeFormat, className }: RunEventLogProps) {
-  const events = formatRunLog(runs, timeFormat);
-  if (!events.length) {
-    return null;
-  }
-
-  const pauseCount = events.filter((event) => event.kind === "pause").length;
+export function RunEventLog({ runs, timeFormat, className, children }: RunEventLogProps) {
+  const [expanded, setExpanded] = useState(false);
+  const panelId = useId();
+  const summary = useMemo(() => summarizeRuns(runs, timeFormat), [runs, timeFormat]);
+  const events = useMemo(() => expanded ? formatRunLog(runs, timeFormat) : [], [expanded, runs, timeFormat]);
+  if (!summary) return children ?? null;
 
   return (
-    <div className={cn("space-y-1.5", className)}>
-      <ol className="relative space-y-1 text-sm">
-        {events.length > 1 ? (
-          <span
-            aria-hidden
-            className="absolute left-[0.6875rem] top-3 bottom-3 w-px bg-gradient-to-b from-border via-border to-transparent"
-          />
+    <div className={cn("min-w-0 space-y-3", className)}>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <span className="inline-flex items-center gap-1.5 tabular-nums">
+          <Clock3 aria-hidden className="size-3.5 shrink-0" />
+          <span><span className="sr-only">Session: </span>{summary.range}</span>
+        </span>
+        {summary.pauseCount > 0 ? (
+          <span className="inline-flex flex-wrap items-center gap-x-2">
+            <span>{summary.pauseCount} {summary.pauseCount === 1 ? "pause" : "pauses"}</span>
+            {summary.pausedSec !== null ? <span>· {formatSpan(summary.pausedSec)} paused</span> : <span>· pause duration unavailable</span>}
+          </span>
         ) : null}
-        {events.map((event, index) => {
-          const { Icon, dot } = EVENT_STYLES[event.kind];
-          const note = eventNote(event);
-          return (
-            <li key={`${event.kind}-${index}`} className="relative flex items-center gap-2.5">
-              <span className={cn("z-10 flex size-[1.375rem] shrink-0 items-center justify-center rounded-full", dot)}>
-                <Icon className="size-3" strokeWidth={2.5} />
-              </span>
-              <span className="min-w-16 font-medium tabular-nums text-foreground">{event.time}</span>
-              <span
-                className={cn(
-                  "text-muted-foreground",
-                  event.kind === "open" && "font-medium text-emerald-600 dark:text-emerald-400",
-                )}
-              >
-                {event.label}
-              </span>
-              {note ? (
-                <span className="rounded-full bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{note}</span>
-              ) : null}
-            </li>
-          );
-        })}
-      </ol>
-      {pauseCount > 0 ? (
-        <p className="pl-8 text-xs text-muted-foreground">
-          {pauseCount === 1 ? "1 pause" : `${pauseCount} pauses`} in this session
-        </p>
+        {runs.length > 1 ? (
+          <button
+            type="button"
+            aria-expanded={expanded}
+            aria-controls={panelId}
+            onClick={() => setExpanded((value) => !value)}
+            className="inline-flex min-h-8 items-center gap-1 rounded-md px-1 font-medium text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {expanded ? "Hide timeline" : "Show timeline"}
+            <ChevronDown aria-hidden className={cn("size-3.5", expanded && "rotate-180")} />
+          </button>
+        ) : null}
+      </div>
+      {children}
+      {runs.length > 1 ? (
+        <div id={panelId} hidden={!expanded}>
+          {expanded ? (
+            <ol aria-label="Session timeline" className="space-y-1 border-t border-border pt-3">
+              {events.map((event, index) => {
+                const { Icon, dot } = EVENT_STYLES[event.kind];
+                const note = eventNote(event);
+                return (
+                  <li key={`${event.kind}-${index}`} className="relative grid grid-cols-[1.25rem_5.5rem_minmax(0,1fr)] items-center gap-x-2 text-xs sm:grid-cols-[1.25rem_5.5rem_4.5rem_minmax(0,1fr)]">
+                    {index < events.length - 1 ? <span aria-hidden className="absolute bottom-[-0.25rem] left-[0.59375rem] top-5 w-px bg-border" /> : null}
+                    <span aria-hidden className={cn("relative flex size-5 items-center justify-center rounded-full", dot)}>
+                      <Icon className="size-2.5" strokeWidth={2.5} />
+                    </span>
+                    <span className="font-medium tabular-nums text-foreground">{event.time}</span>
+                    <span className={cn("text-muted-foreground", event.kind === "open" && "font-medium text-emerald-600 dark:text-emerald-400")}>
+                      {event.label}
+                    </span>
+                    {note ? <span className="col-start-3 text-muted-foreground tabular-nums sm:col-start-auto">{note}</span> : null}
+                  </li>
+                );
+              })}
+            </ol>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );
