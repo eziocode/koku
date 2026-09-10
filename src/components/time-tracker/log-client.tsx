@@ -11,6 +11,7 @@ import { LogCompare } from "@/components/time-tracker/log-compare";
 import { DEFAULT_FILTERS, LogFilterState, LogFilters } from "@/components/time-tracker/log-filters";
 import { MostUsedRoutinesCard } from "@/components/time-tracker/most-used-routines-card";
 import { RoutinesCard } from "@/components/time-tracker/routines-card";
+import { PageHeader } from "@/components/layout/page-header";
 import { Timer } from "@/components/time-tracker/timer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -176,16 +177,11 @@ export function LogClient() {
 
   return (
     <div className="space-y-8">
-      {/* Header */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="text-sm uppercase tracking-[0.3em] text-primary">Time Log</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight">Daily log</h1>
-          <p className="mt-2 max-w-2xl text-muted-foreground">
-            Review the day, add manual entries, and keep your timer running with intention.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
+      <PageHeader
+        eyebrow="Time Log"
+        title="Daily log"
+        description="Review the day, add manual entries, and keep your timer running with intention."
+        actions={<>
           {!compareMode && (
             <DatePicker
               value={selectedDateValue}
@@ -205,8 +201,8 @@ export function LogClient() {
             <GitCompareArrows className="h-4 w-4" />
             {compareMode ? "Exit compare" : "Compare"}
           </Button>
-        </div>
-      </div>
+        </>}
+      />
 
       {/* Compare mode */}
       {compareMode ? (

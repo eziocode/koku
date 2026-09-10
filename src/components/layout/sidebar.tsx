@@ -35,15 +35,15 @@ export function Sidebar({ open, onNavigate }: SidebarProps) {
   return (
     <aside
       className={cn(
-        "fixed inset-y-0 left-0 z-40 flex h-full w-72 flex-col overflow-hidden border-r border-border/70 bg-card/85 backdrop-blur-xl transition-transform duration-300 lg:sticky lg:top-0 lg:translate-x-0",
+        "fixed inset-y-0 left-0 z-40 flex h-full w-[17rem] flex-col overflow-hidden border-r border-border bg-card transition-transform duration-300 lg:sticky lg:top-0 lg:w-60 lg:translate-x-0",
         open ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
       )}
     >
-      <div className="flex items-center justify-between border-b border-border/70 px-6 py-5">
+      <div className="flex items-center justify-between border-b border-border px-4 py-4">
         <Logo />
       </div>
-      <div className="flex-1 overflow-hidden px-4 py-4">
-        <nav className="space-y-1">
+      <div className="flex-1 overflow-y-auto px-3 py-3">
+        <nav aria-label="Primary" className="space-y-0.5">
           {navigation.map((item) => {
             const Icon = item.icon;
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -52,10 +52,14 @@ export function Sidebar({ open, onNavigate }: SidebarProps) {
                 key={item.href}
                 href={item.href}
                 onClick={onNavigate}
+                aria-current={active ? "page" : undefined}
                 className={cn(
-                  "flex min-h-11 items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors",
+                  // 44px tall where a finger has to hit it, tighter on desktop
+                  // so the whole list reads as one calm column.
+                  "flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors lg:min-h-9",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-card",
                   active
-                    ? "bg-primary/10 text-primary"
+                    ? "bg-primary/10 text-primary-accessible"
                     : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
                 )}
               >
@@ -67,7 +71,7 @@ export function Sidebar({ open, onNavigate }: SidebarProps) {
           })}
         </nav>
       </div>
-      <div className="border-t border-border/70 px-6 py-4 text-xs leading-5 text-muted-foreground">
+      <div className="border-t border-border px-4 py-3 text-xs leading-5 text-muted-foreground">
         <DailyQuote />
         <TooltipProvider>
           <div className="mt-3 flex items-center gap-3">

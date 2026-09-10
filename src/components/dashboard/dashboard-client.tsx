@@ -13,6 +13,7 @@ import { ChartLegend } from "@/components/charts/chart-legend";
 import { SegmentedBarChart } from "@/components/charts/segmented-bar-chart";
 import { EntryNotes } from "@/components/time-tracker/entry-notes";
 import { Timer } from "@/components/time-tracker/timer";
+import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -266,18 +267,16 @@ export function DashboardClient() {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="text-sm uppercase tracking-[0.24em] text-primary">Dashboard</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight">Your work pulse</h1>
-          <p className="mt-2 max-w-2xl text-muted-foreground">
-            Track momentum today, notice trends this week, and capture your next focused block.
-          </p>
-        </div>
-        <Badge variant="secondary" className="rounded-full px-3 py-1">
-          {cloudConnected ? "Cloud connected" : "Local-first"}
-        </Badge>
-      </div>
+      <PageHeader
+        eyebrow="Dashboard"
+        title="Your work pulse"
+        description="Track momentum today, notice trends this week, and capture your next focused block."
+        actions={
+          <Badge variant="secondary" className="rounded-full px-3 py-1">
+            {cloudConnected ? "Cloud connected" : "Local-first"}
+          </Badge>
+        }
+      />
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card className="minimal-panel">

@@ -141,6 +141,13 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* Dark mode drops the accent wash. Over a dark page it lifts the blacks a few
+   percent everywhere at once, which reads as haze rather than depth and
+   flattens the step between the page and the panels sitting on it. */
+.dark body {
+  background: var(--color-background);
+}
+
 /* Headings carry the brand voice; body copy stays on the system stack so long
    text renders in the face the reader's OS already tuned. */
 h1, h2, h3, h4, h5, h6, .font-heading {
@@ -203,9 +210,12 @@ h1, h2, h3, h4, h5, h6, .font-heading {
       linear-gradient(180deg, color-mix(in srgb, var(--color-background) 94%, white) 0%, var(--color-background) 100%);
   }
 
+  /* Opaque on purpose: a translucent panel over the page tint washed both the
+     surface and its text toward the background, which is what made dark mode
+     look hazy. Depth now comes from the border and a single soft shadow. */
   .minimal-panel {
-    border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
-    background: color-mix(in srgb, var(--color-card) 88%, transparent);
+    border: 1px solid var(--color-border);
+    background: var(--color-card);
     box-shadow: 0 1px 2px color-mix(in srgb, var(--color-foreground) 5%, transparent);
   }
 

@@ -2,6 +2,7 @@
 
 import { Menu, MoonStar, Settings, SunMedium, UserCircle2 } from "lucide-react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
 
@@ -18,7 +19,18 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ShellSaveStatus, ShellTimer } from "@/components/layout/shell-status";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { appNavigation } from "@/lib/navigation";
+
+/** Longest matching nav entry, so `/settings/storage` still reads "Settings". */
+function routeTitle(pathname: string): string {
+  const match = [...appNavigation]
+    .filter((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))
+    .sort((a, b) => b.href.length - a.href.length)[0];
+  if (match) return match.title;
+  return pathname.startsWith("/admin") ? "Admin" : "Koku";
+}
 
 interface TopbarProps {
   onOpenSidebar: () => void;
@@ -26,6 +38,7 @@ interface TopbarProps {
 
 export function Topbar({ onOpenSidebar }: TopbarProps) {
   const { setTheme, resolvedTheme } = useTheme();
+  const pathname = usePathname();
   const [userEmail, setUserEmail] = useState<string | null>(null);
 
   useEffect(() => {
@@ -38,23 +51,20 @@ export function Topbar({ onOpenSidebar }: TopbarProps) {
   }, []);
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center gap-2 border-b border-border/70 bg-background/75 px-3 backdrop-blur-xl sm:gap-3 sm:px-6">
+    <header className="sticky top-0 z-30 flex h-16 items-center gap-2 border-b border-border bg-background px-3 sm:gap-3 sm:px-6">
       <Button variant="ghost" size="icon" className="shrink-0 lg:hidden" onClick={onOpenSidebar}>
         <Menu />
       </Button>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-foreground">
-          {userEmail ? "Cloud-connected workspace" : "Local-first workspace"}
-        </p>
-        <p className="hidden truncate text-sm text-muted-foreground sm:block">
-          {userEmail ? "Synced across devices, private, and calm by default." : "Private, portable, and calm by default."}
-        </p>
-      </div>
+      {/* The route name, not a tagline: the shell should say where you are, and
+          the page's own header carries the longer description. */}
+      <p className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">{routeTitle(pathname)}</p>
       <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">
-        {/* Renders nothing unless do-not-disturb is on. */}
+        {/* Renders nothing unless a timer is running / do-not-disturb is on. */}
+        <ShellTimer />
+        <ShellSaveStatus />
         <DndPill />
         {userEmail ? (
-          <span className="hidden max-w-[180px] truncate text-xs text-muted-foreground lg:block">
+          <span className="hidden max-w-[180px] truncate text-xs text-muted-foreground xl:block">
             {userEmail}
           </span>
         ) : null}

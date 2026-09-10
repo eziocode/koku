@@ -9,6 +9,7 @@ import { ChartCard } from "@/components/charts/chart-card";
 import { ChartLegend } from "@/components/charts/chart-legend";
 import { ChartLoading } from "@/components/charts/chart-states";
 import { ASSIGNMENT_META, STATUS_META } from "@/components/charts/status-badge";
+import { PageHeader } from "@/components/layout/page-header";
 import { DEFAULT_FILTERS, LogFilterState, LogFilters } from "@/components/time-tracker/log-filters";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -254,18 +255,18 @@ export function ReportsDashboard() {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="text-sm uppercase tracking-[0.3em] text-primary">Reports</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight">Monthly intelligence</h1>
-          <p className="mt-2 max-w-2xl text-muted-foreground">Understand project allocation, daily trends, and exportable summaries for the month.</p>
-        </div>
-        <MonthPicker
-          value={selectedMonth}
-          onChange={(m) => router.push(m ? `/reports?month=${m}` : "/reports")}
-          className="w-[180px]"
-        />
-      </div>
+      <PageHeader
+        eyebrow="Reports"
+        title="Monthly intelligence"
+        description="Understand project allocation, daily trends, and exportable summaries for the month."
+        actions={
+          <MonthPicker
+            value={selectedMonth}
+            onChange={(m) => router.push(m ? `/reports?month=${m}` : "/reports")}
+            className="w-[180px]"
+          />
+        }
+      />
 
       <LogFilters filters={filters} onChange={setFilters} />
 

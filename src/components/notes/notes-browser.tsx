@@ -5,6 +5,7 @@ import { useEffect, useRef, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -182,17 +183,16 @@ export function NotesBrowser({ scope = "shared" }: { scope?: NoteScope }) {
 
   return (
     <div className="space-y-8">
-      <div>
-        <p className="text-sm uppercase tracking-[0.3em] text-primary">Notes</p>
-        <div className="mt-3 inline-flex rounded-xl border border-border bg-muted/40 p-1" aria-label="Notes section">
-          <Button variant={isPersonal ? "ghost" : "secondary"} size="sm" onClick={() => router.push("/notes")}>Shared notes</Button>
-          <Button variant={isPersonal ? "secondary" : "ghost"} size="sm" onClick={() => router.push("/notes?tab=personal")}>Personal notes</Button>
+      <PageHeader
+        eyebrow="Notes"
+        title={isPersonal ? "Personal notes" : "Connected knowledge"}
+        description={isPersonal ? "Private to you. Synced across your devices and excluded from admin views." : "Search, filter by tags or creation date, and open ideas in an editor designed for durable thought."}
+      >
+        <div className="inline-flex rounded-lg border border-border bg-muted/40 p-1" role="tablist" aria-label="Notes section">
+          <Button role="tab" aria-selected={!isPersonal} variant={isPersonal ? "ghost" : "secondary"} size="sm" onClick={() => router.push("/notes")}>Shared notes</Button>
+          <Button role="tab" aria-selected={isPersonal} variant={isPersonal ? "secondary" : "ghost"} size="sm" onClick={() => router.push("/notes?tab=personal")}>Personal notes</Button>
         </div>
-        <h1 className="mt-4 text-3xl font-semibold tracking-tight">{isPersonal ? "Personal notes" : "Connected knowledge"}</h1>
-        <p className="mt-2 max-w-2xl text-muted-foreground">
-          {isPersonal ? "Private to you. Synced across your devices and excluded from admin views." : "Search, filter by tags or creation date, and open ideas in an editor designed for durable thought."}
-        </p>
-      </div>
+      </PageHeader>
 
       {/* Create note dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>

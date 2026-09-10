@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/toast";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 import { CatalystSignIn } from "@/components/auth/catalyst-sign-in";
+import { PageHeader } from "@/components/layout/page-header";
 
 interface CloudUser {
   id: string;
@@ -71,13 +72,11 @@ export default function AccountSettingsPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <p className="text-sm uppercase tracking-[0.3em] text-primary">Account &amp; Profile</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Account &amp; profile</h1>
-        <p className="mt-2 max-w-2xl text-muted-foreground">
-          Customize how Koku refers to you locally. Nothing is synced unless you export it.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Settings / Account"
+        title="Account & profile"
+        description="Customize how Koku refers to you locally. Nothing is synced unless you export it."
+      />
       <Card>
         <CardHeader>
           <CardTitle>Display name</CardTitle>

@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/layout/page-header";
 import { BetaBadge } from "@/components/ui/beta-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -349,17 +350,12 @@ export function AiKeyManager() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <div className="flex items-center gap-3">
-          <p className="text-sm uppercase tracking-[0.3em] text-primary">AI Keys</p>
-          <BetaBadge />
-        </div>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Provider credentials</h1>
-        <p className="mt-2 max-w-2xl text-muted-foreground">
-          Connect OpenAI, Codex, Anthropic, Gemini, Groq, or GitHub Models-backed workflows using an API key, a local
-          CLI, or an org/subscription login handled entirely by that CLI.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Settings / AI Keys"
+        badge={<BetaBadge />}
+        title="Provider credentials"
+        description="Connect OpenAI, Codex, Anthropic, Gemini, Groq, or GitHub Models-backed workflows using an API key, a local CLI, or an org/subscription login handled entirely by that CLI."
+      />
 
       <div className="flex flex-wrap items-center gap-2">
         <Dialog open={open} onOpenChange={setOpen}>

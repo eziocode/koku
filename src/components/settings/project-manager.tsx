@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import { Pencil, Trash2 } from "lucide-react";
 
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -165,13 +166,11 @@ export function ProjectManager() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <p className="text-sm uppercase tracking-[0.3em] text-primary">Projects</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Manage projects & categories</h1>
-        <p className="mt-2 max-w-2xl text-muted-foreground">
-          Create visual buckets for time tracking, billing, and local reporting.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Settings / Projects"
+        title="Manage projects & categories"
+        description="Create visual buckets for time tracking, billing, and local reporting."
+      />
 
       <div className="grid gap-8 xl:grid-cols-2">
         <div className="space-y-5">

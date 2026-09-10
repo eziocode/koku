@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -168,12 +169,10 @@ function NoteEditorInner({ noteId, scope = "shared" }: NoteEditorShellProps) {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm uppercase tracking-[0.3em] text-primary">{isPersonal ? "Personal note" : "Note editor"}</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight">{isPersonal ? "Private to you" : "Write, connect, remember"}</h1>
-        </div>
-        <div className="flex items-center gap-3">
+      <PageHeader
+        eyebrow={isPersonal ? "Personal note" : "Note editor"}
+        title={isPersonal ? "Private to you" : "Write, connect, remember"}
+        actions={<>
           <Link href={isPersonal ? "/notes?tab=personal" : "/notes"}>
             <Button variant="outline" size="sm">← All notes</Button>
           </Link>
@@ -184,8 +183,8 @@ function NoteEditorInner({ noteId, scope = "shared" }: NoteEditorShellProps) {
           >
             Delete note
           </Button>
-        </div>
-      </div>
+        </>}
+      />
 
       {/* Delete confirmation dialog */}
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>

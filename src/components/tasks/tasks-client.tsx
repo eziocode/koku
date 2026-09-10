@@ -5,6 +5,7 @@ import { Plus } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { TaskDetailDialog } from "@/components/tasks/task-detail-dialog";
@@ -247,19 +248,17 @@ export function TasksClient() {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="space-y-3">
-          <p className="text-xs uppercase tracking-[0.3em] text-primary">Tasks</p>
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground">Board</h1>
-          <p className="text-muted-foreground">
-            Schedule work, log time against it across many sessions, and close it out when done.
-          </p>
-        </div>
-        <Button className="gap-2" onClick={() => setCreateStatus("open")}>
-          <Plus className="h-4 w-4" />
-          New task
-        </Button>
-      </div>
+      <PageHeader
+        eyebrow="Tasks"
+        title="Board"
+        description="Schedule work, log time against it across many sessions, and close it out when done."
+        actions={
+          <Button className="gap-2" onClick={() => setCreateStatus("open")}>
+            <Plus className="h-4 w-4" />
+            New task
+          </Button>
+        }
+      />
 
       <div className="grid gap-4 lg:grid-cols-4">
         {COLUMNS.map((column) => {

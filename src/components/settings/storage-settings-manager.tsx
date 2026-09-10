@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { ArchiveRestore, Download, HardDrive, ShieldCheck, Upload } from "lucide-react";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -112,7 +113,7 @@ export function StorageSettingsManager() {
   }
 
   return <div className="space-y-6">
-    <div><p className="page-eyebrow">Workspace / Storage</p><h1 className="page-title">Your work, protected</h1><p className="page-description">Back up your workspace, recover drafts, and control cloud sync.</p></div>
+    <PageHeader eyebrow="Settings / Storage" title="Your work, protected" description="Back up your workspace, recover drafts, and control cloud sync." />
     <Card><CardContent className="flex flex-wrap items-center gap-4 pt-5">
       <HardDrive className="size-6 text-primary" /><div className="min-w-0 flex-1"><p className="font-medium">{storage?.persisted ? "Persistent browser storage enabled" : "Stored in this browser"}</p><p className="text-sm text-muted-foreground">{storage ? `${(storage.usage / 1048576).toFixed(1)} MB used · ${(storage.quota / 1073741824).toFixed(1)} GB available quota` : "Checking storage…"}</p></div>
       <Button variant="outline" disabled={storage?.persisted} onClick={async () => { try { const granted = await navigator.storage?.persist(); inspectStorage(); if (!granted) toast.info("Browser did not grant persistence. Keep an external backup."); } catch { toast.error("Storage persistence unavailable in this browser."); } }}><ShieldCheck />{storage?.persisted ? "Persistence enabled" : "Protect browser storage"}</Button>

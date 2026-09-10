@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Pencil, Search, Shield, Trash2, UserPlus, UserRoundMinus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -197,11 +198,11 @@ export function AdminClient() {
         onConfirm={() => void handleConfirm()}
         onCancel={() => setPendingAction(null)}
       />
-      <div>
-        <p className="text-sm uppercase tracking-[0.3em] text-primary">Administration</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Workspace control center</h1>
-        <p className="mt-2 max-w-2xl text-muted-foreground">Manage admins, groups, and user directory.</p>
-      </div>
+      <PageHeader
+        eyebrow="Administration"
+        title="Workspace control center"
+        description="Manage admins, groups, and user directory."
+      />
       {canManageAdmins ? (
         <Card>
           <CardHeader>
