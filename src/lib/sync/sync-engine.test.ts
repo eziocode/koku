@@ -458,10 +458,9 @@ describe("background sync recovery", () => {
 
     const cloudSync = syncNow("cloud");
     await projectsStarted;
-    await syncRow("projects", {
-      ...cloudProject,
-      name: "Local edit during failed sync",
-    });
+    const localEdit = { ...cloudProject, name: "Local edit during failed sync" };
+    await kokuDb.projects.put(localEdit);
+    await syncRow("projects", localEdit);
     releaseProjects?.();
 
     await assert.rejects(() => cloudSync, /Category pull failed/);

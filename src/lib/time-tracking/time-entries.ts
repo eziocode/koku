@@ -1,5 +1,5 @@
 import { kokuDb, type Category, type Project, type TimeEntry } from "@/lib/storage/db";
-import { syncRow } from "@/lib/sync/sync-engine";
+import { putLocal } from "@/lib/storage/local-write";
 
 /**
  * Framework-free time-entry writes.
@@ -51,8 +51,7 @@ export async function ensureCategory(name: string, color = "#8b5cf6"): Promise<C
   };
 
   try {
-    await kokuDb.categories.add(category);
-    void syncRow("categories", category);
+    await putLocal(kokuDb.categories, category, true);
     return category;
   } catch {
     // Another tab may have created same category concurrently.
@@ -76,8 +75,7 @@ export async function ensureProject(name: string, color = "#8b5cf6"): Promise<Pr
   };
 
   try {
-    await kokuDb.projects.add(project);
-    void syncRow("projects", project);
+    await putLocal(kokuDb.projects, project, true);
     return project;
   } catch {
     // Another tab may have created same project concurrently.
@@ -116,7 +114,6 @@ export async function createTimeEntry(data: CreateTimeEntryInput): Promise<TimeE
     createdAt: new Date().toISOString(),
   };
 
-  await kokuDb.timeEntries.add(entry);
-  void syncRow("timeEntries", entry);
+  await putLocal(kokuDb.timeEntries, entry, true);
   return entry;
 }

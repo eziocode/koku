@@ -204,7 +204,7 @@ export function MiniPlayerSurface({ pipWindow }: MiniPlayerSurfaceProps) {
       <p
         role="timer"
         aria-live="off"
-        className="font-mono text-4xl font-semibold tabular-nums leading-none"
+        className="tabular-digits text-4xl font-semibold leading-none"
       >
         {onBreak && activeBreak && activeBreak.plannedDurationSec > 0
           ? formatBreakRemaining(heroSeconds)

@@ -1,5 +1,5 @@
 import { kokuDb, type Reminder, type ReminderRepeat } from "@/lib/storage/db";
-import { deleteRow, syncRow } from "@/lib/sync/sync-engine";
+import { putLocal, deleteLocal } from "@/lib/storage/local-write";
 
 /** Framework-free reminder writes, mirroring `tasks/tasks.ts`. */
 
@@ -83,8 +83,7 @@ export async function createReminder(data: CreateReminderInput): Promise<Reminde
     updatedAt: now,
   };
 
-  await kokuDb.reminders.add(reminder);
-  void syncRow("reminders", reminder);
+  await putLocal(kokuDb.reminders, reminder, true);
   return reminder;
 }
 
@@ -93,14 +92,12 @@ export async function updateReminder(id: string, data: UpdateReminderInput): Pro
   if (!existing) return null;
 
   const updated: Reminder = { ...existing, ...data, updatedAt: new Date().toISOString() };
-  await kokuDb.reminders.put(updated);
-  void syncRow("reminders", updated);
+  await putLocal(kokuDb.reminders, updated);
   return updated;
 }
 
 export async function deleteReminder(id: string): Promise<void> {
-  await kokuDb.reminders.delete(id);
-  void deleteRow("reminders", id);
+  await deleteLocal(kokuDb.reminders, id);
 }
 
 /**

@@ -6,6 +6,7 @@ import {
   type PendingUpsert,
 } from "@/lib/storage/db";
 import { toast } from "@/components/ui/toast";
+import { captureRecovery } from "@/lib/storage/backup";
 import { LOCAL_ONLY_FIELDS } from "@/lib/sync/table-config";
 
 // "tasks" comes before "timeEntries" so a pushed entry's taskId never points
@@ -199,33 +200,6 @@ async function discardCapturedMutations(
   }
 }
 
-async function reapplyPendingLocalChanges(): Promise<void> {
-  const [upserts, deletes] = await Promise.all([
-    kokuDb.pendingUpserts.toArray(),
-    kokuDb.pendingDeletes.toArray(),
-  ]);
-  for (const item of upserts) {
-    if (!SYNCABLE_TABLES.includes(item.table as SyncTable)) continue;
-    const table = item.table as SyncTable;
-    await withMutationLock(table, item.rowId, async () => {
-      const current = await kokuDb.pendingUpserts.get(item.id);
-      if (!current) return;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (kokuDb as any)[table].put(current.row);
-    });
-  }
-  for (const item of deletes) {
-    if (!SYNCABLE_TABLES.includes(item.table as SyncTable)) continue;
-    const table = item.table as SyncTable;
-    await withMutationLock(table, item.rowId, async () => {
-      const current = await kokuDb.pendingDeletes.get(item.id);
-      if (!current) return;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (kokuDb as any)[table].delete(current.rowId);
-    });
-  }
-}
-
 export type SyncChoice = "local" | "cloud" | "cancel";
 export interface SyncConflict {
   total: number;
@@ -312,28 +286,24 @@ function mergeLocalOnlyFields(
   return merged;
 }
 
-async function pullTable(table: SyncTable, since: string | null, replace = false): Promise<number> {
+async function fetchTable(table: SyncTable, since: string | null): Promise<unknown[]> {
   const url = since ? `/api/sync/${table}?since=${encodeURIComponent(since)}` : `/api/sync/${table}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(await responseError(res, `Pull ${table} failed: ${res.status}`));
+  const payload = await res.json() as { rows?: unknown[] };
+  if (!Array.isArray(payload.rows) || payload.rows.some((row) => !row || typeof row !== "object" || !rowId(row))) throw new Error(`Invalid cloud data for ${table}. Local data unchanged.`);
+  return payload.rows.filter((row) => !isInternalSetting(table, row));
+}
 
-  const payload = (await res.json()) as { rows?: unknown[] };
-  let rows = (payload.rows ?? []).filter((row) => !isInternalSetting(table, row));
+async function applyTable(table: SyncTable, rows: unknown[], replace: boolean): Promise<number> {
   const localOnly = LOCAL_ONLY_FIELDS[table];
   const snapshot = localOnly?.length ? await snapshotLocalOnlyFields(table, localOnly) : null;
   if (replace) {
-    // Cloud choice replaces synced tables only. AI keys remain local.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (kokuDb as any)[table].clear();
+    if (table === "settings") await kokuDb.settings.filter((row) => !isInternalSetting(table, row)).delete();
+    else await kokuDb.table(table).clear();
   }
-  if (!rows.length) return 0;
-
-  if (localOnly?.length && snapshot?.size) {
-    rows = rows.map((row) => mergeLocalOnlyFields(row, localOnly, snapshot));
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (kokuDb as any)[table].bulkPut(rows);
+  if (localOnly?.length && snapshot?.size) rows = rows.map((row) => mergeLocalOnlyFields(row, localOnly, snapshot));
+  if (rows.length) await kokuDb.table(table).bulkPut(rows);
   return rows.length;
 }
 
@@ -405,7 +375,7 @@ export async function syncNow(choice?: SyncChoice): Promise<SyncResult> {
         kokuDb.pendingUpserts.toArray(),
         kokuDb.pendingDeletes.toArray(),
       ]);
-      await discardCapturedMutations(discardedUpserts, discardedDeletes);
+
     } else {
       const pendingResult = await flushPendingChanges({ ignoreConflictPause: true });
       if (pendingResult.error) throw new Error(pendingResult.error);
@@ -414,17 +384,28 @@ export async function syncNow(choice?: SyncChoice): Promise<SyncResult> {
     if (choice !== "cloud") {
       for (const table of SYNCABLE_TABLES) pushed += await pushTable(table);
     }
-    let pullStarted = false;
-    try {
-      for (const table of SYNCABLE_TABLES) {
-        pullStarted = true;
-        pulled += await pullTable(table, choice === "cloud" ? null : since, choice === "cloud");
+    const generation = (await kokuDb.storageMeta.get("restoredAt"))?.value;
+    const pullStartedAt = new Date().toISOString();
+    const snapshots = new Map<SyncTable, unknown[]>();
+    for (const table of SYNCABLE_TABLES) snapshots.set(table, await fetchTable(table, choice === "cloud" ? null : since));
+    await kokuDb.transaction("rw", kokuDb.tables, async () => {
+      if ((await kokuDb.storageMeta.get("restoredAt"))?.value !== generation) throw new Error("Backup restored during sync. Retry manual sync.");
+      if (choice === "cloud") {
+        await captureRecovery("Before cloud replacement");
+        await discardCapturedMutations(discardedUpserts, discardedDeletes);
       }
-    } finally {
-      if (pullStarted) await reapplyPendingLocalChanges();
-    }
+      for (const table of SYNCABLE_TABLES) pulled += await applyTable(table, snapshots.get(table)!, choice === "cloud");
+      // Transaction serializes this overlay against writes in other tabs.
+      for (const item of await kokuDb.pendingUpserts.toArray()) {
+        if (SYNCABLE_TABLES.includes(item.table as SyncTable)) await kokuDb.table(item.table).put(item.row);
+      }
+      for (const item of await kokuDb.pendingDeletes.toArray()) {
+        if (SYNCABLE_TABLES.includes(item.table as SyncTable)) await kokuDb.table(item.table).delete(item.rowId);
+      }
+      await setLastSyncAt(user.id, pullStartedAt);
+      if (choice) await kokuDb.storageMeta.delete("syncPaused");
+    });
 
-    await setLastSyncAt(user.id, new Date().toISOString());
     conflictDecisionPending = false;
     const trailing = await flushPendingChanges();
     if (trailing.error && trailing.error !== "Offline" && trailing.error !== "Not signed in") {
@@ -470,7 +451,7 @@ export async function syncRow(table: SyncTable, row: unknown): Promise<void> {
       notifyPendingSync();
       return;
     }
-    if (conflictDecisionPending) return;
+    if (conflictDecisionPending || (await kokuDb.storageMeta.get("syncPaused"))?.value) return;
     try {
       const user = await getAuthUser();
       if (!user) {
@@ -510,7 +491,7 @@ export async function deleteRow(table: SyncTable, id: string): Promise<void> {
       notifyPendingSync();
       return;
     }
-    if (conflictDecisionPending) return;
+    if (conflictDecisionPending || (await kokuDb.storageMeta.get("syncPaused"))?.value) return;
     try {
       const user = await getAuthUser();
       if (!user) {
@@ -556,7 +537,7 @@ export function flushPendingChanges(
       pendingSyncWarningShown = false;
       return { pushed: 0, deleted: 0, pending: 0 };
     }
-    if (conflictDecisionPending && !options.ignoreConflictPause) {
+    if ((conflictDecisionPending || (await kokuDb.storageMeta.get("syncPaused"))?.value) && !options.ignoreConflictPause) {
       return { pushed: 0, deleted: 0, pending, error: "Sync choice required" };
     }
     if (!navigator.onLine) return { pushed: 0, deleted: 0, pending, error: "Offline" };

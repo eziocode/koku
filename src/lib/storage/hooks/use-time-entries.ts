@@ -3,7 +3,7 @@
 import { useLiveQuery } from "@/lib/storage/use-live-query";
 
 import { kokuDb, type TimeEntry } from "@/lib/storage/db";
-import { deleteRow, syncRow } from "@/lib/sync/sync-engine";
+import { putLocal, deleteLocal } from "@/lib/storage/local-write";
 import { adjustSegmentsForRangeEdit } from "@/lib/time-tracking/segment-edit";
 import {
   createTimeEntry,
@@ -142,14 +142,12 @@ export function useTimeEntries(filters: TimeEntryFilters = {}) {
       segments: adjustSegmentsForRangeEdit(existing, patch),
     };
 
-    await kokuDb.timeEntries.put(next);
-    void syncRow("timeEntries", next);
+    await putLocal(kokuDb.timeEntries, next);
     return next;
   }
 
   async function deleteEntry(id: string) {
-    await kokuDb.timeEntries.delete(id);
-    void deleteRow("timeEntries", id);
+    await deleteLocal(kokuDb.timeEntries, id);
   }
 
   return {

@@ -1,357 +1,136 @@
 "use client";
 
-import { ChangeEvent, useEffect, useRef, useState } from "react";
-
-import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { ArchiveRestore, Download, HardDrive, ShieldCheck, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/toast";
-import { kokuDb, type AiKey, type AppSetting, type Category, type Note, type NoteLink, type Project, type Task, type TimeEntry } from "@/lib/storage/db";
-import { normalizeAiKey } from "@/lib/storage/hooks/use-ai-keys";
-import { syncWithConflictPrompt } from "@/lib/sync/sync-engine";
+import { ManualSync } from "@/components/layout/manual-sync";
+import { kokuDb } from "@/lib/storage/db";
+import { useLiveQuery } from "@/lib/storage/use-live-query";
+import { BACKUP_TABLES, createBackup, parseBackup, restoreBackup, type BackupPayload } from "@/lib/storage/backup";
+import { flushNoteSaves } from "@/lib/storage/note-saves";
+import { migrateTimers } from "@/lib/stores/timer-migrations";
+import { buildEntryFromTimer } from "@/lib/time-tracking/stop-timer";
+import { createTimeEntry } from "@/lib/time-tracking/time-entries";
+import { localTransaction } from "@/lib/storage/local-write";
 
-const isLocalMode = process.env.NEXT_PUBLIC_LOCAL_MODE === "true";
-
-interface BackupPayload {
-  version: number;
-  exportedAt: string;
-  data: {
-    projects: Project[];
-    categories: Category[];
-    timeEntries: TimeEntry[];
-    tasks: Task[];
-    notes: Note[];
-    noteLinks: NoteLink[];
-    aiKeys: AiKey[];
-    settings: AppSetting[];
+/** Quota/persistence read is a browser API, so it lives outside React state. */
+async function readStorageStatus() {
+  const estimate = await navigator.storage?.estimate();
+  return {
+    persisted: (await navigator.storage?.persisted()) ?? false,
+    usage: estimate?.usage ?? 0,
+    quota: estimate?.quota ?? 0,
   };
 }
 
-/**
- * Recursively strip any link `href` attributes that are not http(s) URLs from
- * a TipTap ProseMirror JSON node tree. This prevents javascript: / data: URIs
- * embedded in imported backup files from being executed when a user clicks a
- * link node in the editor.
- */
-function sanitizeTipTapContent(node: unknown): unknown {
-  if (!node || typeof node !== "object") return node;
-  const n = node as Record<string, unknown>;
-
-  // Strip unsafe hrefs from link marks
-  if (n.type === "link" && n.attrs && typeof n.attrs === "object") {
-    const attrs = n.attrs as Record<string, unknown>;
-    const href = attrs.href;
-    if (typeof href === "string" && !/^https?:\/\//i.test(href)) {
-      attrs.href = "";
-    }
-  }
-
-  if (Array.isArray(n.marks)) {
-    n.marks = n.marks.map((mark: unknown) => {
-      const m = mark as Record<string, unknown>;
-      if (m.type === "link" && m.attrs && typeof m.attrs === "object") {
-        const attrs = m.attrs as Record<string, unknown>;
-        const href = attrs.href;
-        if (typeof href === "string" && !/^https?:\/\//i.test(href)) {
-          attrs.href = "";
-        }
-      }
-      return m;
-    });
-  }
-
-  if (Array.isArray(n.content)) {
-    n.content = n.content.map(sanitizeTipTapContent);
-  }
-
-  return n;
-}
-
-interface StorageCounts {
-  projects: number;
-  categories: number;
-  timeEntries: number;
-  tasks: number;
-  notes: number;
-  noteLinks: number;
-  aiKeys: number;
-}
-
 export function StorageSettingsManager() {
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [counts, setCounts] = useState<StorageCounts | null>(null);
-  const [origin, setOrigin] = useState("…");
-  const [cloudConnected, setCloudConnected] = useState<boolean | null>(isLocalMode ? false : null);
-  const [syncing, setSyncing] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [includeKeys, setIncludeKeys] = useState(false);
+  const [preview, setPreview] = useState<BackupPayload | null>(null);
+  const [storage, setStorage] = useState<{ persisted: boolean; usage: number; quota: number } | null>(null);
+  const counts = useLiveQuery(async () => Promise.all(BACKUP_TABLES.filter((name) => !["aiKeys", "settings", "noteLinks", "timerCompletions"].includes(name)).map(async (name) => ({ name, count: await kokuDb.table(name).count() }))), []);
+  const snapshots = useLiveQuery(() => kokuDb.recoverySnapshots.orderBy("createdAt").reverse().toArray(), []);
+  const drafts = useLiveQuery(() => kokuDb.noteDrafts.orderBy("updatedAt").reverse().toArray(), []);
+  const metadata = useLiveQuery(() => kokuDb.storageMeta.toArray(), []);
+  const paused = metadata?.find((row) => row.key === "syncPaused")?.value;
+  const lastBackup = metadata?.find((row) => row.key === "lastBackupAt")?.value;
+  const recovered = metadata?.find((row) => row.key === "recoveredTimerState")?.value as { state: unknown; capturedAt: string } | undefined;
 
+  // Bumping the counter re-runs the read; the effect owns every write to
+  // `storage`, so nothing sets state straight from an event handler's await.
+  const [storageCheck, setStorageCheck] = useState(0);
+  const inspectStorage = () => setStorageCheck((count) => count + 1);
   useEffect(() => {
-    const originUpdateId = window.setTimeout(() => {
-      setOrigin(window.location.origin);
-    }, 0);
-
-    async function loadCounts() {
-      const [projects, categories, timeEntries, tasks, notes, noteLinks, aiKeys] = await Promise.all([
-        kokuDb.projects.count(),
-        kokuDb.categories.count(),
-        kokuDb.timeEntries.count(),
-        kokuDb.tasks.count(),
-        kokuDb.notes.count(),
-        kokuDb.noteLinks.count(),
-        kokuDb.aiKeys.count(),
-      ]);
-      setCounts({ projects, categories, timeEntries, tasks, notes, noteLinks, aiKeys });
-    }
-    loadCounts();
-
-    return () => window.clearTimeout(originUpdateId);
-  }, []);
-
-  useEffect(() => {
-    if (isLocalMode) return;
-    fetch("/api/auth/me", { cache: "no-store" })
-      .then((response) => response.json() as Promise<{ user?: unknown | null }>)
-      .then((body) => setCloudConnected(Boolean(body.user)))
-      .catch(() => setCloudConnected(false));
-  }, []);
-
-  async function handleSync() {
-    setSyncing(true);
-    try {
-      const result = await syncWithConflictPrompt();
-      if (result.error) {
-        toast.error(result.error === "Not signed in"
-          ? "Sign in with Zoho first to sync."
-          : result.error);
-      } else {
-        toast.success(`Sync complete: pushed ${result.pushed}, pulled ${result.pulled} rows.`);
-      }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Sync failed.");
-    } finally {
-      setSyncing(false);
-    }
-  }
-
-  async function handleExport() {
-    const payload: BackupPayload = {
-      // v2 adds `tasks`. A v1 file has no `tasks` key at all, which
-      // `handleImport`'s `Array.isArray` guard already treats as zero tasks.
-      version: 2,
-      exportedAt: new Date().toISOString(),
-      data: {
-        projects: await kokuDb.projects.toArray(),
-        categories: await kokuDb.categories.toArray(),
-        timeEntries: await kokuDb.timeEntries.toArray(),
-        tasks: await kokuDb.tasks.toArray(),
-        notes: await kokuDb.notes.toArray(),
-        noteLinks: await kokuDb.noteLinks.toArray(),
-        aiKeys: await kokuDb.aiKeys.toArray(),
-        settings: await kokuDb.settings.toArray(),
-      },
-    };
-
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "koku-export-" + new Date().toISOString().slice(0, 10) + ".json";
-    link.click();
-    URL.revokeObjectURL(url);
-    toast.success("Local export downloaded.");
-  }
-
-  async function handleImport(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) {
-      return;
-    }
-
-    const confirmed = window.confirm(
-      "Importing will replace the current local data in this browser. Continue?",
+    let active = true;
+    readStorageStatus().then(
+      (next) => { if (active) setStorage(next); },
+      () => undefined,
     );
+    return () => { active = false; };
+  }, [storageCheck]);
 
-    if (!confirmed) {
-      event.target.value = "";
-      return;
-    }
-
+  async function exportData() {
+    setBusy(true);
     try {
-      const raw = await file.text();
-      const parsed = JSON.parse(raw) as Partial<BackupPayload>;
-      const sourceData = parsed.data;
-
-      if (!sourceData) {
-        throw new Error("Invalid backup file.");
-      }
-
-      const data: BackupPayload["data"] = {
-        projects: Array.isArray(sourceData.projects) ? sourceData.projects : [],
-        categories: Array.isArray(sourceData.categories) ? sourceData.categories : [],
-        timeEntries: Array.isArray(sourceData.timeEntries) ? sourceData.timeEntries : [],
-        tasks: Array.isArray(sourceData.tasks) ? sourceData.tasks : [],
-        notes: Array.isArray(sourceData.notes)
-          ? sourceData.notes.map((note) => ({
-              ...note,
-              content: sanitizeTipTapContent(note.content),
-            }))
-          : [],
-        noteLinks: Array.isArray(sourceData.noteLinks) ? sourceData.noteLinks : [],
-        aiKeys: Array.isArray(sourceData.aiKeys)
-          ? sourceData.aiKeys.map((key: AiKey) => normalizeAiKey(key))
-          : [],
-        settings: Array.isArray(sourceData.settings) ? sourceData.settings : [],
-      };
-
-      await Promise.all([
-        kokuDb.noteLinks.clear(),
-        kokuDb.timeEntries.clear(),
-        kokuDb.tasks.clear(),
-        kokuDb.notes.clear(),
-        kokuDb.projects.clear(),
-        kokuDb.categories.clear(),
-        kokuDb.aiKeys.clear(),
-        kokuDb.settings.clear(),
-      ]);
-
-      await Promise.all([
-        data.projects.length ? kokuDb.projects.bulkPut(data.projects) : Promise.resolve(),
-        data.categories.length ? kokuDb.categories.bulkPut(data.categories) : Promise.resolve(),
-        data.timeEntries.length ? kokuDb.timeEntries.bulkPut(data.timeEntries) : Promise.resolve(),
-        data.tasks.length ? kokuDb.tasks.bulkPut(data.tasks) : Promise.resolve(),
-        data.notes.length ? kokuDb.notes.bulkPut(data.notes) : Promise.resolve(),
-        data.noteLinks.length ? kokuDb.noteLinks.bulkPut(data.noteLinks) : Promise.resolve(),
-        data.aiKeys.length ? kokuDb.aiKeys.bulkPut(data.aiKeys) : Promise.resolve(),
-        data.settings.length ? kokuDb.settings.bulkPut(data.settings) : Promise.resolve(),
-      ]);
-
-      toast.success("Local data imported.");
-    } catch {
-      toast.error("Unable to import this file.");
-    } finally {
-      event.target.value = "";
-    }
+      await flushNoteSaves();
+      const backup = await createBackup(includeKeys);
+      const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `koku-backup-${backup.exportedAt.slice(0, 10)}.json`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      await kokuDb.storageMeta.put({ key: "lastBackupAt", value: backup.exportedAt });
+      toast.success("Backup download started. Keep the file outside this browser.");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Backup failed. Retry."); }
+    finally { setBusy(false); }
   }
 
-  return (
-    <div className="space-y-8">
-      <div>
-        <p className="text-sm uppercase tracking-[0.3em] text-primary">Storage</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Export, import, and sync</h1>
-        <p className="mt-2 max-w-2xl text-muted-foreground">
-          Your data lives entirely in this browser. Export a snapshot any time, import it on another
-          device, or wait for cloud drive sync when it ships.
-        </p>
-      </div>
+  async function readFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try { setPreview(parseBackup(JSON.parse(await file.text()))); }
+    catch { toast.error("Invalid or unsupported backup. Your data has not changed."); }
+  }
 
-      {/* Local storage info */}
-      <Card className="border-primary/15 bg-primary/5">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-3">
-            Where your data lives
-            <Badge className="rounded-full text-xs">IndexedDB</Badge>
-          </CardTitle>
-          <CardDescription>
-            All records are stored in your browser&apos;s IndexedDB under the origin{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs font-mono">
-              {origin}
-            </code>
-            , database{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs font-mono">koku-local</code>.
-            Nothing is sent to any server.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {counts ? (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
-              {(
-                [
-                  ["Projects", counts.projects],
-                  ["Categories", counts.categories],
-                  ["Time entries", counts.timeEntries],
-                  ["Tasks", counts.tasks],
-                  ["Notes", counts.notes],
-                  ["Note links", counts.noteLinks],
-                  ["AI keys", counts.aiKeys],
-                ] as [string, number][]
-              ).map(([label, count]) => (
-                <div key={label} className="rounded-2xl border border-border bg-card p-3 text-center">
-                  <p className="text-2xl font-semibold text-foreground">{count}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{label}</p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">Loading counts…</p>
-          )}
-        </CardContent>
-      </Card>
+  async function restore() {
+    if (!preview) return;
+    setBusy(true);
+    try {
+      await flushNoteSaves();
+      await restoreBackup(preview);
+      setPreview(null);
+      toast.success("Backup restored. Cloud sync paused until you choose a sync direction.");
+      inspectStorage();
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Restore failed. Original data kept."); }
+    finally { setBusy(false); }
+  }
 
-      <input ref={fileInputRef} type="file" accept="application/json" className="hidden" onChange={handleImport} />
+  async function recoverTimers() {
+    if (!recovered) return;
+    setBusy(true);
+    try {
+      await localTransaction([kokuDb.timeEntries, kokuDb.timerCompletions, kokuDb.storageMeta], async () => {
+        for (const timer of migrateTimers(recovered.state)) {
+          const entryId = `timer:${timer.id}`;
+          if (!await kokuDb.timeEntries.get(entryId) && !await kokuDb.timerCompletions.get(timer.id)) {
+            await createTimeEntry({ ...buildEntryFromTimer(timer, recovered.capturedAt), id: entryId });
+            await kokuDb.timerCompletions.put({ id: timer.id, entryId, completedAt: recovered.capturedAt });
+          }
+        }
+        await kokuDb.storageMeta.delete("recoveredTimerState");
+      });
+      toast.success("Recovered timer work in Time Log, ending at backup time.");
+    } catch { toast.error("Timer recovery failed. Backup state kept for retry."); }
+    finally { setBusy(false); }
+  }
 
-      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>Export all data</CardTitle>
-            <CardDescription>Download every table as a single JSON file.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Includes projects, categories, notes, note links, time entries, tasks, AI keys, and settings.
-            </p>
-            <Button onClick={handleExport}>Export all data</Button>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Import data</CardTitle>
-            <CardDescription>Restore a previously exported JSON snapshot.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Import replaces the current local database for this browser profile after confirmation.
-            </p>
-            <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
-              Import data
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="opacity-70">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              Google Drive
-              <Badge variant="secondary" className="rounded-full text-xs">Coming soon</Badge>
-            </CardTitle>
-            <CardDescription>Automatic backups to your Google Drive.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              OAuth-based sync will let you keep an automatic off-device copy without sharing your data with any service.
-            </p>
-            <Button variant="secondary" disabled>Connect Google Drive</Button>
-          </CardContent>
-        </Card>
-
-        {cloudConnected ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>Catalyst Sync</CardTitle>
-              <CardDescription>Sync your data across devices via Zoho Catalyst.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Pushes all local records to Catalyst and pulls any remote changes. Requires a Zoho sign-in.
-              </p>
-              <Button onClick={handleSync} disabled={syncing}>
-                {syncing ? "Syncing…" : "Sync now"}
-              </Button>
-            </CardContent>
-          </Card>
-        ) : null}
-      </div>
+  return <div className="space-y-6">
+    <div><p className="page-eyebrow">Workspace / Storage</p><h1 className="page-title">Your work, protected</h1><p className="page-description">Back up your workspace, recover drafts, and control cloud sync.</p></div>
+    <Card><CardContent className="flex flex-wrap items-center gap-4 pt-5">
+      <HardDrive className="size-6 text-primary" /><div className="min-w-0 flex-1"><p className="font-medium">{storage?.persisted ? "Persistent browser storage enabled" : "Stored in this browser"}</p><p className="text-sm text-muted-foreground">{storage ? `${(storage.usage / 1048576).toFixed(1)} MB used · ${(storage.quota / 1073741824).toFixed(1)} GB available quota` : "Checking storage…"}</p></div>
+      <Button variant="outline" disabled={storage?.persisted} onClick={async () => { try { const granted = await navigator.storage?.persist(); inspectStorage(); if (!granted) toast.info("Browser did not grant persistence. Keep an external backup."); } catch { toast.error("Storage persistence unavailable in this browser."); } }}><ShieldCheck />{storage?.persisted ? "Persistence enabled" : "Protect browser storage"}</Button>
+    </CardContent></Card>
+    {paused ? <div role="status" className="rounded-xl border border-primary/30 bg-primary/5 p-4 text-sm">Cloud sync paused after restore. Use manual sync to review differences and choose which copy to keep. <ManualSync /></div> : null}
+    <div className="grid gap-4 md:grid-cols-2">
+      <Card><CardHeader><CardTitle>Download a backup</CardTitle><CardDescription>Includes personal notes, reminders, drafts, tasks, recorded work, and timer recovery state.</CardDescription></CardHeader><CardContent className="space-y-4">
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={includeKeys} onChange={(event) => setIncludeKeys(event.target.checked)} /> Include AI keys and connection credentials</label>
+        {includeKeys && <p className="text-sm text-destructive">This file will contain unencrypted credentials. Store it privately.</p>}
+        <Button disabled={busy} onClick={exportData}><Download />Download backup</Button><p className="text-xs text-muted-foreground">{typeof lastBackup === "string" ? `Last download requested: ${new Date(lastBackup).toLocaleString()}` : "No backup downloaded yet."}</p>
+      </CardContent></Card>
+      <Card><CardHeader><CardTitle>Restore a backup</CardTitle><CardDescription>Review a file before replacing data. A recovery copy is saved first.</CardDescription></CardHeader><CardContent className="space-y-4"><p className="text-sm text-muted-foreground">Older backups preserve collections they do not contain. Active timers on this device stay running.</p><Button variant="outline" disabled={busy} onClick={() => fileRef.current?.click()}><Upload />Choose backup file</Button><input aria-label="Backup file" ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={readFile} /></CardContent></Card>
     </div>
-  );
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{counts?.map(({ name, count }) => <div key={name} className="rounded-xl border bg-card p-4"><p className="text-xl font-semibold tabular-nums">{count}</p><p className="text-xs text-muted-foreground">{name.replace(/([A-Z])/g, " $1").toLowerCase()}</p></div>)}</div>
+    {recovered && <Card><CardHeader><CardTitle>Timer work from your backup</CardTitle><CardDescription>Recover recorded time up to {new Date(recovered.capturedAt).toLocaleString()}. Existing sessions are not duplicated.</CardDescription></CardHeader><CardContent><Button disabled={busy} onClick={recoverTimers}>Recover timer work to Time Log</Button></CardContent></Card>}
+    <Card><CardHeader><CardTitle>Recovery copies</CardTitle><CardDescription>Last three replacements kept here. These copies share browser storage; clearing site data removes them too.</CardDescription></CardHeader><CardContent className="space-y-3">{snapshots?.length ? snapshots.map((snapshot) => <div key={snapshot.id} className="flex flex-wrap items-center justify-between gap-3 border-b pb-3"><div><p className="text-sm font-medium">{snapshot.reason}</p><p className="text-xs text-muted-foreground">{new Date(snapshot.createdAt).toLocaleString()}</p></div><Button variant="outline" size="sm" disabled={busy} onClick={() => { try { setPreview(parseBackup({ version: 3, exportedAt: snapshot.createdAt, data: snapshot.data })); } catch { toast.error("Unable to validate this recovery copy."); } }}><ArchiveRestore />Review restore</Button></div>) : <p className="text-sm text-muted-foreground">Recovery copies appear before your first restore or cloud replacement.</p>}</CardContent></Card>
+    {!!drafts?.length && <Card><CardHeader><CardTitle>Unfinished note drafts</CardTitle><CardDescription>Open a note to retry saving or keep your recovered draft as a copy.</CardDescription></CardHeader><CardContent className="space-y-2">{drafts.map((draft) => <Link className="block rounded-lg border p-3 text-sm hover:bg-muted" key={draft.id} href={`/notes?id=${draft.noteId}${draft.scope === "personal" ? "&tab=personal" : ""}`}>{draft.payload.title || "Untitled note"} · {draft.scope}</Link>)}</CardContent></Card>}
+    <p className="text-sm text-muted-foreground">Browser storage cannot survive cleared site data or a lost device. Keep a downloaded backup elsewhere or sync successfully with your existing cloud account.</p>
+    <Dialog open={!!preview} onOpenChange={(open) => { if (!open && !busy) setPreview(null); }}><DialogContent><DialogHeader><DialogTitle>Restore this backup?</DialogTitle><DialogDescription>Replaces only the collections listed below. A recovery copy is created first; failed writes leave your current data intact.</DialogDescription></DialogHeader><div className="max-h-64 overflow-y-auto space-y-2">{preview && Object.entries(preview.data).map(([table, rows]) => <div className="flex justify-between text-sm" key={table}><span>{table}</span><span>{rows?.length ?? 0} records</span></div>)}</div><DialogFooter><Button variant="outline" disabled={busy} onClick={() => setPreview(null)}>Cancel</Button><Button disabled={busy} onClick={restore}>{busy ? "Restoring…" : "Restore backup"}</Button></DialogFooter></DialogContent></Dialog>
+  </div>;
 }

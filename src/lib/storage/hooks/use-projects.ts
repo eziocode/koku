@@ -3,7 +3,7 @@
 import { useLiveQuery } from "@/lib/storage/use-live-query";
 
 import { kokuDb, type Project } from "@/lib/storage/db";
-import { deleteRow, syncRow } from "@/lib/sync/sync-engine";
+import { putLocal, updateLocal, deleteLocal, localTransaction } from "@/lib/storage/local-write";
 
 const EMPTY_PROJECTS: Project[] = [];
 
@@ -29,8 +29,7 @@ export function useProjects() {
       createdAt: new Date().toISOString(),
     };
 
-    await kokuDb.projects.add(project);
-    void syncRow("projects", project);
+    await putLocal(kokuDb.projects, project, true);
     return project;
   }
 
@@ -38,31 +37,17 @@ export function useProjects() {
     id: string,
     patch: Partial<Omit<Project, "id" | "createdAt">>,
   ) {
-    await kokuDb.projects.update(id, patch);
-    const updated = await kokuDb.projects.get(id);
-    if (updated) void syncRow("projects", updated);
+    await updateLocal(kokuDb.projects, id, patch);
   }
 
   async function deleteProject(id: string) {
-    const [affectedEntries, affectedTasks] = await kokuDb.transaction(
-      "rw",
-      kokuDb.projects,
-      kokuDb.timeEntries,
-      kokuDb.tasks,
-      async () => {
-        const entries = await kokuDb.timeEntries.where("projectId").equals(id).toArray();
-        const tasks = await kokuDb.tasks.where("projectId").equals(id).toArray();
-        await kokuDb.timeEntries.where("projectId").equals(id).modify({ projectId: null });
-        await kokuDb.tasks.where("projectId").equals(id).modify({ projectId: null });
-        await kokuDb.projects.delete(id);
-        return [entries, tasks];
-      },
-    );
-    await Promise.all([
-      ...affectedEntries.map((entry) => syncRow("timeEntries", { ...entry, projectId: null })),
-      ...affectedTasks.map((task) => syncRow("tasks", { ...task, projectId: null })),
-    ]);
-    void deleteRow("projects", id);
+    await localTransaction([kokuDb.projects, kokuDb.timeEntries, kokuDb.tasks], async () => {
+      const entries = await kokuDb.timeEntries.where("projectId").equals(id).toArray();
+      const tasks = await kokuDb.tasks.where("projectId").equals(id).toArray();
+      for (const entry of entries) await putLocal(kokuDb.timeEntries, { ...entry, projectId: null });
+      for (const task of tasks) await putLocal(kokuDb.tasks, { ...task, projectId: null });
+      await deleteLocal(kokuDb.projects, id);
+    });
   }
 
   return {

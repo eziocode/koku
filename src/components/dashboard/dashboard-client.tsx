@@ -286,7 +286,7 @@ export function DashboardClient() {
               <CalendarClock className="h-3.5 w-3.5 text-primary" />
               Today’s total
             </CardDescription>
-            <CardTitle className="text-3xl tabular-nums">{formatDuration(totalTodaySeconds)}</CardTitle>
+            <CardTitle className="tabular-digits text-3xl">{formatDuration(totalTodaySeconds)}</CardTitle>
           </CardHeader>
           <CardContent className="pt-0 text-xs text-muted-foreground">
             {/* Break time is excluded from the total above, but shown rather than
@@ -302,7 +302,7 @@ export function DashboardClient() {
               <ListChecks className="h-3.5 w-3.5 text-primary" />
               Entries today
             </CardDescription>
-            <CardTitle className="text-3xl tabular-nums">{todaySessionCount}</CardTitle>
+            <CardTitle className="tabular-digits text-3xl">{todaySessionCount}</CardTitle>
           </CardHeader>
           <CardContent className="pt-0 text-xs text-muted-foreground">
             {todaySessionCount === 0

@@ -4,6 +4,7 @@ import Script from "next/script";
 import { AppProviders } from "@/components/providers/app-providers";
 import { ServiceWorkerRegistrar } from "@/components/providers/service-worker-registrar";
 import { buildAccentScript } from "@/lib/appearance";
+import { headingFont } from "./fonts";
 
 import "./globals.css";
 
@@ -45,13 +46,11 @@ export const viewport: Viewport = {
   ],
   width: "device-width",
   initialScale: 1,
-  // The shell is a fixed, app-like layout (`overflow-hidden` body, `100dvh`
-  // panels, installable PWA) rather than a scrolling document — it was never
-  // laid out to survive an arbitrary pinch zoom. Zooming out shrinks the
-  // visual viewport below the layout viewport the shell is sized to, which
-  // exposes unstyled canvas past its fixed panels ("random pixels" on pinch).
-  maximumScale: 1,
-  userScalable: false,
+  // Zoom stays available: blocking it fails WCAG 1.4.4 and locks out anyone who
+  // needs magnification. The shell survives a pinch because <html> paints the
+  // page background itself, so canvas exposed past the fixed panels when the
+  // visual viewport grows beyond the layout viewport is styled, not "random
+  // pixels" (see globals.css).
   viewportFit: "cover",
 };
 
@@ -64,7 +63,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className="antialiased"
+      className={`${headingFont.variable} antialiased`}
     >
       <head>
         {/* Applies the persisted accent before first paint to avoid the

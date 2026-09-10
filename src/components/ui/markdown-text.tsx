@@ -83,7 +83,7 @@ export function MarkdownText({
     <div
       ref={containerRef}
       className={cn("space-y-1 text-sm [&_p]:leading-relaxed", className)}
-      // eslint-disable-next-line react/no-danger -- `html` is built entirely from `escapeHtml`-passed, regex-matched fragments above.
+      /* `html` is built entirely from `escapeHtml`-passed, regex-matched fragments above. */
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );

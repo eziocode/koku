@@ -1,7 +1,8 @@
-import type { TimeEntry } from "@/lib/storage/db";
+import { kokuDb, type TimeEntry } from "@/lib/storage/db";
 import { getActiveTimerElapsedSec } from "@/lib/stores/timer-math";
 import type { ActiveTimer } from "@/lib/stores/timer-types";
 import { useTimerStore } from "@/lib/stores/timer-store";
+import { localTransaction } from "@/lib/storage/local-write";
 import { createTimeEntry, type CreateTimeEntryInput } from "@/lib/time-tracking/time-entries";
 
 /**
@@ -56,7 +57,13 @@ export async function stopTimerAndPersist(
     return { entry: null, stopped: false };
   }
 
-  const entry = await createTimeEntry(buildEntryFromTimer(timer, endedAt));
+  const entry = await localTransaction([kokuDb.timeEntries, kokuDb.timerCompletions], async () => {
+    const completed = await kokuDb.timerCompletions.get(timerId);
+    if (completed) return (await kokuDb.timeEntries.get(completed.entryId)) ?? null;
+    const entry = await createTimeEntry({ ...buildEntryFromTimer(timer, endedAt), id: `timer:${timerId}` });
+    await kokuDb.timerCompletions.put({ id: timerId, entryId: entry.id, completedAt: endedAt });
+    return entry;
+  });
   useTimerStore.getState().stopTimer(timerId);
 
   return { entry, stopped: true };

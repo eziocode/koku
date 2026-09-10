@@ -5,7 +5,7 @@ import { kokuDb, type Note } from "@/lib/storage/db";
 import type { TimeFormat } from "@/lib/settings/schema";
 import { formatTime } from "@/lib/time-format";
 import { slugify } from "@/lib/utils";
-import { deleteRow, syncRow } from "@/lib/sync/sync-engine";
+import { deleteLocal, putLocal, localTransaction } from "@/lib/storage/local-write";
 
 function walkText(value: unknown): string {
   if (!value) {
@@ -58,8 +58,7 @@ export async function syncNoteLinks(noteId: string, content: unknown): Promise<v
     : [];
 
   const oldLinks = await kokuDb.noteLinks.where("sourceNoteId").equals(noteId).toArray();
-  await kokuDb.noteLinks.where("sourceNoteId").equals(noteId).delete();
-  await Promise.all(oldLinks.map((link) => deleteRow("noteLinks", link.id)));
+  for (const link of oldLinks) await deleteLocal(kokuDb.noteLinks, link.id);
   if (targets.length) {
     const links = targets
         .filter((target) => target.id !== noteId)
@@ -68,8 +67,7 @@ export async function syncNoteLinks(noteId: string, content: unknown): Promise<v
           sourceNoteId: noteId,
           targetNoteId: target.id,
         }));
-    await kokuDb.noteLinks.bulkPut(links);
-    await Promise.all(links.map((link) => syncRow("noteLinks", link)));
+    for (const link of links) await putLocal(kokuDb.noteLinks, link);
   }
 }
 
@@ -191,11 +189,10 @@ export async function persistQuickNote(
     updatedAt: iso,
   };
 
-  await kokuDb.transaction("rw", kokuDb.notes, kokuDb.noteLinks, async () => {
-    await kokuDb.notes.add(note);
+  await localTransaction([kokuDb.notes, kokuDb.noteLinks], async () => {
+    await putLocal(kokuDb.notes, note, true);
     await syncNoteLinks(note.id, note.content);
   });
-  void syncRow("notes", note);
 
   return note;
 }

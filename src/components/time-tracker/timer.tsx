@@ -391,7 +391,7 @@ function TimerSessionCard({
           </p>
         </div>
         <div className="shrink-0 text-right">
-          <p className="text-2xl font-semibold tabular-nums text-foreground">
+          <p className="tabular-digits text-2xl font-semibold text-foreground">
             {formatDuration(elapsedSec)}
           </p>
           {/* A target, not a deadline: the timer runs past it rather than
@@ -860,7 +860,7 @@ export function Timer() {
           <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
             {timers.length > 1 ? "Session total" : "Elapsed"}
           </p>
-          <p className="mt-2 text-5xl font-semibold tracking-tight text-foreground tabular-nums">
+          <p className="tabular-digits mt-2 text-5xl font-semibold tracking-tight text-foreground">
             {formatDuration(heroElapsedSeconds)}
           </p>
           <p className="mt-2 text-sm text-muted-foreground">{heroCaption}</p>

@@ -1,5 +1,5 @@
 import { kokuDb, type Task, type TaskPriority, type TaskStatus } from "@/lib/storage/db";
-import { deleteRow, syncRow } from "@/lib/sync/sync-engine";
+import { putLocal, deleteLocal, localTransaction } from "@/lib/storage/local-write";
 
 /**
  * Framework-free task writes, mirroring `time-tracking/time-entries.ts`: kept
@@ -71,8 +71,7 @@ export async function createTask(data: CreateTaskInput): Promise<Task> {
     updatedAt: now,
   };
 
-  await kokuDb.tasks.add(task);
-  void syncRow("tasks", task);
+  await putLocal(kokuDb.tasks, task, true);
   return task;
 }
 
@@ -132,8 +131,7 @@ export async function updateTask(id: string, data: UpdateTaskInput): Promise<Tas
     updatedAt: now,
   };
 
-  await kokuDb.tasks.put(updated);
-  void syncRow("tasks", updated);
+  await putLocal(kokuDb.tasks, updated);
   return updated;
 }
 
@@ -148,8 +146,7 @@ export async function completeTask(id: string): Promise<Task | null> {
     ...accrualTransition(existing, "done", now),
     updatedAt: now,
   };
-  await kokuDb.tasks.put(updated);
-  void syncRow("tasks", updated);
+  await putLocal(kokuDb.tasks, updated);
   return updated;
 }
 
@@ -165,8 +162,7 @@ export async function reopenTask(id: string): Promise<Task | null> {
     ...accrualTransition(existing, "open", now),
     updatedAt: now,
   };
-  await kokuDb.tasks.put(updated);
-  void syncRow("tasks", updated);
+  await putLocal(kokuDb.tasks, updated);
   return updated;
 }
 
@@ -183,24 +179,14 @@ export async function moveTask(id: string, status: TaskStatus, sortOrder: number
     ...accrualTransition(existing, status, now),
     updatedAt: now,
   };
-  await kokuDb.tasks.put(updated);
-  void syncRow("tasks", updated);
+  await putLocal(kokuDb.tasks, updated);
   return updated;
 }
 
 export async function deleteTask(id: string): Promise<void> {
-  const linked = await kokuDb.transaction("rw", kokuDb.tasks, kokuDb.timeEntries, async () => {
+  await localTransaction([kokuDb.tasks, kokuDb.timeEntries], async () => {
     const entries = await kokuDb.timeEntries.where("taskId").equals(id).toArray();
-    for (const entry of entries) {
-      await kokuDb.timeEntries.update(entry.id, { taskId: null });
-    }
-    await kokuDb.tasks.delete(id);
-    return entries;
+    for (const entry of entries) await putLocal(kokuDb.timeEntries, { ...entry, taskId: null });
+    await deleteLocal(kokuDb.tasks, id);
   });
-
-  // Network writes stay outside the Dexie transaction.
-  for (const entry of linked) {
-    void syncRow("timeEntries", { ...entry, taskId: null });
-  }
-  void deleteRow("tasks", id);
 }

@@ -180,7 +180,27 @@ export interface PendingLiveMutation {
   updatedAt: string;
 }
 
+export interface NoteDraft {
+  id: string;
+  noteId: string;
+  scope: "shared" | "personal";
+  payload: Pick<Note, "title" | "content" | "tags">;
+  baseUpdatedAt: string;
+  updatedAt: string;
+}
+
+export interface RecoverySnapshot {
+  id: string;
+  createdAt: string;
+  reason: string;
+  data: Record<string, unknown[]>;
+}
+
 class KokuDB extends Dexie {
+  storageMeta!: EntityTable<AppSetting, "key">;
+  noteDrafts!: EntityTable<NoteDraft, "id">;
+  recoverySnapshots!: EntityTable<RecoverySnapshot, "id">;
+  timerCompletions!: EntityTable<{ id: string; entryId: string; completedAt: string }, "id">;
   projects!: EntityTable<Project, "id">;
   categories!: EntityTable<Category, "id">;
   timeEntries!: EntityTable<TimeEntry, "id">;
@@ -380,6 +400,13 @@ class KokuDB extends Dexie {
             if (key.lastVerifiedAt === undefined) key.lastVerifiedAt = null;
           });
       });
+
+    this.version(11).stores({
+      storageMeta: "key",
+      noteDrafts: "id, noteId, [scope+noteId], updatedAt",
+      recoverySnapshots: "id, createdAt",
+      timerCompletions: "id, completedAt",
+    });
 
     this.version(10).stores({
       projects: "id, createdAt",
