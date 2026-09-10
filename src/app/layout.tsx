@@ -3,8 +3,8 @@ import Script from "next/script";
 
 import { AppProviders } from "@/components/providers/app-providers";
 import { ServiceWorkerRegistrar } from "@/components/providers/service-worker-registrar";
-import { buildAccentScript } from "@/lib/appearance";
-import { headingFont } from "./fonts";
+import { buildAppearanceScript } from "@/lib/appearance";
+import { fontVariableClasses } from "./fonts";
 
 import "./globals.css";
 
@@ -63,15 +63,15 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${headingFont.variable} antialiased`}
+      className={`${fontVariableClasses} antialiased`}
     >
       <head>
-        {/* Applies the persisted accent before first paint to avoid the
-            default-accent flash on hard refresh / tab switch. Runs
-            synchronously from a localStorage cache; Dexie remains the
-            source of truth and reconciles post-hydration. */}
-        <Script id="accent-script" strategy="beforeInteractive">
-          {buildAccentScript()}
+        {/* Applies the persisted accent, surface style and font style before
+            first paint to avoid a flash of the defaults on hard refresh / tab
+            switch. Runs synchronously from a localStorage cache; Dexie remains
+            the source of truth and reconciles post-hydration. */}
+        <Script id="appearance-script" strategy="beforeInteractive">
+          {buildAppearanceScript()}
         </Script>
       </head>
       <body className="overflow-hidden bg-background text-foreground">

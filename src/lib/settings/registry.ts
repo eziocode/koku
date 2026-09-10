@@ -445,6 +445,44 @@ export const SETTINGS_ENTRIES = [
     keywords: ["accent color", "theme colour", "purple", "teal", "palette"],
     kind: "group",
   },
+  {
+    anchorId: "appearance-surface",
+    sectionId: "appearance",
+    label: "Surface style",
+    description: "Sets the page and panel colours. One choice covers both light and dark.",
+    keywords: [
+      "dark mode style",
+      "warm",
+      "cool",
+      "blue gray",
+      "graphite",
+      "oled",
+      "pure black",
+      "contrast",
+      "palette",
+      "background colour",
+    ],
+    kind: "group",
+  },
+  {
+    anchorId: "appearance-font",
+    sectionId: "appearance",
+    label: "Font style",
+    description:
+      "Sets the typefaces for headings, body text, and timer digits. All are bundled with the app, so they work offline.",
+    keywords: [
+      "font",
+      "typeface",
+      "typography",
+      "serif",
+      "inter",
+      "manrope",
+      "geist",
+      "plex",
+      "text size",
+    ],
+    kind: "group",
+  },
 
   // ── Mini player ──────────────────────────────────────────────────────────
   {

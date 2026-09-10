@@ -5,7 +5,17 @@ import { useTheme } from "next-themes";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ToggleRow } from "@/components/settings/toggle-row";
-import { applyAccentToDocument, cacheAccent, isValidAccent } from "@/lib/appearance";
+import {
+  applyAccentToDocument,
+  applyFontToDocument,
+  applySurfaceToDocument,
+  cacheAccent,
+  cacheFont,
+  cacheSurface,
+  isValidAccent,
+  isValidFont,
+  isValidSurface,
+} from "@/lib/appearance";
 import { useTypedSetting } from "@/lib/storage/hooks/use-typed-setting";
 import { cn } from "@/lib/utils";
 import { TIME_FORMATS } from "@/lib/time-format";
@@ -25,9 +35,65 @@ const ACCENT_PALETTES = [
   { key: "slate",      label: "Slate",      color: "#354f6b" },
 ] as const;
 
+/**
+ * Neutral palette for each surface style, in both modes. The swatches preview
+ * the page/card/border step a style actually paints, which is the thing the
+ * choice is about — the accent stays whatever the user picked below.
+ */
+const SURFACE_STYLES = [
+  {
+    key: "warm",
+    label: "Warm",
+    description: "Warm off-white and near-black",
+    light: { page: "#fbfaf8", card: "#ffffff", border: "#e5ddd4" },
+    dark: { page: "#0d0c0b", card: "#1b1917", border: "#35302b" },
+  },
+  {
+    key: "cool",
+    label: "Cool",
+    description: "Mist and blue-gray",
+    light: { page: "#f5f7f9", card: "#ffffff", border: "#dce3e8" },
+    dark: { page: "#0a1017", card: "#18242f", border: "#2f3f4f" },
+  },
+  {
+    key: "neutral",
+    label: "Graphite",
+    description: "Hueless greys",
+    light: { page: "#f6f6f7", card: "#ffffff", border: "#e0e0e4" },
+    dark: { page: "#0b0b0c", card: "#1a1a1c", border: "#333338" },
+  },
+  {
+    key: "contrast",
+    label: "Contrast",
+    description: "Pure white and true black",
+    light: { page: "#ffffff", card: "#ffffff", border: "#c9c9cf" },
+    dark: { page: "#000000", card: "#141416", border: "#2b2b30" },
+  },
+] as const;
+
+/**
+ * `sample` names the CSS variable the preview renders in, so the button shows
+ * the actual bundled face rather than a description of it. Only the selected
+ * style's font file is ever downloaded, so these previews fall back to the
+ * system stack until a style is chosen — the tradeoff for not fetching nine
+ * families on the chance someone opens this page.
+ */
+const FONT_STYLES = [
+  { key: "manrope", label: "Manrope", description: "Brand headings, system body", sample: "var(--font-manrope)" },
+  { key: "inter", label: "Inter", description: "Neutral UI throughout", sample: "var(--font-inter)" },
+  { key: "geist", label: "Geist", description: "Modern, with matching mono", sample: "var(--font-geist)" },
+  { key: "jakarta", label: "Plus Jakarta", description: "Rounded geometric", sample: "var(--font-jakarta)" },
+  { key: "dmsans", label: "DM Sans", description: "Clean and compact", sample: "var(--font-dmsans)" },
+  { key: "grotesk", label: "Space Grotesk", description: "Grotesque headings", sample: "var(--font-grotesk)" },
+  { key: "plex", label: "IBM Plex", description: "Technical, with Plex Mono", sample: "var(--font-plex-sans)" },
+  { key: "serif", label: "Source Serif", description: "Editorial headings", sample: "var(--font-source-serif)" },
+] as const;
+
 export function AppearanceSettings() {
   const { theme, setTheme } = useTheme();
   const { value: currentAccent, setValue } = useTypedSetting("accent");
+  const { value: currentSurface, setValue: setSurface } = useTypedSetting("surface");
+  const { value: currentFont, setValue: setFont } = useTypedSetting("fontStyle");
   const { value: timeFormat, setValue: setTimeFormat } = useTypedSetting("timeFormat");
   const { value: entryNotesDisplay, setValue: setEntryNotesDisplay } = useTypedSetting("entryNotesDisplay");
 
@@ -178,6 +244,126 @@ export function AppearanceSettings() {
                     )}
                   </span>
                   <span className="text-foreground">{label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Surface style selector ───────────────────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Surface style</CardTitle>
+          <CardDescription>
+            Sets the page and panel colours. One choice covers both light and dark.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div
+            id="appearance-surface"
+            data-setting-row
+            className="grid grid-cols-2 gap-3 sm:grid-cols-4"
+            role="radiogroup"
+            aria-label="Surface style selection"
+          >
+            {SURFACE_STYLES.map(({ key, label, description, light, dark }) => {
+              const selected = currentSurface === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  aria-label={`${label} surface style: ${description}`}
+                  onClick={() => {
+                    if (isValidSurface(key)) {
+                      // Same order as the accent picker: apply, warm the
+                      // pre-paint cache, then persist to Dexie.
+                      applySurfaceToDocument(key);
+                      cacheSurface(key);
+                    }
+                    void setSurface(key);
+                  }}
+                  className={cn(
+                    "flex min-h-11 cursor-pointer flex-col gap-2 rounded-xl border p-3 text-left text-xs font-medium transition-all",
+                    selected
+                      ? "border-foreground/25 bg-muted shadow-sm"
+                      : "border-border/70 hover:border-border hover:bg-muted/50",
+                  )}
+                >
+                  <span className="flex gap-1.5" aria-hidden="true">
+                    {[light, dark].map((mode, index) => (
+                      <span
+                        key={index}
+                        className="flex h-9 flex-1 items-center justify-center rounded-lg border"
+                        style={{ background: mode.page, borderColor: mode.border }}
+                      >
+                        <span
+                          className="h-4 w-3/4 rounded-sm border"
+                          style={{ background: mode.card, borderColor: mode.border }}
+                        />
+                      </span>
+                    ))}
+                  </span>
+                  <span className="text-foreground">{label}</span>
+                  <span className="font-normal text-muted-foreground">{description}</span>
+                </button>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Font style selector ──────────────────────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Font style</CardTitle>
+          <CardDescription>
+            Sets the typefaces for headings, body text, and timer digits. All are bundled with the app, so they work
+            offline.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div
+            id="appearance-font"
+            data-setting-row
+            className="grid grid-cols-2 gap-3 sm:grid-cols-4"
+            role="radiogroup"
+            aria-label="Font style selection"
+          >
+            {FONT_STYLES.map(({ key, label, description, sample }) => {
+              const selected = currentFont === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  aria-label={`${label} font style: ${description}`}
+                  onClick={() => {
+                    if (isValidFont(key)) {
+                      applyFontToDocument(key);
+                      cacheFont(key);
+                    }
+                    void setFont(key);
+                  }}
+                  className={cn(
+                    "flex min-h-11 cursor-pointer flex-col gap-1 rounded-xl border p-3 text-left text-xs font-medium transition-all",
+                    selected
+                      ? "border-foreground/25 bg-muted shadow-sm"
+                      : "border-border/70 hover:border-border hover:bg-muted/50",
+                  )}
+                >
+                  <span
+                    className="text-2xl leading-tight text-foreground"
+                    style={{ fontFamily: `${sample}, var(--font-system-sans)` }}
+                    aria-hidden="true"
+                  >
+                    Aa
+                  </span>
+                  <span className="text-foreground">{label}</span>
+                  <span className="font-normal text-muted-foreground">{description}</span>
                 </button>
               );
             })}

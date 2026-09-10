@@ -1,6 +1,13 @@
 import { z } from "zod";
 
-import { ACCENT_KEYS, DEFAULT_ACCENT } from "@/lib/appearance";
+import {
+  ACCENT_KEYS,
+  DEFAULT_ACCENT,
+  DEFAULT_FONT,
+  DEFAULT_SURFACE,
+  FONT_KEYS,
+  SURFACE_KEYS,
+} from "@/lib/appearance";
 import {
   MINI_PLAYER_DEFAULTS,
   miniPlayerPreferencesSchema,
@@ -26,6 +33,8 @@ import { KOKU_AI_SETTINGS_DEFAULTS, kokuAiSettingsSchema } from "@/lib/ai/koku-a
  */
 export const SETTING_SCHEMAS = {
   accent: z.enum(ACCENT_KEYS).catch(DEFAULT_ACCENT),
+  surface: z.enum(SURFACE_KEYS).catch(DEFAULT_SURFACE),
+  fontStyle: z.enum(FONT_KEYS).catch(DEFAULT_FONT),
   displayName: z.string().catch(""),
   timeFormat: z.enum(["12h", "24h"]).catch("12h"),
   recentEntriesPageSize: z.union([z.literal(4), z.literal(8), z.literal(12), z.literal(20)]).catch(4),
@@ -44,6 +53,8 @@ export type SettingValue<K extends SettingKey> = z.infer<(typeof SETTING_SCHEMAS
 
 export const SETTING_DEFAULTS: { [K in SettingKey]: SettingValue<K> } = {
   accent: DEFAULT_ACCENT,
+  surface: DEFAULT_SURFACE,
+  fontStyle: DEFAULT_FONT,
   displayName: "",
   timeFormat: "12h",
   recentEntriesPageSize: 4,
